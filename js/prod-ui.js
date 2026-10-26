@@ -87,7 +87,7 @@ window.ProdUI = function (C) {
   const dbAuth = () => window.DropboxAuth, dbCfg = () => window.DropboxConfig;
   const dbSess = () => { try { return JSON.parse(localStorage.getItem(DB_SESS_KEY) || 'null'); } catch (e) { return null; } };
   function dbSave(s) { try { localStorage.setItem(DB_SESS_KEY, JSON.stringify(s)); } catch (e) { console.warn('dropbox save', e); } }
-  const dbRedirect = () => location.origin + location.pathname;
+  const dbRedirect = () => location.origin + location.pathname.replace(/index\.html$/i, '');   // v2.3.3: igual seja aberta em ./ ou ./index.html
   async function dropboxSignIn() {
     const A = dbAuth(), c = dbCfg();
     if (!A || !c) return C.toast('Dropbox: módulo em falta.');
