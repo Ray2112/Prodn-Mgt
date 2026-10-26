@@ -50,10 +50,19 @@ t('Fuba 1 gordura 2,0–<3,0; abaixo = aviso', () => {
   assert.strictEqual(r.decision, 'warn'); assert.strictEqual(r.failures[0].reason, 'lo');
 });
 
-t('Fuba 2 gordura 3,0–<4,0', () => {
-  assert.strictEqual(ev('fuba2', { fat: '2,8' }).decision, 'warn');
-  assert.strictEqual(ev('fuba2', { fat: '3,0' }).decision, 'accept');
+t('Fuba 2 gordura <4,0 (só limite superior, Zhax 26-10-2026)', () => {
+  assert.strictEqual(ev('fuba2', { fat: '2,8' }).decision, 'accept');   // sem limite inferior
+  assert.strictEqual(ev('fuba2', { fat: '3,9' }).decision, 'accept');
   assert.strictEqual(ev('fuba2', { fat: '4,0' }).decision, 'reject');
+});
+t('P18 conforme v3: Excluded - Planned', () => {
+  const P = require('../js/prod.js');
+  assert.strictEqual(P.findCode('P18').oee, 'Excluded - Planned');
+  assert.strictEqual(P.findCode('P17').name, 'FUBA BIN FULL', 'nome do P17 mantém-se (decisão em aberto)');
+  const m = P.mergeCodes([{ code: 'P18', name: 'X', namePt: 'Plano de inspecção', oee: 'Counted as loss', active: true }]);
+  const p18 = m.list.find(c => c.code === 'P18');
+  assert.strictEqual(p18.oee, 'Excluded - Planned', 'lista guardada no dispositivo passa a v3');
+  assert.strictEqual(p18.namePt, 'Plano de inspecção', 'nome PT definido pelo utilizador mantém-se');
 });
 
 t('Integral gordura ≥3,7 (abaixo aviso); fibra 1,8–2,5', () => {

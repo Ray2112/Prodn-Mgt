@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.3.2';
+  const VERSION = '2.3.3';
   const DECISIONS = ['record', 'accept', 'warn', 'reject'];   // ordem de gravidade
   const RANK = { record: 0, accept: 1, warn: 2, reject: 3 };
   const CREWS = ['A', 'B', 'C', 'D'];
@@ -52,7 +52,7 @@
     });
     add('fuba2', 'meal', {
       moisture: moistureHuman(),
-      fat: { lo: 3.0, loOp: 'ge', loAct: 'warn', hi: 4.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: SA },
+      fat: { hi: 4.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: SA + ' (só limite superior: Zhax 26-10-2026)' },
       fibre: { hi: 1.2, hiOp: 'le', hiAct: 'reject', freq: 'shift', src: SA },
       granA: { sieve: '1.40', lo: 90, loOp: 'ge', loAct: 'reject', freq: 'shift', src: SA },
       granB: rec('optional')

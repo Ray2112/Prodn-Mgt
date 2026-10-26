@@ -12,14 +12,14 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.3.2';
+  const VERSION = '2.3.3';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
   // [código, nome, Tier 3, tratamento OEE] como no ficheiro. P17: nome 'FUBA BIN FULL' definido por Zhax (no ficheiro: FLOUR BIN FILLING).
   // Colunas V1, V2 e Decisão foram retiradas no ficheiro (só ficam na folha de arquivo; não usar para reporting).
-  const DOWNTIME_SOURCE = '2026-09-30_FMO_Downtime_Codes_v2.xlsx (Folha1)';
-  const OLD_DOWNTIME_SOURCES = ['Downtime Codes v2 (Zhax, 09-10-2026)', 'Downtime_Codes.xlsx (08-10-2026)'];   // listas anteriores (substituídas automaticamente se nunca editadas)
+  const DOWNTIME_SOURCE = '2026-09-30_FMO_Downtime_Codes_v2.xlsx (Folha1) + P18 conforme v3 (26-10-2026)';
+  const OLD_DOWNTIME_SOURCES = ['2026-09-30_FMO_Downtime_Codes_v2.xlsx (Folha1)', 'Downtime Codes v2 (Zhax, 09-10-2026)', 'Downtime_Codes.xlsx (08-10-2026)'];   // listas anteriores (substituídas automaticamente se nunca editadas)
   const DOWNTIME_CODES = [
     ["P01", "PRODUCTION START-UP", "Process", "Counted as loss"],
     ["A01", "SCALES", "Breakdown", "Counted as loss"],
@@ -67,7 +67,7 @@
     ["A16", "VIBRATORS", "Breakdown", "Counted as loss"],
     ["P17", "FUBA BIN FULL", "Other", "Excluded - External"],
     ["A17", "BROKEN BELTS", "Breakdown", "Counted as loss"],
-    ["P18", "INSPECTION/CLEANING PLAN COMPLIANCE", "Process", "Counted as loss"],
+    ["P18", "INSPECTION/CLEANING PLAN COMPLIANCE", "Process", "Excluded - Planned"],   // v3 (21-10-2026), Zhax 26-10-2026
     ["A18", "FLOUR COLLECTOR SCREW CONVEYOR", "Breakdown", "Counted as loss"],
     ["P19", "EXCESS FINISHED PRODUCT", "Other", "Excluded - External"],
     ["A19", "BURNT MOTOR/GEAR MOTOR", "Breakdown", "Counted as loss"],
