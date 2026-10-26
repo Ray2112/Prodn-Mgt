@@ -52,6 +52,9 @@
         (d[store] || (d[store] = [])).push(rec);
       });
     });
+    // v2.3.2: dias pedidos sem registos (ex.: o dia que acabou de terminar) dão um ficheiro vazio — contagens a zero
+    // dizem "a app não tem registos deste dia", o que é diferente de "nada foi enviado".
+    (o.ensureDays || []).forEach(day => { if (DAY_RE.test(day) && !byDay[day]) byDay[day] = {}; });
     const files = {};
     Object.keys(byDay).sort().forEach(day => {
       const records = {}, counts = {}, shifts = { D: 0, N: 0, none: 0 };
@@ -81,10 +84,19 @@
     });
     return { files, undated };
   }
-  // Dias cujo conteúdo mudou desde o último envio confirmado. sent: {caminho: hash}
-  function pendingDays(built, dir, sent) {
+  // Dias a enviar. sent: {caminho: hash} do último envio confirmado.
+  // fin (v2.3.2, opcional): {now, dayEnd(dia) -> ms, sentGen: {caminho: ms do generatedAt enviado}}.
+  // Um dia que já terminou (07:00 do dia seguinte) e cujo último envio foi gerado antes desse fim é reenviado
+  // uma vez, mesmo sem alterações: só assim a ingestão o pode marcar como completo.
+  function pendingDays(built, dir, sent, fin) {
     const s = sent || {};
-    return Object.keys(built.files).sort().filter(day => s[dayPath(dir, day)] !== built.files[day].hash);
+    return Object.keys(built.files).sort().filter(day => {
+      const path = dayPath(dir, day);
+      if (s[path] !== built.files[day].hash) return true;
+      if (!fin || typeof fin.dayEnd !== 'function') return false;
+      const end = fin.dayEnd(day), g = (fin.sentGen || {})[path];
+      return fin.now >= end && !(typeof g === 'number' && g >= end);
+    });
   }
   const api = { FILE_SCHEMA, STORES, QC_STORES, PROD_STORES, dayOf, hashOf, dayPath, buildDayFiles, pendingDays };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

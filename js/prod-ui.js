@@ -145,7 +145,7 @@ window.ProdUI = function (C) {
   // ---- Dropbox: ficheiros diários de registos (v2.1.0) ----
   // Após cada gravação (com espera), envia os dias cujo conteúdo mudou desde o último envio confirmado.
   // Um envio falhado fica pendente e é repetido na gravação seguinte, ao abrir a app ou com "Enviar agora".
-  const DAY_SENT_KEY = 'mill-qc.daySent.v1', DAY_STATUS_KEY = 'mill-qc.daySync.v1';
+  const DAY_SENT_KEY = 'mill-qc.daySent.v1', DAY_STATUS_KEY = 'mill-qc.daySync.v1', DAY_GEN_KEY = 'mill-qc.daySentGen.v1';
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') || d; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn('localStorage', e); } };
   const dayStatus = () => lsGet(DAY_STATUS_KEY, {});
@@ -161,28 +161,33 @@ window.ProdUI = function (C) {
     if (!dbSess()) { if (manual) C.toast('Dropbox: não ligado neste dispositivo.'); return; }
     if (daySyncing) { dayAgain = true; return; }
     daySyncing = true;
-    const st = dayStatus(), sent = lsGet(DAY_SENT_KEY, {});
+    const st = dayStatus(), sent = lsGet(DAY_SENT_KEY, {}), sentGen = lsGet(DAY_GEN_KEY, {});
     let ok = 0, failed = 0, lastErr = null, undated = 0;
     try {
       const data = await DB.exportAll();
       const tok = await dropboxToken();
       if (!tok) throw new Error('sem sessão');
+      const nowMs = Date.now();
+      // v2.3.2: o dia que acabou de terminar é sempre enviado (vazio se não tiver registos), e qualquer dia terminado
+      // cujo último envio foi gerado antes do fim é reenviado uma vez — assim a ingestão marca-o como completo.
+      const yesterday = L.prodDay(nowMs - 24 * 3600000);
+      const fin = { now: nowMs, dayEnd: d => L.prodDayRange(d)[1], sentGen };
       for (const test of [false, true]) {
         const dir = test ? c.recordsTestDir : c.recordsDir;
-        const built = R.buildDayFiles(data, { prodDayOf: L.prodDay, test, now: Date.now(), writerVersion: P.VERSION, deviceId: S.deviceId, site: (S.cfgP && S.cfgP.site) || '', codesSource: (S.cfgP && S.cfgP.codesSource) || null });
+        const built = R.buildDayFiles(data, { prodDayOf: L.prodDay, test, now: nowMs, writerVersion: P.VERSION, deviceId: S.deviceId, site: (S.cfgP && S.cfgP.site) || '', codesSource: (S.cfgP && S.cfgP.codesSource) || null, ensureDays: test ? [] : [yesterday] });
         if (!test) undated = Object.keys(built.undated).reduce((s, k) => s + built.undated[k], 0);
-        for (const day of R.pendingDays(built, dir, sent)) {
+        for (const day of R.pendingDays(built, dir, sent, fin)) {
           const path = R.dayPath(dir, day), f = built.files[day];
           try {
             const req = window.DropboxUpload.buildUploadRequest({ accessToken: tok, path, content: JSON.stringify(f.file) });
             const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
             if (!r.ok) throw new Error('HTTP ' + r.status);
-            sent[path] = f.hash; ok++;
+            sent[path] = f.hash; sentGen[path] = Date.parse(f.file.generatedAt); ok++;
           } catch (e) { failed++; lastErr = day + ': ' + (e && e.message || e); console.warn('day upload', day, e); }
         }
       }
     } catch (e) { failed++; lastErr = String(e && e.message || e); console.warn('day sync', e); }
-    lsSet(DAY_SENT_KEY, sent);
+    lsSet(DAY_SENT_KEY, sent); lsSet(DAY_GEN_KEY, sentGen);
     const t0 = new Date().toISOString();
     lsSet(DAY_STATUS_KEY, { lastTryAt: t0, lastOkAt: failed ? (st.lastOkAt || null) : t0, sentNow: ok, failed, lastError: failed ? lastErr : null, undated });
     daySyncing = false;
@@ -191,6 +196,9 @@ window.ProdUI = function (C) {
     if (dayAgain) { dayAgain = false; scheduleDaySync(); }
   }
   DB.onWrite(() => scheduleDaySync());
+  // v2.3.2: fecho do dia sem depender de uma gravação — ao voltar à app e a cada 15 min com a app aberta
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleDaySync(); });
+  setInterval(scheduleDaySync, 15 * 60000);
   // Linha de estado do envio diário (Definições). Falhas ficam visíveis ao operador, não só no console.
   function daySyncLine() {
     const s = dayStatus();

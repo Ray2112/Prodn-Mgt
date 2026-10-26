@@ -79,4 +79,27 @@ assert.deepStrictEqual(R.pendingDays(b, '/records-test', sent), ['2026-10-23', '
 assert.throws(() => R.buildDayFiles(data, {}), /prodDayOf/);
 assert.deepStrictEqual(R.buildDayFiles(null, opts), { files: {}, undated: {} });
 
-console.log('OK — ficheiros diários de registos');
+// ---- v2.3.2: fecho do dia ----
+const end = day => L.prodDayRange(day)[1];
+const p23 = '/records/2026-10-23_FMO_MillQC.json', p24 = '/records/2026-10-24_FMO_MillQC.json';
+const sentAll = { [p23]: b.files['2026-10-23'].hash, [p24]: b.files['2026-10-24'].hash };
+const genBefore = { [p23]: at(2026, 10, 23, 22, 10), [p24]: at(2026, 10, 24, 11, 0) };
+// 24 Oct 08:00: day 23 ended at 07:00, last upload 22:10 → re-send 23 once; day 24 still running → not re-sent
+assert.deepStrictEqual(R.pendingDays(b, '/records', sentAll, { now: at(2026, 10, 24, 8, 0), dayEnd: end, sentGen: genBefore }), ['2026-10-23']);
+// after the final upload (generated 08:00 on 24 Oct) nothing is pending
+const genAfter = Object.assign({}, genBefore, { [p23]: at(2026, 10, 24, 8, 0) });
+assert.deepStrictEqual(R.pendingDays(b, '/records', sentAll, { now: at(2026, 10, 24, 9, 0), dayEnd: end, sentGen: genAfter }), []);
+// 25 Oct 07:30: day 24 now ended too
+assert.deepStrictEqual(R.pendingDays(b, '/records', sentAll, { now: at(2026, 10, 25, 7, 30), dayEnd: end, sentGen: genAfter }), ['2026-10-24']);
+// no record of the generation time (uploaded by 2.3.1 or earlier) → finalised once
+assert.deepStrictEqual(R.pendingDays(b, '/records', sentAll, { now: at(2026, 10, 25, 7, 30), dayEnd: end, sentGen: {} }), ['2026-10-23', '2026-10-24']);
+// without fin: old behaviour (only changed content)
+assert.deepStrictEqual(R.pendingDays(b, '/records', sentAll), []);
+// empty file for a day with no records
+const be = R.buildDayFiles(data, Object.assign({}, opts, { ensureDays: ['2026-10-25', '2026-10-24', 'bad'] }));
+assert.deepStrictEqual(Object.keys(be.files), ['2026-10-23', '2026-10-24', '2026-10-25']);
+assert.strictEqual(be.files['2026-10-25'].file.manifest.total, 0);
+assert.deepStrictEqual(Object.values(be.files['2026-10-25'].file.manifest.counts).every(n => n === 0), true);
+assert.strictEqual(be.files['2026-10-24'].hash, b.files['2026-10-24'].hash, 'existing day unchanged by ensureDays');
+
+console.log('OK — ficheiros diários de registos (incl. fecho do dia)');
