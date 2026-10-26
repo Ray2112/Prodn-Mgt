@@ -37,17 +37,15 @@ t('ração animal: humidade ≤13 aceita, >13 rejeita; gordura só registo', () 
   assert.strictEqual(ev('animal', { fat: '6' }).decision, 'record');
 });
 
-t('Super Fuba gordura <2,0 (estrito)', () => {
-  assert.strictEqual(ev('super', { fat: '1,99' }).decision, 'accept');
-  assert.strictEqual(ev('super', { fat: '2,0' }).decision, 'reject');
+t('Super Fuba gordura <1,5 (Zhax 26-10-2026)', () => {
+  assert.strictEqual(ev('super', { fat: '1,49' }).decision, 'accept');
+  assert.strictEqual(ev('super', { fat: '1,5' }).decision, 'reject');
 });
 
-t('Fuba 1 gordura 2,0–<3,0; abaixo = aviso', () => {
-  assert.strictEqual(ev('fuba1', { fat: '2,0' }).decision, 'accept');
-  assert.strictEqual(ev('fuba1', { fat: '2,99' }).decision, 'accept');
-  assert.strictEqual(ev('fuba1', { fat: '3,0' }).decision, 'reject');
-  const r = ev('fuba1', { fat: '1,9' });
-  assert.strictEqual(r.decision, 'warn'); assert.strictEqual(r.failures[0].reason, 'lo');
+t('Fuba 1 gordura <2,5, sem limite inferior (Zhax 26-10-2026)', () => {
+  assert.strictEqual(ev('fuba1', { fat: '1,0' }).decision, 'accept');
+  assert.strictEqual(ev('fuba1', { fat: '2,49' }).decision, 'accept');
+  assert.strictEqual(ev('fuba1', { fat: '2,5' }).decision, 'reject');
 });
 
 t('Fuba 2 gordura <4,0 (só limite superior, Zhax 26-10-2026)', () => {

@@ -38,21 +38,21 @@
     const add = (id, group, lim) => P.push({ id, group, limits: extras(lim) });
     add('super', 'meal', {
       moisture: moistureHuman(),
-      fat: { hi: 2.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: SA },
+      fat: { hi: 1.5, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: 'FMO (Zhax 26-10-2026)' },
       fibre: { hi: 0.8, hiOp: 'le', hiAct: 'reject', freq: 'shift', src: SA },
       granA: { sieve: '1.40', lo: 90, loOp: 'ge', loAct: 'reject', freq: 'shift', src: SA },
       granB: { sieve: '0.30', hi: 90, hiOp: 'lt', hiAct: 'reject', freq: 'shift', src: SA }
     });
     add('fuba1', 'meal', {
       moisture: moistureHuman(),
-      fat: { lo: 2.0, loOp: 'ge', loAct: 'warn', hi: 3.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: SA },
+      fat: { hi: 2.5, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: 'FMO (Zhax 26-10-2026)' },
       fibre: { hi: 1.2, hiOp: 'le', hiAct: 'reject', freq: 'shift', src: SA },
       granA: { sieve: '1.40', lo: 90, loOp: 'ge', loAct: 'reject', freq: 'shift', src: SA },
       granB: rec('optional')
     });
     add('fuba2', 'meal', {
       moisture: moistureHuman(),
-      fat: { hi: 4.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: SA + ' (só limite superior: Zhax 26-10-2026)' },
+      fat: { hi: 4.0, hiOp: 'lt', hiAct: 'reject', freq: 'hourly', src: 'FMO (Zhax 26-10-2026)' },
       fibre: { hi: 1.2, hiOp: 'le', hiAct: 'reject', freq: 'shift', src: SA },
       granA: { sieve: '1.40', lo: 90, loOp: 'ge', loAct: 'reject', freq: 'shift', src: SA },
       granB: rec('optional')
