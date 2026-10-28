@@ -832,7 +832,7 @@
   function validProdBackup(o) {
     const okArr = k => o[k] === undefined || Array.isArray(o[k]);
     if (!['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint'].every(okArr)) return false;
-    const MAINT_KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'consumable', 'void'];   // = Maint.KINDS (js/maint.js)
+    const MAINT_KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'consumable', 'note', 'void'];   // = Maint.KINDS (js/maint.js)
     if (!(o.maint || []).every(m => m && typeof m.uid === 'string' && MAINT_KINDS.indexOf(m.kind) >= 0)) return false;
     const okSr = (o.shiftReadings || []).every(r => r && typeof r.uid === 'string' && SR_KINDS.indexOf(r.srKind) >= 0 && SR_POINTS.indexOf(r.point) >= 0 && isNum(r.valueKg));
     if (!okSr) return false;

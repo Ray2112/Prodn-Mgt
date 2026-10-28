@@ -6,12 +6,17 @@
 > - **Paragens:** categoria Processo / Avaria / Outra, código FMO e duração. Separadas do diário de turno; não entram nos 72 min/dia.
 > - **Intervenções:** o que foi feito, material, quem fez, início e fim.
 > - **Preventiva:** trabalhos por semana, com progresso, adiamento e aviso de atraso.
-> - **Rolos:** os 58 pares das tabelas de estriagem dos moinhos C e D, com verificação semanal, troca planeada, aviso de atraso e registo de reestriagem.
+> - **Rolos:** os 58 pares das tabelas de estriagem dos moinhos C e D. As horas de marcha contam desde a última troca, ou desde 01-08-2026, a partir da coluna «Hours Run» do OEE (ficheiro roll-hours.json enviado pelo pipeline).
+>   - Horas ideais: B1/B2 1200 h, B3/B4 2400 h, G1/G2 1800 h, G3 2400 h, R 3000 h. Alteram-se em Definições → Definições dos rolos, com PIN.
+>   - Inspecção semanal só depois das horas ideais: ainda bom, para reestriar ou estado crítico.
+>   - Escovas: aviso quando estão em estado crítico ou em falta.
+>   - Também se registam o diâmetro de cada rolo, os IDs dos rolos e o registo de reestriagem.
+> - **Notas:** observações, requisitos e outra informação.
 > - **Consumíveis por turno:** entram nos relatórios da Equipa e de Gestão.
 >
 > Os registos nunca se alteram; corrige-se com «Anular». Os registos vão no ficheiro diário (schema 3).
 >
-> *EN:* a new **Maintenance** tab: shift, stoppages, interventions, preventive jobs, rolls (58 roll pairs from the fluting tables) and consumables per shift. Overdue warnings show in the app and in the daily reports.
+> *EN:* a new **Maintenance** tab: shift, stoppages, interventions, preventive jobs, consumables per shift, and notes. **Rolls:** 58 roll pairs from the fluting tables. Run hours come from the OEE "Hours Run" and are counted since the last change (or 01-08-2026). Ideal hours can be changed in Settings with the PIN. A weekly inspection is asked for once a pair passes its hours. Brushes are inspected too. Diameters and roll IDs are recorded. Warnings show in the app and in the daily reports.
 
 > **v2.3.3 (26-10-2026) — P18 conforme v3; gordura da Fuba 2 só com limite superior.** O código P18 (plano de inspecção/limpeza) passa a "Excluded - Planned", como no FMO Downtime Codes v3; a lista guardada no dispositivo é actualizada ao abrir (nomes PT mantêm-se). O nome do P17 não muda (decisão em aberto). Limites por defeito da gordura (só superior, sem aviso inferior; Zhax 26-10-2026): Super Fuba < 1,5 %, Fuba 1 < 2,5 %, Fuba 2 < 4,0 % — **nos dispositivos já configurados, alterar em Definições → Limites** (a app não muda limites guardados sem autorização). / P18 becomes "Excluded - Planned" (v3); the device code list updates on opening. Fat defaults (upper only): Super < 1.5 %, Fuba 1 < 2.5 %, Fuba 2 < 4.0 % — on devices already set up, change them in Settings → Limits.
 

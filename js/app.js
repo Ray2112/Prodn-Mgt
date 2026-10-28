@@ -625,6 +625,8 @@
       <label class="fld">${esc(t('language'))}<select id="langSel"><option value="pt" ${S.lang === 'pt' ? 'selected' : ''}>Português</option><option value="en" ${S.lang === 'en' ? 'selected' : ''}>English</option></select></label>
       <label class="fld">${esc(t('millType'))}<select id="millSel">${L.MILL_TYPES.map(m => `<option value="${m}" ${S.cfg.millType === m ? 'selected' : ''}>${esc(t('mill_' + m))}${S.cfg.products[m] && S.cfg.products[m].length ? '' : ' — ' + esc(t('notConfiguredShort'))}</option>`).join('')}</select></label>
       </section>
+      <section class="card"><h3>${esc(t('rollSet'))}</h3><p class="sub">${esc(t('rollSetHelp'))}</p>
+        <button class="btn" data-nav="maint" data-mact="tab" data-v="rollset">${esc(t('rollSet'))}</button></section>
       <section class="card"><h3>${esc(t('supervisorPin'))}</h3>
         <p class="sub">${esc(S.pinSet ? t('pinIsSet') : t('pinNotSet'))} ${esc(t('pinNote'))}</p>
         ${S.pinSet ? `<label class="fld">${esc(t('currentPin'))}<input type="password" inputmode="numeric" id="pinOld"></label>` : ''}
@@ -876,11 +878,35 @@
       load: () => DB.all('maint'), add: rec => DB.add('maint', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
       codes: () => (S.cfgP && S.cfgP.downtimeCodes) || [], codesSource: () => (S.cfgP && S.cfgP.codesSource) || null, lines: () => S.cfg.lines, passages: () => (window.RollPassages && window.RollPassages.PASSAGES) || [], rolls: true, kpiNote: true,
       shiftNow: () => ({ day: L.prodDay(Date.now()), period: L.shiftOf(Date.now()).period }), crewOf,
-      operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); } });
+      operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); },
+      rollDefaults: () => (window.RollPassages && window.RollPassages.DEFAULT_HOURS) || {}, rollHours: () => S.rollHours, rollHoursRefresh: refreshRollHours,
+      checkPin, pinMsg });
+    S.rollHours = readRollHours();
     await load(); render();
+    refreshRollHours().then(ok => { if (ok) render(); });
+    setInterval(() => refreshRollHours().then(ok => { if (ok && S.view === 'maint') render(); }), 3600000);
     setInterval(() => { const c = $('#clock'); if (c) c.textContent = fmtTime(Date.now()); }, 15000);
     setInterval(checkOverdue, 60000);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  // Horas de marcha das linhas para os rolos: roll-hours.json que o pipeline põe em /Apps/Mill-CD/ (coluna "Hours Run" do OEE).
+  // Guardado neste dispositivo para funcionar sem rede; sem ligação ao Dropbox fica a última cópia (ou nenhuma).
+  const RH_KEY = 'mill-qc.rollHours.v1';
+  const okHours = h => !!(h && h.kind === 'roll-hours' && h.lines && typeof h.lines === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(h.lastDay || ''));
+  function readRollHours() { try { const h = JSON.parse(localStorage.getItem(RH_KEY) || 'null'); return okHours(h) ? h : null; } catch (e) { return null; } }
+  async function refreshRollHours() {
+    try {
+      const tok = await PU.dropboxToken();
+      if (!tok) return false;
+      const r = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Dropbox-API-Arg': JSON.stringify({ path: '/roll-hours.json' }) } });
+      if (!r.ok) return false;
+      const h = await r.json();
+      if (!okHours(h)) return false;
+      S.rollHours = h;
+      try { localStorage.setItem(RH_KEY, JSON.stringify(h)); } catch (e) { /* sem espaço: fica só em memória */ }
+      return true;
+    } catch (e) { return false; }
   }
   window.QCApp = { S, render, reload: async () => { await load(); render(); } };
   start();

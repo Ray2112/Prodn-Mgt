@@ -21,9 +21,18 @@ assert.strictEqual(new Set(RP.PASSAGES.map(p => p.id)).size, RP.PASSAGES.length,
 const c1 = RP.PASSAGES.find(p => p.id === 'C-B1-1'), d6 = RP.PASSAGES.find(p => p.id === 'D-R6-1');
 assert.deepStrictEqual([c1.spec.flutesPerCm, c1.spec.flutesPerCirc, c1.spec.angle, c1.spec.lengthMm], [2.86, 225, '30 / 65', 1250]);
 assert.deepStrictEqual([d6.spec.flutesPerCm, d6.spec.flutesPerCirc, d6.spec.angle, d6.spec.lengthMm], [12.73, 1000, '45 / 70', 1000]);
-assert.ok(RP.PASSAGES.every(p => p.refluteEveryDays === null), 'intervalo de reestriagem ainda não definido');
-// funciona com as regras de rolos
-const st = M.rollState(RP.PASSAGES, [], '2026-10-28');
+// horas ideais (Zhax, 28-10-2026): B1/B2 1200, B3/B4 2400, G1/G2 1800, G3 2400, todas as R 3000
+assert.deepStrictEqual(RP.DEFAULT_HOURS, { B1: 1200, B2: 1200, B3: 2400, B4: 2400, G1: 1800, G2: 1800, G3: 2400, R: 3000 });
+assert.ok(RP.PASSAGES.every(p => RP.DEFAULT_HOURS[p.hoursGroup] > 0 && (p.passage[0] === 'R') === (p.hoursGroup === 'R')));
+// estado inicial: contagem desde 01-08-2026; registo de manutenção (Line C) desde Agosto
+assert.ok(RP.PASSAGES.every(p => p.baseline.start === '2026-08-01'));
+const base = id => RP.PASSAGES.find(p => p.id === id).baseline;
+assert.deepStrictEqual([base('C-R3-3').lastChange, base('C-R1-1').lastChange], ['2026-10-12', '2026-10-24']);
+assert.deepStrictEqual(['C-B3-1', 'C-R4-3', 'C-R2-3'].map(id => base(id).inspection), ['due', 'due', 'due']);
+assert.strictEqual(RP.PASSAGES.filter(p => p.baseline.lastChange || p.baseline.inspection).length, 5);
+// com as regras: sem ficheiro de horas, só os 3 pares do registo pedem inspecção
+const st = M.rollState(RP.PASSAGES, [], '2026-10-28', { hours: null, limits: RP.DEFAULT_HOURS });
 assert.strictEqual(st.length, 58);
-assert.ok(st.every(r => !r.overdue && r.plan === null));
+assert.deepStrictEqual(st.filter(r => r.status === 'inspect').map(r => r.id).sort(), ['C-B3-1', 'C-R2-3', 'C-R4-3']);
+assert.deepStrictEqual(st.find(r => r.id === 'C-R3-3').startDay, '2026-10-13');
 console.log('OK — passagens de rolos (C 36 pares, D 22 pares)');

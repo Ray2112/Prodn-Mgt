@@ -1183,5 +1183,5 @@ window.ProdUI = function (C) {
     return false;
   }
 
-  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL };
+  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken };
 };
