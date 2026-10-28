@@ -1,5 +1,18 @@
 # Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.3.1
 
+> **v2.4.0 (28-10-2026) — Manutenção.** Novo separador 🔧 com:
+>
+> - **Turno:** técnicos de serviço e notas de passagem.
+> - **Paragens:** categoria Processo / Avaria / Outra, código FMO e duração. Separadas do diário de turno; não entram nos 72 min/dia.
+> - **Intervenções:** o que foi feito, material, quem fez, início e fim.
+> - **Preventiva:** trabalhos por semana, com progresso, adiamento e aviso de atraso.
+> - **Rolos:** os 58 pares das tabelas de estriagem dos moinhos C e D, com verificação semanal, troca planeada, aviso de atraso e registo de reestriagem.
+> - **Consumíveis por turno:** entram nos relatórios da Equipa e de Gestão.
+>
+> Os registos nunca se alteram; corrige-se com «Anular». Os registos vão no ficheiro diário (schema 3).
+>
+> *EN:* a new **Maintenance** tab: shift, stoppages, interventions, preventive jobs, rolls (58 roll pairs from the fluting tables) and consumables per shift. Overdue warnings show in the app and in the daily reports.
+
 > **v2.3.3 (26-10-2026) — P18 conforme v3; gordura da Fuba 2 só com limite superior.** O código P18 (plano de inspecção/limpeza) passa a "Excluded - Planned", como no FMO Downtime Codes v3; a lista guardada no dispositivo é actualizada ao abrir (nomes PT mantêm-se). O nome do P17 não muda (decisão em aberto). Limites por defeito da gordura (só superior, sem aviso inferior; Zhax 26-10-2026): Super Fuba < 1,5 %, Fuba 1 < 2,5 %, Fuba 2 < 4,0 % — **nos dispositivos já configurados, alterar em Definições → Limites** (a app não muda limites guardados sem autorização). / P18 becomes "Excluded - Planned" (v3); the device code list updates on opening. Fat defaults (upper only): Super < 1.5 %, Fuba 1 < 2.5 %, Fuba 2 < 4.0 % — on devices already set up, change them in Settings → Limits.
 
 > **v2.3.2 (26-10-2026) — fecho do dia no Dropbox.** Depois das 07:00, o dia de produção que terminou é enviado mais uma vez (mesmo sem alterações; vazio se não houver registos), ao abrir ou voltar à app, a cada 15 min com a app aberta, ou depois de uma gravação. Assim o pipeline sabe que o dia está fechado. Basta abrir a Prodn-Mgt de manhã com o Dropbox ligado. / After 07:00 the production day that ended is uploaded once more (empty if it has no records), on opening or returning to the app, every 15 min while open, or after a save, so the pipeline can mark the day complete. Opening Prodn-Mgt in the morning with Dropbox linked is enough.

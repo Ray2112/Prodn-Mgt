@@ -3,6 +3,7 @@
   'use strict';
   const L = window.Logic, DB = window.DB, I = window.I18N;
   let PU = null;   // módulo de Produção (js/prod-ui.js)
+  let MU = null;   // módulo de Manutenção (js/maint-ui.js, igual na Grain-Mgt)
   const $ = s => document.querySelector(s);
   const S = {
     view: 'home', lang: 'pt', cfg: null, crew: null, operator: '', lineState: {},
@@ -89,6 +90,7 @@
     S.pinSet = !!(await DB.getConfig('pin'));
     await reloadData();
     await PU.load();
+    await MU.reload();
   }
   async function reloadData() {
     S.samples = await DB.all('samples');
@@ -195,7 +197,7 @@
       </header>
       <main id="main">${view()}</main>
       <nav class="bottom">
-        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⛔', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
+        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⛔', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
       </nav>
       ${S.modal ? modal() : ''}`;
   }
@@ -211,6 +213,7 @@
       case 'settings': return viewSettings();
       case 'limits': return viewLimits();
       case 'prod': return PU.view();
+      case 'maint': return MU.view();
       case 'prodset': return PU.viewProdSet();
       case 'codes': return PU.viewCodes();
       case 'waimport': return viewWaImport();
@@ -234,6 +237,7 @@
     if (rp) banners.push(`<div class="banner b-info" data-repday="${esc(rp)}">${esc(t('reportReady', { d: rp }))}</div>`);
     const od = overdueList();
     if (od.length) banners.push(`<div class="banner b-reject">⏰ ${esc(t('overdueN', { n: od.length }))}</div>`);
+    MU.warnings().forEach(w => banners.push(`<div class="banner b-reject" data-nav="maint">🔧 ${esc(MU.warnText(w))}</div>`));
     return banners.join('') + S.cfg.lines.map(lineCard).join('');
   }
   function lineCard(l) {
@@ -865,6 +869,14 @@
   async function start() {
     PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin, pinMsg, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
       lineName, lineStatus, anyLabel, decLabel, decCls, waLink });
+    // Manutenção: registos na loja 'maint'; passagens de rolos = dados mestre js/roll-passages.js (tabelas de estriagem C e D)
+    const crewOf = (day, period) => L.crewOfTime(L.prodDayRange(day)[0] + (period === 'N' ? 12 : 0) * 3600000 + 60000);
+    const mUid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    MU = window.MaintUI({ lang: () => S.lang, esc, toast, render,
+      load: () => DB.all('maint'), add: rec => DB.add('maint', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
+      codes: () => (S.cfgP && S.cfgP.downtimeCodes) || [], codesSource: () => (S.cfgP && S.cfgP.codesSource) || null, lines: () => S.cfg.lines, passages: () => (window.RollPassages && window.RollPassages.PASSAGES) || [], rolls: true, kpiNote: true,
+      shiftNow: () => ({ day: L.prodDay(Date.now()), period: L.shiftOf(Date.now()).period }), crewOf,
+      operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); } });
     await load(); render();
     setInterval(() => { const c = $('#clock'); if (c) c.textContent = fmtTime(Date.now()); }, 15000);
     setInterval(checkOverdue, 60000);
