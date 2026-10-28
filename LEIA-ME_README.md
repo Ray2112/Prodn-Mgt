@@ -6,6 +6,9 @@
 > - **Paragens:** categoria Processo / Avaria / Outra, código FMO e duração. Separadas do diário de turno; não entram nos 72 min/dia.
 > - **Intervenções:** o que foi feito, material, quem fez, início e fim.
 > - **Preventiva:** trabalhos por semana, com progresso, adiamento e aviso de atraso.
+>   - Lista de preventiva da Linha C: 62 tarefas, mensais e trimestrais.
+>   - Ao planear a semana escolhe-se da lista. Só aparecem as tarefas devidas; depois de feita, a tarefa fica bloqueada até voltar a vencer.
+>   - As tarefas em atraso dão aviso.
 > - **Rolos:** os 58 pares das tabelas de estriagem dos moinhos C e D. As horas de marcha contam desde a última troca, ou desde 01-08-2026, a partir da coluna «Hours Run» do OEE (ficheiro roll-hours.json enviado pelo pipeline).
 >   - Horas ideais: B1/B2 1200 h, B3/B4 2400 h, G1/G2 1800 h, G3 2400 h, R 3000 h. Alteram-se em Definições → Definições dos rolos, com PIN.
 >   - Inspecção semanal só depois das horas ideais: ainda bom, para reestriar ou estado crítico.

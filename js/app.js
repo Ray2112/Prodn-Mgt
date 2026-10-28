@@ -883,6 +883,7 @@
       codes: () => (S.cfgP && S.cfgP.downtimeCodes) || [], codesSource: () => (S.cfgP && S.cfgP.codesSource) || null, lines: () => S.cfg.lines, passages: () => (window.RollPassages && window.RollPassages.PASSAGES) || [], rolls: true, kpiNote: true,
       shiftNow: () => ({ day: L.prodDay(Date.now()), period: L.shiftOf(Date.now()).period }), crewOf,
       operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); },
+      pmTasks: () => (window.PmList && window.PmList.TASKS) || [],   // lista de preventiva da Linha C (Mill C - Preventative.xlsx)
       rollDefaults: () => (window.RollPassages && window.RollPassages.DEFAULT_HOURS) || {}, rollHours: () => S.rollHours, rollHoursRefresh: refreshRollHours,
       checkPin, pinMsg });
     // Conformidade FSSC 22000: área da moagem; scores separados da Grain-Mgt (Zhax, 28-10-2026)
