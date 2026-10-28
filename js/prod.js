@@ -831,7 +831,8 @@
 
   function validProdBackup(o) {
     const okArr = k => o[k] === undefined || Array.isArray(o[k]);
-    if (!['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint'].every(okArr)) return false;
+    if (!['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint', 'fssc'].every(okArr)) return false;
+    if (!(o.fssc || []).every(m => m && typeof m.uid === 'string' && ['doc', 'grade', 'actionDone', 'close', 'reopen', 'void'].indexOf(m.kind) >= 0)) return false;   // = Fssc.KINDS
     const MAINT_KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'sensorAck', 'consumable', 'note', 'void'];   // = Maint.KINDS (js/maint.js)
     if (!(o.maint || []).every(m => m && typeof m.uid === 'string' && MAINT_KINDS.indexOf(m.kind) >= 0)) return false;
     const okSr = (o.shiftReadings || []).every(r => r && typeof r.uid === 'string' && SR_KINDS.indexOf(r.srKind) >= 0 && SR_POINTS.indexOf(r.point) >= 0 && isNum(r.valueKg));

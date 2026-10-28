@@ -56,6 +56,9 @@ th,td{border-bottom:1px solid var(--line);padding:6px;text-align:left;white-spac
 nav.bottom{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
 .nav{flex:1;border:0;background:none;padding:7px 0 8px;font-size:11px;color:var(--sub);display:flex;flex-direction:column;align-items:center;position:relative}
 .nav .ic{font-size:19px;line-height:1.1}.nav.on{color:var(--brand);font-weight:700}
+/* v2.4.0: 9 separadores — cada etiqueta fica dentro do seu botão (reduz e corta com reticências em ecrãs estreitos) */
+.nav{min-width:0;padding-left:1px;padding-right:1px}.nav span:not(.ic){display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:420px){.nav{font-size:9.5px}}
 .badge{position:absolute;top:2px;right:18%;background:var(--rej);color:#fff;font-style:normal;border-radius:999px;font-size:11px;padding:0 6px}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:#fff;border-radius:16px;padding:16px;max-width:460px;width:100%;max-height:90vh;overflow:auto}

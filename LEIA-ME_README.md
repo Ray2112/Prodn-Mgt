@@ -12,11 +12,22 @@
 >   - Escovas: aviso quando estão em estado crítico ou em falta.
 >   - Também se registam o diâmetro de cada rolo, os IDs dos rolos e o registo de reestriagem.
 > - **Notas:** observações, requisitos e outra informação.
+>
+> **Novo separador FSSC (conformidade FSSC 22000 v7, categoria CIV).**
+> - **Avaliação mensal:** 78 requisitos (ISO 22000, PRP e requisitos adicionais §2.5), classificados como na auditoria: conforme, NC menor, NC maior, NC crítica ou N/A. Uma NC maior limita a pontuação a 89 %; uma NC crítica limita-a a 49 %.
+> - **Fecho do mês:** pelo supervisor de CQ com PIN, até ao dia 10 do mês seguinte.
+> - **Registo de documentos:** versões, aprovação e revisões em atraso.
+> - **Acções correctivas:** com prazo.
+> - **Relatório:** a pontuação entra no relatório de Gestão.
 > - **Consumíveis por turno:** entram nos relatórios da Equipa e de Gestão.
 >
 > Os registos nunca se alteram; corrige-se com «Anular». Os registos vão no ficheiro diário (schema 3).
 >
-> *EN:* a new **Maintenance** tab: shift, stoppages, interventions, preventive jobs, consumables per shift, and notes. **Rolls:** 58 roll pairs from the fluting tables. Run hours come from the OEE "Hours Run" and are counted since the last change (or 01-08-2026). Ideal hours can be changed in Settings with the PIN. A weekly inspection is asked for once a pair passes its hours. Brushes are inspected too. Diameters and roll IDs are recorded. Warnings show in the app and in the daily reports.
+> *EN:* a new **Maintenance** tab: shift, stoppages, interventions, preventive jobs, consumables per shift, and notes. **Rolls:** 58 roll pairs from the fluting tables. Run hours come from the OEE "Hours Run" and are counted since the last change (or 01-08-2026). Ideal hours can be changed in Settings with the PIN. A weekly inspection is asked for once a pair passes its hours. Brushes are inspected too. Diameters and roll IDs are recorded. Warnings show in the app and in the daily reports. **New FSSC tab** (FSSC 22000 v7, category CIV):
+> - Monthly check of 78 requirements with audit grading (a Major caps the score at 89 %, a Critical at 49 %).
+> - The month is closed by the QC supervisor with the PIN.
+> - Also: a document register, and corrective actions with due dates.
+> - The score is shown in the Management report.
 
 > **v2.3.3 (26-10-2026) — P18 conforme v3; gordura da Fuba 2 só com limite superior.** O código P18 (plano de inspecção/limpeza) passa a "Excluded - Planned", como no FMO Downtime Codes v3; a lista guardada no dispositivo é actualizada ao abrir (nomes PT mantêm-se). O nome do P17 não muda (decisão em aberto). Limites por defeito da gordura (só superior, sem aviso inferior; Zhax 26-10-2026): Super Fuba < 1,5 %, Fuba 1 < 2,5 %, Fuba 2 < 4,0 % — **nos dispositivos já configurados, alterar em Definições → Limites** (a app não muda limites guardados sem autorização). / P18 becomes "Excluded - Planned" (v3); the device code list updates on opening. Fat defaults (upper only): Super < 1.5 %, Fuba 1 < 2.5 %, Fuba 2 < 4.0 % — on devices already set up, change them in Settings → Limits.
 

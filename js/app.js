@@ -4,6 +4,7 @@
   const L = window.Logic, DB = window.DB, I = window.I18N;
   let PU = null;   // módulo de Produção (js/prod-ui.js)
   let MU = null;   // módulo de Manutenção (js/maint-ui.js, igual na Grain-Mgt)
+  let FU = null;   // módulo de conformidade FSSC 22000 (js/fssc-ui.js, igual na Grain-Mgt)
   const $ = s => document.querySelector(s);
   const S = {
     view: 'home', lang: 'pt', cfg: null, crew: null, operator: '', lineState: {},
@@ -91,6 +92,7 @@
     await reloadData();
     await PU.load();
     await MU.reload();
+    await FU.reload();
   }
   async function reloadData() {
     S.samples = await DB.all('samples');
@@ -197,7 +199,7 @@
       </header>
       <main id="main">${view()}</main>
       <nav class="bottom">
-        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⛔', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
+        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⛔', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
       </nav>
       ${S.modal ? modal() : ''}`;
   }
@@ -214,6 +216,7 @@
       case 'limits': return viewLimits();
       case 'prod': return PU.view();
       case 'maint': return MU.view();
+      case 'fssc': return FU.view();
       case 'prodset': return PU.viewProdSet();
       case 'codes': return PU.viewCodes();
       case 'waimport': return viewWaImport();
@@ -238,6 +241,7 @@
     const od = overdueList();
     if (od.length) banners.push(`<div class="banner b-reject">⏰ ${esc(t('overdueN', { n: od.length }))}</div>`);
     MU.warnings().forEach(w => banners.push(`<div class="banner b-reject" data-nav="maint">🔧 ${esc(MU.warnText(w))}</div>`));
+    FU.warnings().forEach(w => banners.push(`<div class="banner ${w.level === 'bad' ? 'b-reject' : 'b-warn'}" data-nav="fssc">✔ ${esc(FU.warnText(w))}</div>`));
     return banners.join('') + S.cfg.lines.map(lineCard).join('');
   }
   function lineCard(l) {
@@ -881,6 +885,10 @@
       operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); },
       rollDefaults: () => (window.RollPassages && window.RollPassages.DEFAULT_HOURS) || {}, rollHours: () => S.rollHours, rollHoursRefresh: refreshRollHours,
       checkPin, pinMsg });
+    // Conformidade FSSC 22000: área da moagem; scores separados da Grain-Mgt (Zhax, 28-10-2026)
+    FU = window.FsscUI({ lang: () => S.lang, esc, toast, render, area: 'mill',
+      load: () => DB.all('fssc'), add: rec => DB.add('fssc', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
+      operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })) });
     S.rollHours = readRollHours();
     await load(); render();
     refreshRollHours().then(ok => { if (ok) render(); });
