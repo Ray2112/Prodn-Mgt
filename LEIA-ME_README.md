@@ -19,6 +19,7 @@
 > - **Registo de documentos:** versões, aprovação e revisões em atraso.
 > - **Acções correctivas:** com prazo.
 > - **Relatório:** a pontuação entra no relatório de Gestão.
+> - **Reclamações de clientes:** ID automático, lote, motivo, correcção, acção adicional e prevenção da repetição. Fecha-se só com prevenção e verificação da eficácia. Há aviso quando a reclamação afecta a segurança alimentar ou passa do prazo.
 > - **Consumíveis por turno:** entram nos relatórios da Equipa e de Gestão.
 >
 > Os registos nunca se alteram; corrige-se com «Anular». Os registos vão no ficheiro diário (schema 3).
@@ -28,6 +29,7 @@
 > - The month is closed by the QC supervisor with the PIN.
 > - Also: a document register, and corrective actions with due dates.
 > - The score is shown in the Management report.
+> - Customer complaints: ID, lot, reason, remedy, further action and prevention. A complaint is closed only with a prevention action and a verification.
 
 > **v2.3.3 (26-10-2026) — P18 conforme v3; gordura da Fuba 2 só com limite superior.** O código P18 (plano de inspecção/limpeza) passa a "Excluded - Planned", como no FMO Downtime Codes v3; a lista guardada no dispositivo é actualizada ao abrir (nomes PT mantêm-se). O nome do P17 não muda (decisão em aberto). Limites por defeito da gordura (só superior, sem aviso inferior; Zhax 26-10-2026): Super Fuba < 1,5 %, Fuba 1 < 2,5 %, Fuba 2 < 4,0 % — **nos dispositivos já configurados, alterar em Definições → Limites** (a app não muda limites guardados sem autorização). / P18 becomes "Excluded - Planned" (v3); the device code list updates on opening. Fat defaults (upper only): Super < 1.5 %, Fuba 1 < 2.5 %, Fuba 2 < 4.0 % — on devices already set up, change them in Settings → Limits.
 

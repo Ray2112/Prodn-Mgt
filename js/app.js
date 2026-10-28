@@ -888,7 +888,8 @@
     // Conformidade FSSC 22000: área da moagem; scores separados da Grain-Mgt (Zhax, 28-10-2026)
     FU = window.FsscUI({ lang: () => S.lang, esc, toast, render, area: 'mill',
       load: () => DB.all('fssc'), add: rec => DB.add('fssc', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
-      operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })) });
+      operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })),
+      complaints: true, products: () => products().map(p => prodName(p.id)) });
     S.rollHours = readRollHours();
     await load(); render();
     refreshRollHours().then(ok => { if (ok) render(); });
