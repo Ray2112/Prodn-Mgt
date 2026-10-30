@@ -5,10 +5,10 @@
 (function (root) {
   'use strict';
   const DB_NAME = 'moagem-cq';
-  const DB_VERSION = 7;   // v6 (app 2.4.0): + maint (manutenção); v7 (app 2.4.0): + fssc (conformidade FSSC 22000)
+  const DB_VERSION = 8;   // v6 (app 2.4.0): + maint (manutenção); v7: + fssc (conformidade FSSC 22000); v8: + binStock (totais das bins de manhã)
   const FORMAT = 4;
   const STORES = ['samples', 'holds', 'alerts', 'limitChanges', 'reports'];   // chave: id (UUID)
-  const PSTORES = ['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint', 'fssc'];   // shiftReadings: v5 (app 2.2.0); maint: v6, fssc: v7 (app 2.4.0)   // chave: uid
+  const PSTORES = ['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint', 'fssc', 'binStock'];   // shiftReadings: v5 (app 2.2.0); maint: v6, fssc: v7, binStock: v8 (app 2.4.0)   // chave: uid
   const ALL = STORES.concat(PSTORES);
   const LOCAL_KEYS = ['pin', 'pinLock', 'deviceId', 'ctx'];        // ficam só neste dispositivo (ctx = operador e modo de teste)
   let dbp = null;

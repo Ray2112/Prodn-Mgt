@@ -236,6 +236,7 @@
     if (!products().length) return `<section class="card warnbox"><h2>${esc(t('mill_' + S.cfg.millType))}</h2><p>${esc(t('notConfigured'))}</p></section>`;
     const banners = [];
     if (!S.pinSet) banners.push(`<div class="banner b-warn" data-nav="settings">${esc(t('setPinFirst'))}</div>`);
+    if (PU.stockDue()) banners.push(`<div class="banner b-warn" data-nav="prod" data-ptab="bins">📦 ${esc(t('stockDue'))}</div>`);
     const rp = reportPendingDay();
     if (rp) banners.push(`<div class="banner b-info" data-repday="${esc(rp)}">${esc(t('reportReady', { d: rp }))}</div>`);
     const od = overdueList();

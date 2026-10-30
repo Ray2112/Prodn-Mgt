@@ -355,6 +355,88 @@
       since, last, runningJobs: running };
   }
 
+  // ---------- totais das bins de manhã (v2.4.0, Zhax 30-10-2026) ----------
+  // Uma leitura por manhã: kg em cada bin — milho sujo (B01–B04), temperado (B05–B08) e produto (B09, B10, B34–B47) —
+  // e o produto de cada bin de produto com grão. Loja 'binStock' (chave uid): {kind:'stock', t, prodDay, levels:{bin:{kg, productId}}, by}.
+  // Nível actual (binLevel), a partir da última leitura dessa bin:
+  //   milho sujo: leitura + transferências depois da leitura − grão tirado pelas ordens iniciadas depois (como em dirtyBinState);
+  //   produto:    leitura + o que as ordens iniciadas depois planearam para a bin (binPlan; ordem concluída × factor real/planeado);
+  //               a saída (ensacagem/expedição) não é registada — a leitura da manhã seguinte acerta o nível;
+  //   temperado:  só a leitura (o milho passa pela bin).
+  // "Vazio" registado depois da leitura recomeça do zero. Sem leitura: milho sujo como antes (transferências − ordens); temperado e
+  // produto ficam com nível desconhecido. Correcção = nova leitura (a mais recente manda).
+  const STOCK_KINDS = ['dirty', 'tempered', 'product'];
+  function stockBins(cfgP) {
+    const k = (list, kind) => (list || []).map(b => ({ id: b.id, lines: b.lines.slice(), capKg: isNum(b.capKg) ? b.capKg : null, kind }));
+    return k(cfgP.dirtyBins, 'dirty').concat(k(cfgP.temperedBins, 'tempered'), k(cfgP.bins, 'product'));
+  }
+  // f: {levels: {bin: {kg (texto), productId}}, by}. ctx (opcional): {binEvents, jobs} — conteúdo registado das bins de produto.
+  // Devolve {errors:[{code, bin}], values:{bin:{kg, productId, kind, capKg}}, binOps:[{binId, type:'SET'|'EMPTY', productId, previous}]}
+  // Conteúdo: bin vazia na app + leitura com produto → SET; leitura 0 + bin com produto (sem ordem em curso a encher) → EMPTY;
+  // produto diferente do registado → recusado (corrigir em Bins → Definir conteúdo, com PIN).
+  function validateBinStock(f, cfgP, ctx) {
+    const E = [], values = {}, binOps = [], c = ctx || {};
+    stockBins(cfgP).forEach(b => {
+      const x = (f.levels || {})[b.id] || {};
+      const raw = x.kg === undefined || x.kg === null ? '' : String(x.kg).trim();
+      if (raw === '') return;
+      const kg = num(raw, 'kg');
+      if (kg === null || isNaN(kg) || kg < 0) { E.push({ code: 'stock_bad', bin: b.id }); return; }
+      if (isNum(b.capKg) && kg > b.capKg) { E.push({ code: 'stock_over_cap', bin: b.id, cap: b.capKg }); return; }
+      if (b.kind === 'product' && kg > 0 && !x.productId) { E.push({ code: 'stock_product', bin: b.id }); return; }
+      if (b.kind === 'product') {
+        const st = binState(b.id, c.binEvents);
+        if (kg > 0 && st.productId && st.productId !== x.productId) { E.push({ code: 'stock_product_mismatch', bin: b.id, current: st.productId }); return; }
+        if (kg > 0 && !st.productId) binOps.push({ binId: b.id, type: 'SET', productId: x.productId, previous: null });
+        const filling = (c.jobs || []).some(j => j.status === 'running' && (j.bins || []).indexOf(b.id) >= 0);
+        if (kg === 0 && st.productId && !filling) binOps.push({ binId: b.id, type: 'EMPTY', productId: null, previous: st.productId });
+      }
+      values[b.id] = { kg: r3(kg), productId: b.kind === 'product' && kg > 0 ? x.productId : null, kind: b.kind, capKg: b.capKg };   // capacidade guardada para o relatório
+    });
+    if (!E.length && !Object.keys(values).length) E.push({ code: 'stock_none' });
+    if (!String(f.by || '').trim()) E.push({ code: 'stock_by' });
+    return { errors: E, values, binOps };
+  }
+  function lastStock(binId, stocks) {
+    let best = null;
+    (stocks || []).forEach(s => { if (s && s.levels && s.levels[binId] && isNum(s.levels[binId].kg) && (!best || s.t > best.t)) best = s; });
+    return best ? { t: best.t, prodDay: best.prodDay, kg: best.levels[binId].kg, productId: best.levels[binId].productId || null, by: best.by } : null;
+  }
+  const r3 = v => Math.round(v * 1000) / 1000;
+  // ctx: {cfgP, stocks, moves, jobs, binEvents, now}
+  function binLevel(binId, ctx) {
+    const b = stockBins(ctx.cfgP).find(x => x.id === binId);
+    if (!b) return null;
+    const rd = lastStock(binId, ctx.stocks);
+    let start = rd ? { kg: rd.kg, t: rd.t } : null, kg = null, inKg = 0, outKg = 0;
+    if (b.kind === 'dirty') {
+      const empties = (ctx.moves || []).filter(m => m.binId === binId && m.type === 'EMPTY' && (!start || m.t > start.t)).sort((x, y) => x.t - y.t);
+      if (start && empties.length) start = { kg: 0, t: empties[empties.length - 1].t };
+      if (start) {
+        (ctx.moves || []).forEach(m => { if (m.binId === binId && m.type === 'TRANSFER' && m.t > start.t) inKg += m.kg || 0; });
+        (ctx.jobs || []).forEach(j => { if (Array.isArray(j.alloc) && j.startedAt > start.t) j.alloc.forEach(a => { if (a.bin === binId) outKg += a.kg * jobFactor(j); }); });
+        kg = r3(start.kg + inKg - outKg);
+      } else kg = dirtyBinState(binId, ctx.moves, ctx.jobs).kg;
+    } else if (b.kind === 'product') {
+      if (start) {
+        const emp = (ctx.binEvents || []).filter(e => e.binId === binId && e.type === 'EMPTY' && !e.voidedBy && e.t > start.t).sort((x, y) => x.t - y.t);
+        if (emp.length) start = { kg: 0, t: emp[emp.length - 1].t };
+        (ctx.jobs || []).forEach(j => {
+          if (!(j.startedAt > start.t) || j.status === 'cancelled') return;
+          (j.outputs || []).forEach(o => (o.binPlan || []).forEach(p => { if (p.bin === binId) inKg += p.kg * jobFactor(j); }));
+        });
+        kg = r3(start.kg + inKg);
+      }
+    } else if (start) kg = start.kg;
+    const known = isNum(kg);
+    const free = known && isNum(b.capKg) ? r3(Math.max(0, b.capKg - Math.max(0, kg))) : null;
+    const state = !known ? 'UNKNOWN' : kg < 0 ? 'NEG' : isNum(b.capKg) && kg > b.capKg ? 'OVER' : isNum(b.capKg) && kg >= b.capKg ? 'FULL' : kg === 0 ? 'EMPTY' : 'OK';
+    return { id: binId, kind: b.kind, lines: b.lines, capKg: b.capKg, kg: known ? kg : null, freeKg: free, pct: known && isNum(b.capKg) && b.capKg > 0 ? Math.round(kg / b.capKg * 1000) / 10 : null,
+      state, reading: rd, inKg: r3(inKg), outKg: r3(outKg), source: rd ? 'reading' : (b.kind === 'dirty' ? 'calc' : null) };
+  }
+  // Leitura do dia de produção em falta? (dia = L.prodDay de quem chama)
+  const stockDone = (stocks, prodDay) => (stocks || []).some(s => s.prodDay === prodDay);
+
   // ---------- ficheiro de saldos das bins (bins-status.json) ----------
   // Só leitura do estado: não altera moves nem jobs. Lista apenas as transferências do ciclo atual (desde o último "vazio").
   // opts: {now (epoch ms), writerVersion, site}. Devolve o objeto a gravar (JSON.stringify).
@@ -365,6 +447,8 @@
     const now = isNum(o.now) ? o.now : Date.now();
     const bins = (cfgP.dirtyBins || []).map(b => {
       const st = dirtyBinState(b.id, moves, jobs);
+      const lv = binLevel(b.id, { cfgP, stocks: o.stocks, moves, jobs });   // v2.4.0: com a leitura da manhã
+      if (lv && isNum(lv.kg)) st.kg = lv.kg;
       const since = isNum(st.since) ? st.since : null;
       const transfers = (moves || [])
         .filter(m => m.binId === b.id && m.type === 'TRANSFER' && (since === null || m.t > since))
@@ -418,6 +502,8 @@
     if (!tr.silosConfirmed) E.push({ code: 'confirm_silos' });
     if (bin) {
       const st = dirtyBinState(bin.id, ctx.moves, ctx.jobs);
+      const lv = binLevel(bin.id, ctx);   // v2.4.0: nível com a leitura da manhã
+      if (lv && isNum(lv.kg)) st.kg = lv.kg;
       calc.binKg = st.kg;
       if (isNum(bin.capKg)) {
         calc.freeKg = Math.max(0, bin.capKg - Math.max(0, st.kg));
@@ -539,7 +625,10 @@
         const b = (cfgP.dirtyBins || []).find(x => x.id === id);
         if (!b) { E.push({ code: 'source_unknown', bin: id }); return; }
         if (job.lineId && b.lines.indexOf(job.lineId) < 0) E.push({ code: 'source_line', bin: id });
-        const st = dirtyBinState(id, ctx.moves, (ctx.jobs || []).filter(j => j.uid !== job.uid));
+        const others = (ctx.jobs || []).filter(j => j.uid !== job.uid);
+        const st = dirtyBinState(id, ctx.moves, others);
+        const lv = binLevel(id, Object.assign({}, ctx, { jobs: others }));   // v2.4.0: nível com a leitura da manhã
+        if (lv && isNum(lv.kg)) st.kg = lv.kg;
         if (st.kg <= 0) E.push({ code: 'source_empty', bin: id });
         if (recipeSet(recipe)) {
           const bad = [];
@@ -623,10 +712,19 @@
         const b = cfgP.bins.find(x => x.id === id);
         const r = binCheck(b, o.productId, job.lineId, ctx.binEvents);
         if (!r.ok) { E.push(Object.assign({ code: r.why, bin: id, current: r.current }, tag(o))); return; }
+        const lv = binLevel(id, Object.assign({}, ctx, { jobs: (ctx.jobs || []).filter(j => j.uid !== job.uid) }));
         if (!isNum(b.capKg)) missingCap = true;
-        else if (r.current) unknownLevel = true;            // já tem o mesmo produto: nível desconhecido
+        else if (lv && isNum(lv.kg)) {                      // v2.4.0: nível conhecido pela leitura da manhã
+          if (lv.freeKg <= 0) { E.push(Object.assign({ code: 'bin_full', bin: id, cap: b.capKg }, tag(o))); return; }
+          capKnown += lv.freeKg; poolP.push({ id, avail: lv.freeKg });
+        }
+        else if (r.current) unknownLevel = true;            // já tem o mesmo produto e sem leitura: nível desconhecido
         else { capKnown += b.capKg; poolP.push({ id, avail: b.capKg }); }
       });
+      // próximas bins da fila: da linha, vazias ou com o mesmo produto, com espaço, ainda não escolhidas (pela ordem das Definições)
+      const nextBins = (cfgP.bins || []).filter(b => o.bins.indexOf(b.id) < 0 && binOwner[b.id] === undefined && b.lines.indexOf(job.lineId) >= 0
+        && binCheck(b, o.productId, job.lineId, ctx.binEvents).ok).map(b => ({ b, lv: binLevel(b.id, ctx) }))
+        .filter(x => !x.lv || !isNum(x.lv.kg) || x.lv.freeKg > 0).map(x => ({ bin: x.b.id, freeKg: x.lv && isNum(x.lv.kg) ? x.lv.freeKg : null }));
       capTotal += capKnown;
       if (o.bins.length && isNum(exp) && !missingCap) {
         if (!unknownLevel && exp > capKnown) E.push(Object.assign({ code: 'bin_capacity', need: exp, cap: capKnown }, tag(o)));
@@ -635,7 +733,7 @@
       // troca automática entre silos de produto pela ordem da fila (registada); só quando a capacidade é conhecida
       const pr = isNum(exp) && exp > 0 && !unknownLevel ? planQueue([{ key: o.productId, kg: exp }], poolP) : { parts: [], switches: [], empties: [] };
       calc.outputs.push({ productId: o.productId, extraction: idx === 0 && isNum(mainExt) ? mainExt : null, expectedKg: exp, bins: o.bins.slice(),
-        binPlan: pr.parts.map(p => ({ bin: p.silo, kg: p.kg })), binSwitches: pr.switches.map(s => ({ from: s.from, to: s.to })) });
+        binPlan: pr.parts.map(p => ({ bin: p.silo, kg: p.kg })), binSwitches: pr.switches.map(s => ({ from: s.from, to: s.to })), nextBins });
     });
     calc.extraction = isNum(mainExt) ? mainExt : null;     // extracção do produto principal
     calc.grainKg = isNum(kg) ? r0(kg) : null;               // grão derivado
@@ -831,7 +929,8 @@
 
   function validProdBackup(o) {
     const okArr = k => o[k] === undefined || Array.isArray(o[k]);
-    if (!['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint', 'fssc'].every(okArr)) return false;
+    if (!['jobs', 'binEvents', 'shiftLog', 'siloSnapshots', 'prodChanges', 'grainMoves', 'shiftReadings', 'maint', 'fssc', 'binStock'].every(okArr)) return false;
+    if (!(o.binStock || []).every(s => s && typeof s.uid === 'string' && s.kind === 'stock' && s.levels && typeof s.levels === 'object')) return false;
     if (!(o.fssc || []).every(m => m && typeof m.uid === 'string' && ['doc', 'grade', 'actionDone', 'close', 'reopen', 'complaint', 'complaintUpd', 'void'].indexOf(m.kind) >= 0)) return false;   // = Fssc.KINDS
     const MAINT_KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'sensorAck', 'consumable', 'note', 'void'];   // = Maint.KINDS (js/maint.js)
     if (!(o.maint || []).every(m => m && typeof m.uid === 'string' && MAINT_KINDS.indexOf(m.kind) >= 0)) return false;
@@ -909,7 +1008,7 @@
     return out;
   }
 
-  const api = { SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };

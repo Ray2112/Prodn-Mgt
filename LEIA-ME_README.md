@@ -1,5 +1,12 @@
 # Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.3.1
 
+> **v2.4.0 — Totais das bins de manhã (30-10-2026).** Em Produção → Bins, regista-se todas as manhãs o total de cada bin: milho sujo, temperado e produto acabado.
+> - Durante o dia, o nível de cada bin acompanha as transferências e as ordens.
+> - Uma bin cheia bloqueia a ordem. A ordem mostra as próximas bins da fila com espaço, que se juntam com um toque; quando uma enche, passa à seguinte.
+> - Há aviso na página inicial enquanto a leitura do dia não estiver feita.
+>
+> *EN:* morning bin totals. Each bin's level follows transfers and jobs during the day; a full bin blocks the job, and the next bins in the queue are offered.
+
 > **v2.4.0 (28-10-2026) — Manutenção.** Novo separador 🔧 com:
 >
 > - **Turno:** técnicos de serviço e notas de passagem.

@@ -66,6 +66,7 @@ window.ProdUI = function (C) {
     S.prodChanges = await DB.all('prodChanges');
     S.moves = await DB.all('grainMoves');
     S.readings = await DB.all('shiftReadings');
+    S.stocks = await DB.all('binStock');   // totais das bins de manhã (v2.4.0)
     refreshBinsStatus();
   }
   // Estado das bins para a Mill-App (bins-status). Guarda a última cópia no dispositivo (localStorage);
@@ -74,7 +75,7 @@ window.ProdUI = function (C) {
   function refreshBinsStatus() {
     if (!S.cfgP) return;
     try {
-      const out = P.buildBinsStatus(S.cfgP, S.moves, S.jobs, { now: Date.now(), writerVersion: P.VERSION, site: S.cfgP.site || '' });
+      const out = P.buildBinsStatus(S.cfgP, S.moves, S.jobs, { now: Date.now(), writerVersion: P.VERSION, site: S.cfgP.site || '', stocks: S.stocks });
       S.binsStatus = out;
       localStorage.setItem(BINS_STATUS_KEY, JSON.stringify(out));
       sendBinsStatus(out);
@@ -442,7 +443,9 @@ window.ProdUI = function (C) {
       const st = P.binState(b.id, S.binEvents);
       const on = o.bins.indexOf(b.id) >= 0, other = taken[b.id];
       const clash = st.productId && o.productId && st.productId !== o.productId;
-      return `<button class="pick ${on ? 'on' : ''}${other ? ' dim' : ''}" data-jobin="${i}|${esc(b.id)}"><b>${esc(b.id)}</b><small>${esc(t('fedBy'))} ${esc(b.lines.join('/'))}${isNum(b.capKg) ? ' · ' + fmtKg(b.capKg) + ' kg' : ''}</small>
+      const lv = levelOf(b.id), full = lv && (lv.state === 'FULL' || lv.state === 'OVER');
+      const lvTxt = lv && isNum(lv.kg) ? ' · ' + fmtKg(lv.kg) + ' kg (' + String(lv.pct).replace('.', ',') + ' %) · ' + t('stockFree') + ' ' + fmtKg(lv.freeKg) + ' kg' : (isNum(b.capKg) ? ' · ' + fmtKg(b.capKg) + ' kg' : '');
+      return `<button class="pick ${on ? 'on' : ''}${other || full ? ' dim' : ''}" data-jobin="${i}|${esc(b.id)}"><b>${esc(b.id)}</b><small>${esc(t('fedBy'))} ${esc(b.lines.join('/'))}${lvTxt}</small>${full ? `<span class="chip d-reject">${esc(t('stockFull'))}</span>` : ''}
         ${other ? `<span class="chip d-record">${esc(t('binTakenBy', { p: other === '?' ? t('productN', { n: f.outputs.findIndex(x => x.bins.indexOf(b.id) >= 0) + 1 }) : C.prodName(other) }))}</span>`
           : `<span class="chip ${clash ? 'd-reject' : st.productId ? 'd-warn' : 'd-accept'}">${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</span>`}</button>`;
     }).join('');
@@ -455,9 +458,19 @@ window.ProdUI = function (C) {
         <label class="fld req">${esc(t('targetKg'))}<input inputmode="decimal" data-joi="${i}|targetKg" value="${esc(o.targetKg)}"></label>
         ${main ? `<label class="fld req">${esc(t('extraction'))} (%)<input inputmode="decimal" data-joi="${i}|targetExtraction" value="${esc(o.targetExtraction)}"></label>` : ''}
       </div>
-      <div class="sub req">${esc(t('toBins'))}</div>${f.lineId ? '' : `<p class="sub">${esc(t('pickLineFirst'))}</p>`}<div class="picks">${binRows}</div></div>`;
+      <div class="sub req">${esc(t('toBins'))}</div>${f.lineId ? '' : `<p class="sub">${esc(t('pickLineFirst'))}</p>`}<div class="picks">${binRows}</div>${nextBinsHtml(f, i)}</div>`;
   }
-  const ctxFor = () => ({ cfgP: S.cfgP, millType: S.cfg.millType, moves: S.moves, jobs: S.jobs, binEvents: S.binEvents, snapshot: snapshot(), now: now(), shiftStart: L.shiftOf(now()).start });
+  // Próximas bins da fila para o produto i (com espaço, da linha, vazias ou com o mesmo produto): junta com um toque
+  function nextBinsHtml(f, i) {
+    if (!f.lineId || !f.outputs[i] || !f.outputs[i].productId) return '';
+    const r = P.validateJob(f, ctxFor()), o = (r.calc.outputs || [])[i];
+    if (!o || !o.nextBins || !o.nextBins.length) return '';
+    const short = r.errors.some(e => (e.code === 'bin_capacity' || e.code === 'bin_full') && (!e.productId || e.productId === f.outputs[i].productId));
+    return `<div class="sub ${short ? 'txt-reject' : ''}">${esc(t('nextBinsTitle'))}</div><div class="row">${o.nextBins.slice(0, 4).map(x =>
+      `<button class="btn ghost small" data-jobin="${i}|${esc(x.bin)}">＋ ${esc(x.bin)}${isNum(x.freeKg) ? ' · ' + fmtKg(x.freeKg) + ' kg' : ''}</button>`).join('')}</div>`;
+  }
+  const ctxFor = () => ({ cfgP: S.cfgP, millType: S.cfg.millType, moves: S.moves, jobs: S.jobs, binEvents: S.binEvents, stocks: S.stocks, snapshot: snapshot(), now: now(), shiftStart: L.shiftOf(now()).start });
+  const levelOf = id => P.binLevel(id, ctxFor());
   function jobFormView() {
     const f = S.jobForm;
     const recipe = f.recipe;
@@ -905,13 +918,13 @@ window.ProdUI = function (C) {
   // ---------- silos de produto ----------
   function viewBins() {
     const a = S.binAct;
-    return `<section class="card"><h3>${esc(t('ptab_bins'))}</h3><p class="sub">${esc(t('binSourceNote', { s: S.cfgP.binSource || '' }))}</p>
+    return stockCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3><p class="sub">${esc(t('binSourceNote', { s: S.cfgP.binSource || '' }))}</p>
       ${S.cfgP.bins.map(b => {
         const st = P.binState(b.id, S.binEvents);
         const job = st.jobUid ? S.jobs.find(j => j.uid === st.jobUid) : null;
         const mine = a && a.id === b.id ? a.mode : null;
         return `<div class="rowitem"><div class="row between"><span><b>${esc(b.id)}</b> <small>${esc(t('fedBy'))} ${esc(b.lines.join('/'))}${isNum(b.capKg) ? ' · ' + fmtKg(b.capKg) + ' kg' : ''}</small></span>
-          <span class="chip ${st.productId ? 'd-warn' : 'd-accept'}">${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</span></div>
+          <span class="chip ${st.productId ? 'd-warn' : 'd-accept'}">${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</span></div>${levelBar(b.id)}
           ${st.since ? `<small>${esc(t('since'))} ${esc(C.fmtDT(st.since))}${job ? ' · ' + esc(C.lineName(job.lineId)) + (job.status === 'running' ? ' (' + esc(t('js_running')) + ')' : '') : ''}${st.last && st.last.by ? ' · ' + esc(st.last.by) : ''}</small>` : ''}
           ${mine ? `<div class="holdform">
             ${mine === 'set' ? `<label class="fld req">${esc(t('product'))}<select id="ba_prod"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}">${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
@@ -921,6 +934,53 @@ window.ProdUI = function (C) {
           : `<div class="row">${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button></div>`}</div>`;
       }).join('')}</section>`;
   }
+  // ---------- totais das bins de manhã (v2.4.0) ----------
+  const LV_CLS = { FULL: 'd-reject', OVER: 'd-reject', NEG: 'd-reject', EMPTY: 'd-accept', OK: '', UNKNOWN: 'd-record' };
+  function levelBar(id) {
+    const lv = levelOf(id);
+    if (!lv) return '';
+    if (!isNum(lv.kg)) return `<small class="sub">${esc(t('stockUnknown'))}</small>`;
+    const pct = Math.max(0, Math.min(100, lv.pct || 0));
+    const col = pct >= 100 ? 'var(--rej)' : pct >= 90 ? 'var(--warn)' : 'var(--ok)';
+    const st = lv.state === 'FULL' ? t('stockFull') : lv.state === 'OVER' ? t('stockOver') : t('stockFree') + ' ' + fmtKg(lv.freeKg) + ' kg';
+    return `<div class="lvbar"><div style="width:${pct}%;background:${col}"></div></div>
+      <small>${fmtKg(lv.kg)} kg (${esc(String(lv.pct).replace('.', ','))} %) · <span class="chip ${LV_CLS[lv.state] || ''}">${esc(st)}</span>${lv.reading ? ' · ' + esc(t('stockLast')) + ' ' + esc(C.fmtDT(lv.reading.t)) + (lv.inKg || lv.outKg ? ' (+' + fmtKg(lv.inKg) + ' −' + fmtKg(lv.outKg) + ' kg ' + esc(t('stockSince')) + ')' : '') : ''}</small>`;
+  }
+  function stockCard() {
+    const f = S.stockForm, B = P.stockBins(S.cfgP);
+    const last = (S.stocks || []).slice().sort((x, y) => y.t - x.t)[0];
+    let h = `<section class="card"><h3>${esc(t('stockTitle'))}</h3><p class="sub">${esc(t('stockNote'))}</p>
+      <p class="sub">${last ? esc(t('stockLast')) + ': <b>' + esc(C.fmtDT(last.t)) + '</b> · ' + esc(last.by) : esc(t('stockNone'))}</p>`;
+    if (!f) return h + `<button class="btn primary" data-pact="stocknew">${esc(t('stockNew'))}</button></section>`;
+    h += `<p class="sub">${esc(t('stockLeaveBlank'))}</p>`;
+    P.STOCK_KINDS.forEach(k => {
+      h += `<h4>${esc(t('stockKind_' + k))}</h4><table class="tbl stock"><tr><th></th><th>${esc(t('stockKg'))}</th>${k === 'product' ? `<th>${esc(t('product'))}</th>` : ''}</tr>` +
+        B.filter(b => b.kind === k).map(b => { const x = f.levels[b.id] || {};
+          return `<tr><td><b>${esc(b.id)}</b><br><small>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : ''}</small></td><td><input inputmode="decimal" data-stk="${esc(b.id)}|kg" value="${esc(x.kg || '')}"></td>${k === 'product'
+            ? `<td><select data-stk="${esc(b.id)}|productId"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}" ${x.productId === p.id ? 'selected' : ''}>${esc(C.prodName(p.id))}</option>`).join('')}</select></td>` : ''}</tr>`; }).join('') + '</table>';
+    });
+    return h + `<label class="fld req">${esc(t('name'))}<input data-stk="by" value="${esc(f.by)}"></label>
+      <button class="btn primary big" data-pact="stocksave">${esc(t('save'))}</button><button class="btn ghost" data-pact="stockcancel">${esc(t('cancel'))}</button></section>`;
+  }
+  function newStockForm() {
+    const levels = {};
+    P.stockBins(S.cfgP).filter(b => b.kind === 'product').forEach(b => { const st = P.binState(b.id, S.binEvents); levels[b.id] = { kg: '', productId: st.productId || '' }; });
+    S.stockForm = { levels, by: S.operator };
+  }
+  async function stockSave() {
+    const f = S.stockForm, r = P.validateBinStock(f, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
+    if (r.errors.length) return C.toast(r.errors.map(e => t('je_' + e.code, { bin: e.bin, cap: isNum(e.cap) ? fmtKg(e.cap) : '', current: e.current ? C.prodName(e.current) : '' })).join(' · '));
+    const tms = now(), by = String(f.by).trim();
+    // leitura + conteúdo das bins de produto (SET/EMPTY), tudo-ou-nada
+    const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by }) }].concat(r.binOps.map((o, i) =>
+      ({ store: 'binEvents', op: 'add', obj: Object.assign(base(tms), { binId: o.binId, type: o.type, productId: o.productId, t: tms, seq: i + 1, by, previous: o.previous, source: 'stock' }) })));
+    try { await DB.batch(ops); } catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = String(f.by).trim(); await DB.setConfig('operator', S.operator);
+    S.stockForm = null; await reload(); C.toast(t('stockSaved')); keepScroll();
+  }
+  // Aviso na página inicial: leitura do dia de produção em falta
+  const stockDue = () => !P.stockDone(S.stocks, L.prodDay(now()));
+
   async function binAction(mode) {
     const id = S.binAct.id, by = $('#ba_by').value.trim();
     if (!by) return C.toast(t('needName'));
@@ -1075,7 +1135,7 @@ window.ProdUI = function (C) {
   // ---------- eventos ----------
   const CLICK_SEL = '[data-ptab],[data-pact],[data-closejob],[data-jsrc],[data-jrc],[data-jrg],[data-jobin],[data-joutdel],[data-jtemp],[data-trsilo],[data-emptydirty],[data-jmode],[data-logact],[data-binact],[data-jfq]';
   async function onClick(el) {
-    if (el.dataset.ptab) { S.prodTab = el.dataset.ptab; C.render(); return; }
+    if (el.dataset.ptab) { S.prodTab = el.dataset.ptab; if (el.dataset.nav) { S.view = el.dataset.nav; window.scrollTo(0, 0); } C.render(); return; }
     if (el.dataset.closejob) { S.closeJob = el.dataset.closejob; keepScroll(); return; }
     if (el.dataset.jsrc) { const f = S.jobForm, i = f.sources.indexOf(el.dataset.jsrc); if (i >= 0) { f.sources.splice(i, 1); delete f.blend[el.dataset.jsrc]; if (f.feedQueue) delete f.feedQueue[el.dataset.jsrc]; } else f.sources.push(el.dataset.jsrc); keepScroll(); return; }
     if (el.dataset.jfq) { const [b, sid] = el.dataset.jfq.split('|'), f = S.jobForm; f.feedQueue = f.feedQueue || {}; const q = f.feedQueue[b] = f.feedQueue[b] || []; const k = q.indexOf(sid); if (k >= 0) q.splice(k, 1); else q.push(sid); keepScroll(); return; }
@@ -1103,6 +1163,9 @@ window.ProdUI = function (C) {
       case 'newjob': newJobForm(); keepScroll(); return;
       case 'addoutput': S.jobForm.outputs.push(newOutput()); keepScroll(); return;
       case 'newtransfer': newTransferForm(); keepScroll(); return;
+      case 'stocknew': newStockForm(); keepScroll(); return;
+      case 'stocksave': return stockSave();
+      case 'stockcancel': S.stockForm = null; keepScroll(); return;
       case 'canceltransfer': S.trForm = null; keepScroll(); return;
       case 'savetransfer': return saveTransfer();
       case 'emptydirty': return emptyDirty();
@@ -1134,6 +1197,11 @@ window.ProdUI = function (C) {
       case 'srfix': { const r = (S.readings || []).find(x => x.uid === el.dataset.uid); if (r) { newSrForm(r); keepScroll(); } return; }
     }
   }
+  function stockField(el) {
+    const k = el.dataset.stk;
+    if (k === 'by') { S.stockForm.by = el.value; return; }
+    const [id, f] = k.split('|'); S.stockForm.levels[id] = Object.assign({}, S.stockForm.levels[id], { [f]: el.value });
+  }
   function onInput(el) {
     if (el.dataset.jbl && S.jobForm) {
       const [id, k] = el.dataset.jbl.split('|');
@@ -1151,6 +1219,7 @@ window.ProdUI = function (C) {
     if (el.dataset.jfi && S.jobForm) { S.jobForm[el.dataset.jfi] = el.value; const b = $('#jobCheck'); if (b) b.innerHTML = jobCheckHtml(); return true; }
     if (el.dataset.lf && S.logForm && el.tagName !== 'SELECT') { S.logForm[el.dataset.lf] = el.value; return true; }
     if (el.dataset.sr && S.srForm && el.tagName !== 'SELECT') { S.srForm[el.dataset.sr] = el.value; return true; }
+    if (el.dataset.stk && S.stockForm) { stockField(el); return true; }
     return false;
   }
   async function saveCtx(k, v) {
@@ -1177,11 +1246,12 @@ window.ProdUI = function (C) {
     if (el.dataset.trf && S.trForm) { S.trForm[el.dataset.trf] = el.type === 'checkbox' ? el.checked : el.value; keepScroll(); return true; }
     if (el.dataset.lf && S.logForm && el.tagName === 'SELECT') { S.logForm[el.dataset.lf] = el.value; keepScroll(); return true; }
     if (el.dataset.sr && S.srForm && el.tagName === 'SELECT') { S.srForm[el.dataset.sr] = el.value; keepScroll(); return true; }
+    if (el.dataset.stk && S.stockForm) { stockField(el); return true; }
     if (el.id === 'logDay') { S.logShift = Object.assign(logShift(), { day: el.value || logShift().day }); C.render(); return true; }
     if (el.id === 'logPeriod') { S.logShift = Object.assign(logShift(), { period: el.value === 'N' ? 'N' : 'D' }); C.render(); return true; }
     if (el.id === 'importSilos') { importSilos(el.files[0]); el.value = ''; return true; }
     return false;
   }
 
-  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken };
+  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue };
 };

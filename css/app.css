@@ -85,3 +85,7 @@ table.blend input{width:100%;min-width:0;font-size:16px;padding:7px 6px;border:1
 .lim-ed .fld .row{flex-wrap:nowrap;gap:4px}
 .lim-ed .fld .row select{flex:0 0 auto;width:auto;min-width:3.2em}
 .lim-ed .fld .row input{flex:1 1 auto;min-width:0}
+
+/* v2.4.0: nível das bins */
+.lvbar{height:8px;background:#eef1ec;border-radius:5px;overflow:hidden;margin:4px 0}.lvbar div{height:100%}
+.tbl.stock{width:100%;table-layout:fixed}.tbl.stock th:first-child{width:24%}.tbl.stock td input,.tbl.stock td select{width:100%;min-width:0;box-sizing:border-box;font-size:16px;padding:7px 6px;border:1px solid #c9d2c8;border-radius:8px;background:#fff}
