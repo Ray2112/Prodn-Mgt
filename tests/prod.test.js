@@ -481,16 +481,17 @@ t('vários produtos (v1.8.0): grão = produto principal (1.º); outros só quant
 });
 
 t('códigos de paragem FMO (Downtime_Codes.xlsx)', () => {
-  assert.strictEqual(P.DOWNTIME_CODES.length, 61);
-  assert.strictEqual(new Set(P.DOWNTIME_CODES.map(c => c.code)).size, 61);
+  assert.strictEqual(P.DOWNTIME_CODES.length, 60);  // v3 2026-11-05 (sem P25)
+  assert.strictEqual(new Set(P.DOWNTIME_CODES.map(c => c.code)).size, 60);
   assert.ok(P.DOWNTIME_CODES.every(c => /^[PAO]\d{2}$/.test(c.code) && c.code === c.code.trim()));
   assert.ok(P.DOWNTIME_CODES.every(c => P.TIER3.indexOf(c.tier3) >= 0));
   assert.ok(P.DOWNTIME_CODES.every(c => P.OEE_TREAT.indexOf(c.oee) >= 0));
   assert.deepStrictEqual(P.findCode('A02'), { code: 'A02', name: 'ASPIRATION FAN', namePt: null, tier3: 'Breakdown', oee: 'Counted as loss', active: true });
   assert.strictEqual(P.findCode('P17').name, 'FUBA BIN FULL');   // nome definido por Zhax (14-10-2026)
   assert.strictEqual(P.findCode('P17').oee, 'Excluded - External');
-  assert.strictEqual(P.findCode('P25').oee, 'Counted as loss');  // código novo na v2
-  assert.strictEqual(P.findCode('O04').tier3, 'Power Failure');
+  assert.strictEqual(P.findCode('P25'), null);  // removido 2026-11-05 (decisão do dono); registos antigos mantêm snapshot
+  assert.strictEqual(P.findCode('O04').tier3, 'Other');  // v3 2026-11-05
+  assert.strictEqual(P.findCode('O04').name, 'POWER FAILURE');
   assert.ok(P.DOWNTIME_CODES.every(c => c.namePt === null && !('v1' in c) && !('v2' in c)));
   assert.deepStrictEqual(P.validateCodes(P.defaultCodes()), []);
 });
@@ -612,7 +613,7 @@ console.log('prod.test.js: ' + n + ' testes OK');
   // códigos guardados antes: nome PT e activação mantêm-se; a lista e o tratamento OEE vêm do ficheiro v2
   const old = [{ code: 'A22', name: 'OLD', namePt: 'NOME PT', v1: 'x', v2: 'Breakdown', tier3: 'Breakdown', oee: null, active: false }, { code: 'Z99', name: 'GONE' }];
   const m = P.mergeCodes(old);
-  assert.strictEqual(m.list.length, 61);
+  assert.strictEqual(m.list.length, 60);  // v3 2026-11-05
   assert.deepStrictEqual(m.list.find(c => c.code === 'A22'), Object.assign({}, P.findCode('A22'), { namePt: 'NOME PT', active: false }));   // nome e OEE vêm do ficheiro
   assert.deepStrictEqual(m.dropped, ['Z99']);
   assert.strictEqual(m.list.find(c => c.code === 'P17').name, 'FUBA BIN FULL');
