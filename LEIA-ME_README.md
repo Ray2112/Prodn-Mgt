@@ -1,5 +1,12 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.3.1
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.5.0
 
+> **v2.5.0 — Códigos de paragem v3 (Downtime Codes v3).** Lista de 60 códigos segundo as decisões de 5 e 6 de novembro de 2026.
+> - P25 (ROLL DAMAGE IN PRODUCTION) removido; os registos antigos mantêm o código guardado.
+> - P16, P19 e P24 = Processo. O04 = Outra («POWER FAILURE»). O11 = Outra («FEED MILL», excluída, externa). P06 = «ROLLER CHANGE».
+> - P17 mantém «FUBA BIN FULL» até o ficheiro Downtime Codes v3 ser atualizado.
+>
+> *EN:* Downtime Codes v3, 60 codes per the 5–6 Nov 2026 owner decisions. P25 removed (old records keep their stored code); P16/P19/P24 Process; O04 and O11 Other; P06 "ROLLER CHANGE"; P17 name kept until the v3 workbook is updated.
+>
 > **v2.4.0 — Totais das bins de manhã (30-10-2026).** Em Produção → Bins, regista-se todas as manhãs o total de cada bin: milho sujo, temperado e produto acabado.
 > - Durante o dia, o nível de cada bin acompanha as transferências e as ordens.
 > - Uma bin cheia bloqueia a ordem. A ordem mostra as próximas bins da fila com espaço, que se juntam com um toque; quando uma enche, passa à seguinte.
