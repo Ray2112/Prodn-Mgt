@@ -18,7 +18,7 @@
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
   // [código, nome, Tier 3, tratamento OEE] como no ficheiro. P17: nome 'FUBA BIN FULL' definido por Zhax (no ficheiro: FLOUR BIN FILLING).
   // Colunas V1, V2 e Decisão foram retiradas no ficheiro (só ficam na folha de arquivo; não usar para reporting).
-  const DOWNTIME_SOURCE = '/Parameters/Downtime Codes v3.xlsx (Dropbox) — decisões do dono 2026-11-05: P17 mantido, P25 removido, P06/O04 nomes v3, P16/P19/P24 Process, O04 Other';
+  const DOWNTIME_SOURCE = '/Parameters/Downtime Codes v3.xlsx (Dropbox) — decisões do dono 2026-11-05: P17 mantido, P25 removido, P06/O04 nomes v3, P24 Process, P16/P19/O04 Other (2026-11-09)';
   const OLD_DOWNTIME_SOURCES = ['2026-09-30_FMO_Downtime_Codes_v2.xlsx (Folha1)', 'Downtime Codes v2 (Zhax, 09-10-2026)', 'Downtime_Codes.xlsx (08-10-2026)'];   // listas anteriores (substituídas automaticamente se nunca editadas)
   const DOWNTIME_CODES = [
     ["P01", "PRODUCTION START-UP", "Process", "Counted as loss"],
@@ -63,13 +63,13 @@
     ["A14", "PLANSIFTER", "Breakdown", "Counted as loss"],
     ["P15", "BROKEN SIEVES/SCREENS", "Process", "Counted as loss"],
     ["A15", "BRAN SCREW CONVEYOR", "Breakdown", "Counted as loss"],
-    ["P16", "NO GRAIN AVAILABLE FOR MILLING", "Process", "Excluded - External"],
+    ["P16", "NO GRAIN AVAILABLE FOR MILLING", "Other", "Excluded - External"],
     ["A16", "VIBRATORS", "Breakdown", "Counted as loss"],
     ["P17", "FUBA BIN FULL", "Other", "Excluded - External"],
     ["A17", "BROKEN BELTS", "Breakdown", "Counted as loss"],
     ["P18", "INSPECTION/CLEANING PLAN COMPLIANCE", "Process", "Excluded - Planned"],   // v3 (21-10-2026), Zhax 26-10-2026
     ["A18", "FLOUR COLLECTOR SCREW CONVEYOR", "Breakdown", "Counted as loss"],
-    ["P19", "EXCESS FINISHED PRODUCT", "Process", "Excluded - External"],
+    ["P19", "EXCESS FINISHED PRODUCT", "Other", "Excluded - External"],
     ["A19", "BURNT MOTOR/GEAR MOTOR", "Breakdown", "Counted as loss"],
     ["P20", "THERMAL TRIP", "Process", "Counted as loss"],
     ["A20", "DRAG CONVEYOR SCRAPER", "Breakdown", "Counted as loss"],
