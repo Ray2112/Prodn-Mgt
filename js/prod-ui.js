@@ -230,11 +230,156 @@ window.ProdUI = function (C) {
 
   // ---------- vista principal ----------
   function view() {
-    const tab = S.prodTab || 'jobs';
-    const tabs = ['jobs', 'grain', 'log', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
-    const body = tab === 'log' ? viewLog() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
+    const tab = S.prodTab || 'shift';
+    const tabs = ['shift', 'jobs', 'stops', 'grain', 'log', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
+    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'log' ? viewLog() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
     const banner = S.ctx && S.ctx.testMode ? `<section class="card"><b>${esc(t('ctxTestBanner'))}</b></section>` : '';
     return `${banner}<section class="card"><h2>${esc(t('nav_prod'))}</h2><div class="row">${tabs}</div></section>${body}`;
+  }
+
+
+  // ---------- login / logout de turno (v2.7.0, Zhax 12-11-2026) ----------
+  // Registos em shiftLog: kind 'login' {leader, state, planJobs, scalesStart, comments} e kind 'logout'
+  // {state, activitiesDone, scalesEnd, shiftKg, dayB1Kg, targetKg, achievedPct, comments}, ligados ao turno escolhido
+  // (prodDay + period), não à hora da gravação. Os registos novos não mudam o pipeline (só lê kind 'issue').
+  function shiftSel() { if (!S.shiftSel) { const sh = L.shiftOf(now()); S.shiftSel = { day: sh.day, period: sh.period }; } return S.shiftSel; }
+  const shiftRec = (kind, day, period) => P.effectiveLog(S.shiftLog).filter(x => x.kind === kind && x.prodDay === day && x.period === period).sort((a, b) => b.t - a.t)[0] || null;
+  const planRows = day => P.dayPlan(C.plan(), day, 'C');
+  const planTarget = day => { const r = planRows(day).filter(x => isNum(x.targetKg)); return r.length ? r.reduce((s, x) => s + x.targetKg, 0) : null; };
+  function scaleInputs(prefix, vals) {
+    return `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>kg</th></tr>${P.SCALES.map(k =>
+      `<tr><td>${esc(t('scale_' + k))} <small>(${esc(P.SCALE_SCADA[k])})</small></td><td><input inputmode="decimal" id="${prefix}_${k}" value="${esc(vals && isNum(vals[k]) ? String(vals[k]) : '')}"></td></tr>`).join('')}</table></div>`;
+  }
+  const scaleVals = prefix => { const o = {}; P.SCALES.forEach(k => { const el = $('#' + prefix + '_' + k); o[k] = el ? el.value : ''; }); return o; };
+  function planHtml(day, picks) {
+    const rows = planRows(day);
+    if (!rows.length) return `<p class="sub">${esc(t('planNone', { d: day }))}</p>`;
+    return rows.map((r, i) => `<label class="chk"><input type="checkbox" class="lg_plan" data-i="${i}" ${!picks || picks.indexOf(i) >= 0 ? 'checked' : ''}>
+      ${esc(r.product || t('planNoProduct'))} · ${esc(t('targetT'))} ${isNum(r.targetKg) ? fmtKg(r.targetKg) + ' kg' : '—'}</label>`).join('');
+  }
+  function viewShift() {
+    const sel = shiftSel(), day = sel.day, per = sel.period;
+    const li = shiftRec('login', day, per), lo = shiftRec('logout', day, per);
+    const plan = C.plan();
+    const head = `<section class="card"><h3>${esc(t('shiftTitle'))}</h3>
+      <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="shDay" value="${esc(day)}"></label>
+      <label class="fld">${esc(t('shift'))}<select id="shPeriod"><option value="D" ${per === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${per === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
+      <p class="sub">${esc(plan ? t('planFrom', { g: C.fmtDT(Date.parse(plan.generatedAt)) }) : t('planMissing'))}</p></section>`;
+    if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3><p class="sub">${esc(t('loginHelp'))}</p>
+      <label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
+      <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
+      <label class="fld">${esc(t('jobsExtra'))}<input id="lg_extra"></label>
+      <label class="fld req">${esc(t('stateNow'))}<select id="lg_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
+      <h4>${esc(t('scalesStart'))}</h4><p class="sub">${esc(t('scalesHelp'))}</p>${scaleInputs('lgs')}
+      <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lg_comments"></textarea></label>
+      <button class="btn primary big" data-pact="shiftlogin">${esc(t('loginBtn'))}</button></section>`;
+    const loginCard = `<section class="card"><h3>${esc(t('loginTitle'))} · ${esc(C.fmtDT(li.t))}</h3>
+      <div class="kv"><span>${esc(t('shiftLeader'))}</span><b>${esc(li.leader)} · ${esc(t('crew'))} ${esc(li.crew || '—')}</b></div>
+      <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + li.state))}</b></div>
+      <div class="kv"><span>${esc(t('jobsToDo'))}</span><b>${esc((li.planJobs || []).map(j => (j.product || t('planNoProduct')) + (isNum(j.targetKg) ? ' · ' + fmtKg(j.targetKg) + ' kg' : '')).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') || '—')}</b></div>
+      ${li.comments ? `<p><small>${esc(li.comments)}</small></p>` : ''}</section>`;
+    const range = shiftRange(day, per);
+    const sm = P.shiftSummary(day, per, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
+    if (!lo) return head + loginCard + `<section class="card"><h3>${esc(t('logoutTitle'))}</h3>
+      <div class="kpis k4"><div><b>${sm.jobs.length}</b><span>${esc(t('ptab_jobs'))}</span></div><div><b>${sm.issues.length}</b><span>${esc(t('ptab_stops'))}</span></div>
+        <div><b>${sm.downtimeMin}</b><span>${esc(t('downtimeMin'))}</span></div><div><b>${sm.acts.length}</b><span>${esc(t('activities'))}</span></div></div>
+      <label class="fld req">${esc(t('stateNow'))}<select id="lo_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
+      <label class="fld req">${esc(t('activitiesDone'))}<textarea rows="3" id="lo_acts">${esc(sm.acts.map(a => t('at_' + (ACT.has(a.type) ? a.type : 'other')) + (a.description ? ': ' + a.description : '')).join('\n'))}</textarea></label>
+      <h4>${esc(t('scalesEnd'))}</h4>${scaleInputs('los')}
+      <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lo_comments"></textarea></label>
+      <label class="fld req">${esc(t('name'))}<input id="lo_by" value="${esc(li.leader || S.operator)}"></label>
+      <button class="btn primary big" data-pact="shiftlogout">${esc(t('logoutBtn'))}</button></section>`;
+    return head + loginCard + `<section class="card"><h3>${esc(t('logoutTitle'))} · ${esc(C.fmtDT(lo.t))}</h3>
+      <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + lo.state))}</b></div>
+      <div class="kv"><span>${esc(t('targetAchieved'))}</span><b>${isNum(lo.achievedPct) ? esc(String(lo.achievedPct).replace('.', ',')) + ' %' : '—'} <small>(${esc(t('dayB1'))} ${isNum(lo.dayB1Kg) ? fmtKg(lo.dayB1Kg) + ' kg' : '—'} / ${esc(t('targetT'))} ${isNum(lo.targetKg) ? fmtKg(lo.targetKg) + ' kg' : '—'})</small></b></div>
+      <div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>${esc(t('srPoint_start'))}</th><th>${esc(t('srPoint_end'))}</th><th>${esc(t('srQty'))} (kg)</th></tr>${P.SCALES.map(k =>
+        `<tr><td>${esc(t('scale_' + k))}</td><td>${fmtKg((li.scalesStart || {})[k])}</td><td>${fmtKg((lo.scalesEnd || {})[k])}</td><td class="${(lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum((lo.shiftKg || {})[k]) ? fmtKg(lo.shiftKg[k]) : '—'}</td></tr>`).join('')}</table></div>
+      ${lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
+      <button class="btn" data-pact="shiftxlsx">${esc(t('genExcel'))}</button></section>`;
+  }
+  async function shiftLogin() {
+    const sel = shiftSel(), leader = ($('#lg_leader') || {}).value || '';
+    if (!leader.trim()) return C.toast(t('needLeader'));
+    const sc = P.readScales(scaleVals('lgs'));
+    if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
+    const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
+    const tms = now(), start = shiftRange(sel.day, sel.period)[0];
+    const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: L.crewOfTime(start + 60000),
+      leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), jobsExtra: $('#lg_extra').value.trim(),
+      planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim() });
+    try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = rec.by; await DB.setConfig('operator', S.operator);
+    await reload(); C.toast(t('loginSaved')); keepScroll();
+  }
+  async function shiftLogout() {
+    const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
+    if (!li) return;
+    const by = $('#lo_by').value.trim(), acts = $('#lo_acts').value.trim();
+    if (!by || !acts) return C.toast(t('needTextName'));
+    const sc = P.readScales(scaleVals('los'));
+    if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
+    const q = P.shiftScaleKg(li.scalesStart, sc.values);
+    // B1 do dia até agora: este turno + o outro turno do mesmo dia, se tiver login e logout com B1
+    const other = sel.period === 'N' ? 'D' : 'N', oLo = shiftRec('logout', sel.day, other);
+    const parts = [q.kg.b1].concat(oLo && oLo.shiftKg && isNum(oLo.shiftKg.b1) ? [oLo.shiftKg.b1] : []);
+    const dayB1 = isNum(q.kg.b1) ? Math.round(parts.reduce((s, x) => s + x, 0) * 1000) / 1000 : null, target = planTarget(sel.day);
+    const tms = now();
+    const rec = Object.assign(base(tms), { kind: 'logout', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew,
+      state: $('#lo_state').value === 'off' ? 'off' : 'on', activitiesDone: acts, scalesEnd: sc.values, shiftKg: q.kg, negative: q.negative,
+      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, loginUid: li.uid });
+    try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = by; await DB.setConfig('operator', S.operator);
+    await reload(); C.toast(t('logoutSaved')); keepScroll();
+  }
+  // Aviso na página inicial: turno actual sem login
+  function shiftIssue() {
+    const sh = L.shiftOf(now());
+    if (now() - shiftRange(sh.day, sh.period)[0] < 30 * 60000) return null;   // primeira meia hora do turno: ainda sem aviso
+    return shiftRec('login', sh.day, sh.period) ? null : t('loginMissing', { s: t('shift_' + sh.period) });
+  }
+
+  // ---------- paragens (v2.7.0) ----------
+  // Categoria (mecânica, eléctrica, processo, outra) → código Downtime Codes v3 → início e fim (duração calculada) → falha e acção.
+  // Gravadas como registo 'issue' do diário de turno (mesmo formato que o pipeline lê), com category, startT e endT.
+  const codeOpts = (cat, sel) => `<option value="">—</option>` + P.codesForCat(cat, codes()).map(c => `<option value="${esc(c.code)}" ${sel === c.code ? 'selected' : ''}>${esc(c.code + ' ' + cName(c))}</option>`).join('');
+  function viewStops() {
+    const sel = shiftSel(), range = shiftRange(sel.day, sel.period);
+    const sm = P.shiftSummary(sel.day, sel.period, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
+    const nowIn = C.localInput(now());
+    return `<section class="card"><h3>${esc(t('stopNew'))}</h3>
+      <div class="grid2"><label class="fld req">${esc(t('stopCat'))}<select id="st_cat">${P.STOP_CATS.map(c => `<option value="${c}">${esc(t('cat_' + c))}</option>`).join('')}</select></label>
+      <label class="fld req">${esc(t('downtimeCode'))}<select id="st_code">${codeOpts('mechanical')}</select></label>
+      <label class="fld req">${esc(t('stopStart'))}<input type="datetime-local" id="st_start" value="${esc(nowIn)}"></label>
+      <label class="fld req">${esc(t('stopEnd'))}<input type="datetime-local" id="st_end" value="${esc(nowIn)}"></label>
+      <label class="fld">${esc(t('line'))}<select id="st_line">${lineOpts('C')}</select></label>
+      <label class="fld req">${esc(t('name'))}<input id="st_by" value="${esc(S.operator)}"></label></div>
+      <p class="sub" id="st_dur">${esc(t('stopDurHint'))}</p>
+      <label class="fld req">${esc(t('stopFault'))}<textarea rows="2" id="st_fault"></textarea></label>
+      <label class="fld">${esc(t('actionTaken'))}<textarea rows="2" id="st_action"></textarea></label>
+      <button class="btn primary big" data-pact="savestop">${esc(t('save'))}</button></section>
+      <section class="card"><h3>${esc(t('ptab_stops'))} · ${esc(sel.day)} ${esc(t('shift_' + sel.period))} · ${sm.downtimeMin} min</h3>${sm.issues.map(issueItem).join('') || '<p class="sub">—</p>'}</section>`;
+  }
+  function stopDur() {
+    const a = new Date(($('#st_start') || {}).value).getTime(), b = new Date(($('#st_end') || {}).value).getTime(), o = $('#st_dur');
+    if (o) o.textContent = isFinite(a) && isFinite(b) && b >= a ? t('stopDur', { m: Math.round((b - a) / 60000) }) : t('stopDurHint');
+  }
+  async function saveStop() {
+    const f = { category: $('#st_cat').value, code: $('#st_code').value, start: new Date($('#st_start').value).getTime(), end: new Date($('#st_end').value).getTime(),
+      fault: $('#st_fault').value, action: $('#st_action').value };
+    const by = $('#st_by').value.trim();
+    const r = P.validateStop(f, codes());
+    if (!by) r.errors.push('by');
+    if (r.errors.length) return C.toast(t('fillFields') + ': ' + r.errors.map(x => t('sf_' + x)).join(', '));
+    if (f.start > now() + 5 * 60000) return C.toast(t('futureTime'));
+    const action = String(f.action || '').trim();
+    const rec = Object.assign(base(f.start), { kind: 'issue', t: f.start, startT: f.start, endT: f.end, category: f.category, lineId: $('#st_line').value, code: f.code,
+      codeInfo: Object.assign({ source: S.cfgP.codesSource || P.DOWNTIME_SOURCE }, P.findCode(f.code, codes())), equipment: cName(P.findCode(f.code, codes()) || {}),
+      description: String(f.fault).trim(), downtimeMin: r.downtimeMin, action, by, status: action ? 'closed' : 'open' });
+    if (rec.status === 'closed') { rec.closedAt = f.end; rec.closedBy = by; rec.resolution = action; }
+    try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = by; await DB.setConfig('operator', S.operator);
+    S.shiftSel = { day: rec.prodDay, period: rec.period };
+    await reload(); C.toast(t('stopSaved', { m: r.downtimeMin })); keepScroll();
   }
 
   // ---------- ordens de produção ----------
@@ -374,13 +519,13 @@ window.ProdUI = function (C) {
       ${(j.startWarnings || []).length ? `<div class="dec d-warn"><b>${esc(t('jobWarnTitle'))}</b>${j.startWarnings.map(w => `<div class="li">• ${esc(w.text)}</div>`).join('')}</div>` : ''}
       ${readingsBlock(j)}
       ${qc}
-      ${j.status === 'running' && !closing ? `<button class="btn ghost small" data-closejob="${esc(j.uid)}">${esc(t('closeJob'))}</button>` : ''}
+      ${j.status === 'running' && !closing ? `<div class="row"><button class="btn small" data-closejob="${esc(j.uid)}" data-stop="1">⏹ ${esc(t('stopLineReport'))}</button><button class="btn ghost small" data-closejob="${esc(j.uid)}">${esc(t('closeJob'))}</button></div>` : ''}
       ${closing ? `<div class="holdform">
         <label class="fld">${esc(t('closeAs'))}<select id="cj_status"><option value="done">${esc(t('js_done'))}</option><option value="cancelled">${esc(t('js_cancelled'))}</option></select></label>
         <label class="fld">${esc(t('actualGrain'))} (kg) <small>${esc(t('optional'))}</small><input inputmode="decimal" id="cj_kg"></label>
         <label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="cj_by"', defLeader())}</label>
         <label class="fld">${esc(t('notes'))}<textarea id="cj_note" rows="2"></textarea></label>
-        <button class="btn primary" data-pact="closejob">${esc(t('closeJob'))}</button> <button class="btn ghost" data-pact="cancelclose">${esc(t('cancel'))}</button>
+        ${S.closeStop ? `<p class="sub">${esc(t('stopLineNote'))}</p>` : ''}<button class="btn primary" data-pact="closejob">${esc(S.closeStop ? t('stopLineReport') : t('closeJob'))}</button> <button class="btn ghost" data-pact="cancelclose">${esc(t('cancel'))}</button>
       </div>` : ''}
     </div>`;
   }
@@ -432,7 +577,7 @@ window.ProdUI = function (C) {
   function newJobForm() {
     const line = S.cfg.lines.find(l => !runningJob(l.id));
     S.jobForm = { lineId: line ? line.id : '', mode: 'seq', sources: [], blend: {}, tempered: [], m0: '', impurities: '', m1: '', feedKgh: '',
-      outputs: [newOutput()], recipe: { colours: [], grades: [] }, leader: defLeader(), feedQueue: {} };
+      outputs: [newOutput()], recipe: { colours: [], grades: [] }, leader: defLeader(), feedQueue: {}, startTime: C.localInput(now()) };
   }
   const prodNames = j => P.jobProducts(j).map(C.prodName).join(' + ') || '—';
   const newOutput = () => ({ productId: '', targetKg: '', targetExtraction: '', bins: [] });
@@ -520,6 +665,7 @@ window.ProdUI = function (C) {
       ${f.mode === 'blend' ? `<p class="sub">${esc(t('blendMoistNote'))}</p>` : ''}
       <p class="sub">${esc(t('waterHint'))}</p></section>
     <section class="card">
+      <label class="fld req">${esc(t('jobStartTime'))}<input type="datetime-local" id="jf_start" value="${esc(f.startTime || '')}"></label>
       <label class="fld req">${esc(t('shiftLeader'))}${leaderField('data-jfl="leader"', f.leader)}</label>
       ${!P.leaderNames(S.cfgP).length ? `<p class="sub">${esc(t('leadersNotSet'))}</p>` : ''}
       <div id="jobCheck">${jobCheckHtml()}</div>
@@ -618,7 +764,10 @@ window.ProdUI = function (C) {
     if (!String(f.leader || '').trim()) return C.toast(t('needLeader'));
     const r = P.validateJob(f, ctxFor());
     if (r.errors.length) { keepScroll(); return C.toast(t('jobBlocked')); }
-    const tms = now();
+    // v2.7.0: hora de arranque registada (pode ser anterior à gravação, até 24 h)
+    const st0 = $('#jf_start') ? new Date($('#jf_start').value).getTime() : now();
+    if (!isFinite(st0) || st0 > now() + 5 * 60000 || st0 < now() - 24 * 3600000) return C.toast(t('badStartTime'));
+    const tms = st0;
     // produtos da ordem: extracção (número e texto tal como escrito), produto esperado, silos
     const outs = r.calc.outputs.map((o, i) => Object.assign({}, o, { extractionRaw: String(f.outputs[i].targetExtraction) }));
     const sourceComps = {};
@@ -674,7 +823,10 @@ window.ProdUI = function (C) {
       S.lineState = Object.assign({}, S.lineState, { [j.lineId]: Object.assign({}, st, { running: false, since: now() }) });
       await DB.setConfig('lineState', S.lineState);
     }
-    S.closeJob = null; await reload(); C.toast(t('jobClosed')); keepScroll();
+    const stop = S.closeStop; S.closeJob = null; S.closeStop = false; await reload(); C.toast(t('jobClosed'));
+    // v2.7.0: "Parar linha" fecha a ordem e exporta o relatório do turno (Excel)
+    if (stop) { S.logShift = { day: L.shiftOf(nj.closedAt).day, period: L.shiftOf(nj.closedAt).period }; try { shiftExcel(); } catch (e) { console.warn('shift xlsx', e); } S.prodTab = 'shift'; }
+    keepScroll();
   }
   async function importSilos(file) {
     if (!file) return;
@@ -909,6 +1061,17 @@ window.ProdUI = function (C) {
     const qa = L.effective(S.samples).filter(s => s.t >= range[0] && s.t < range[1] && (s.decision === 'warn' || s.decision === 'reject')).sort((a, b) => a.t - b.t);
     add(t('x_alerts'), [[t('dateTime'), t('line'), t('product'), t('decision'), t('failures')],
       ...qa.map(s => [C.fmtDT(s.t), C.lineName(s.lineId), C.prodName(s.productId), C.decLabel(s.decision), s.failures.map(f => C.anyLabel(f.param, C.product(s.productId)) + '=' + (f.value === 'abn' ? t('abnormal') : f.value)).join('; ')])]);
+    // v2.7.0: login e logout do turno, leituras das balanças e % do objectivo do dia
+    const li = shiftRec('login', ls.day, ls.period), lo = shiftRec('logout', ls.day, ls.period);
+    add(t('shiftTitle'), [[t('waShiftTitle', { d: ls.day, s: t('shift_' + ls.period) })], [],
+      [t('loginTitle'), li ? C.fmtDT(li.t) : t('notDone')], [t('shiftLeader'), li ? li.leader : ''], [t('crew'), li ? li.crew : ''], [t('stateNow') + ' (' + t('loginTitle') + ')', li ? t('state_' + li.state) : ''],
+      [t('jobsToDo'), li ? (li.planJobs || []).map(j => (j.product || '') + (isNum(j.targetKg) ? ' ' + j.targetKg + ' kg' : '')).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') : ''],
+      [t('comments') + ' (' + t('loginTitle') + ')', li ? li.comments || '' : ''], [],
+      [t('scale'), 'SCADA', t('srPoint_start') + ' (kg)', t('srPoint_end') + ' (kg)', t('srQty') + ' (kg)'],
+      ...P.SCALES.map(k => [t('scale_' + k), P.SCALE_SCADA[k], li && isNum((li.scalesStart || {})[k]) ? li.scalesStart[k] : '', lo && isNum((lo.scalesEnd || {})[k]) ? lo.scalesEnd[k] : '', lo && isNum((lo.shiftKg || {})[k]) ? lo.shiftKg[k] : '']), [],
+      [t('logoutTitle'), lo ? C.fmtDT(lo.t) : t('notDone')], [t('stateNow') + ' (' + t('logoutTitle') + ')', lo ? t('state_' + lo.state) : ''],
+      [t('dayB1') + ' (kg)', lo && isNum(lo.dayB1Kg) ? lo.dayB1Kg : ''], [t('targetT') + ' (kg)', lo && isNum(lo.targetKg) ? lo.targetKg : ''], [t('targetAchieved') + ' (%)', lo && isNum(lo.achievedPct) ? lo.achievedPct : ''],
+      [t('activitiesDone'), lo ? lo.activitiesDone : ''], [t('comments') + ' (' + t('logoutTitle') + ')', lo ? lo.comments || '' : '']]);
     add(t('ptab_bins'), [[t('bin'), t('fedBy'), t('capacityT'), t('content'), t('since')],
       ...S.cfgP.bins.map(b => { const st = P.binState(b.id, S.binEvents); return [b.id, b.lines.join('/'), isNum(b.capKg) ? b.capKg : '', st.productId ? C.prodName(st.productId) : t('binEmpty'), st.since ? C.fmtDT(st.since) : '']; })]);
     return wb;
@@ -1161,7 +1324,7 @@ window.ProdUI = function (C) {
   const CLICK_SEL = '[data-ptab],[data-pact],[data-closejob],[data-jsrc],[data-jrc],[data-jrg],[data-jobin],[data-joutdel],[data-jtemp],[data-trsilo],[data-emptydirty],[data-jmode],[data-logact],[data-binact],[data-jfq]';
   async function onClick(el) {
     if (el.dataset.ptab) { S.prodTab = el.dataset.ptab; if (el.dataset.nav) { S.view = el.dataset.nav; window.scrollTo(0, 0); } C.render(); return; }
-    if (el.dataset.closejob) { S.closeJob = el.dataset.closejob; keepScroll(); return; }
+    if (el.dataset.closejob) { S.closeJob = el.dataset.closejob; S.closeStop = el.dataset.stop === '1'; keepScroll(); return; }
     if (el.dataset.jsrc) { const f = S.jobForm, i = f.sources.indexOf(el.dataset.jsrc); if (i >= 0) { f.sources.splice(i, 1); delete f.blend[el.dataset.jsrc]; if (f.feedQueue) delete f.feedQueue[el.dataset.jsrc]; } else f.sources.push(el.dataset.jsrc); keepScroll(); return; }
     if (el.dataset.jfq) { const [b, sid] = el.dataset.jfq.split('|'), f = S.jobForm; f.feedQueue = f.feedQueue || {}; const q = f.feedQueue[b] = f.feedQueue[b] || []; const k = q.indexOf(sid); if (k >= 0) q.splice(k, 1); else q.push(sid); keepScroll(); return; }
     if (el.dataset.jobin) {
@@ -1207,6 +1370,9 @@ window.ProdUI = function (C) {
       case 'voidlog': return logAction('void');
       case 'cancella': S.logAct = null; keepScroll(); return;
       case 'shiftxlsx': return shiftExcel();
+      case 'shiftlogin': return shiftLogin();
+      case 'shiftlogout': return shiftLogout();
+      case 'savestop': return saveStop();
       case 'emptybin': return binAction('empty');
       case 'setbin': return binAction('set');
       case 'outbin': return binOut();
@@ -1230,6 +1396,7 @@ window.ProdUI = function (C) {
     if (f === 'dipM') { const o = $('#dipkg_' + CSS.escape(id)); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); }
   }
   function onInput(el) {
+    if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset.jbl && S.jobForm) {
       const [id, k] = el.dataset.jbl.split('|');
       S.jobForm.blend[id] = Object.assign({}, S.jobForm.blend[id], { [k]: el.value });
@@ -1256,6 +1423,9 @@ window.ProdUI = function (C) {
     C.render();
   }
   function onChange(el) {
+    if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
+    if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
+    if (el.id === 'shDay' || el.id === 'shPeriod') { const s = shiftSel(); if (el.id === 'shDay') { if (el.value) s.day = el.value; } else s.period = el.value === 'N' ? 'N' : 'D'; keepScroll(); return true; }
     if (el.dataset.jo && S.jobForm) { const [i, k] = el.dataset.jo.split('|'); if (S.jobForm.outputs[+i]) S.jobForm.outputs[+i][k] = el.value; keepScroll(); return true; }
     if (el.dataset.ctx) { saveCtx(el.dataset.ctx, el.type === 'checkbox' ? el.checked : el.value.trim().slice(0, 40)); return true; }
     if (el.dataset.jf && S.jobForm) {
@@ -1291,5 +1461,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };
