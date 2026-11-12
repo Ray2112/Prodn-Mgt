@@ -108,14 +108,48 @@
     .map(p => prodName(p) + ((h.clearedProducts || []).indexOf(p) >= 0 && h.status !== 'closed' ? ' ✓' : '')).join(' + ');
   const lineProds = st => st && Array.isArray(st.products) && st.products.length ? st.products : (st && st.productId ? [st.productId] : []);
   function lineSamples(lineId) { return L.effective(S.samples).filter(s => s.lineId === lineId); }
+  // v2.6.0 (Zhax, 12-11-2026): a linha está em produção quando há uma ordem em curso — uma só fonte (sem "Arrancar / Parar linha").
+  // Sem estado PARADA nem RETIDA: nada segura a produção; os resultados fora do limite são avisos.
+  const runningJob = lineId => (S.jobs || []).find(j => j.lineId === lineId && j.status === 'running');
+  function lineRun(lineId) {
+    const j = runningJob(lineId);
+    return j ? { running: true, since: j.startedAt, productId: j.productId, products: window.Prod.jobProducts(j), job: j } : { running: false, products: [] };
+  }
   function lineStatus(lineId) {
-    if (openHold(lineId)) return 'hold';
-    const st = S.lineState[lineId];
-    if (!st || !st.running) return 'stopped';
+    if (!lineRun(lineId).running) return 'idle';
     const sh = L.shiftOf(Date.now());
     const last = lineSamples(lineId).filter(s => s.t >= sh.start).sort((a, b) => b.t - a.t)[0];
     if (!last) return 'nodata';
-    return last.decision === 'warn' ? 'warn' : 'ok';
+    return last.decision === 'warn' || last.decision === 'reject' ? 'warn' : 'ok';
+  }
+  // ---------- avisos (v2.6.0) ----------
+  // Cada aviso com chave pode ser fechado por uma explicação (Chief Miller, supervisor de CQ ou Production Manager, com PIN),
+  // gravada em prodChanges {kind: 'warnClear'} — vai nos ficheiros diários. Os restantes fecham-se onde nascem (link).
+  const CLEAR_ROLES = ['chief', 'qc', 'pm'];
+  const clears = () => new Set((S.prodChanges || []).filter(c => c.kind === 'warnClear').map(c => c.key));
+  function issues() {
+    const out = [], cl = clears(), nowMs = Date.now();
+    if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
+    const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings' });
+    if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins' });
+    const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
+    L.openQcWarnings(S.samples, cl, from).forEach(s => out.push({ key: 'qc:' + s.id, level: s.decision === 'reject' ? 'bad' : 'warn',
+      text: '🧪 ' + lineName(s.lineId) + ' · ' + prodName(s.productId) + ' · ' + fmtDT(s.t) + ': ' + s.failures.map(f => (f.param in { odour: 1, colour: 1, mould: 1, insects: 1, foreign: 1 } ? t('ph_' + f.param) : paramLabel(f.param, product(s.productId))) + ' ' + (f.value === 'abn' ? t('abnormal') : fmtNum(f.value))).join(', ') + ' → ' + decLabel(s.decision), detail: s.id }));
+    overdueList().forEach(o => { const key = 'late:' + o.lineId + '|' + o.prod.id + '|' + o.param + '|' + o.due;
+      if (!cl.has(key)) out.push({ key, level: 'warn', text: '⏰ ' + lineName(o.lineId) + ' · ' + prodName(o.prod.id) + ': ' + (o.param === 'physical' ? t('physical') : paramLabel(o.param, o.prod)) + ' — ' + t('dueAt', { h: fmtTime(o.due) }), newsample: o.lineId }); });
+    (S.jobs || []).filter(j => j.status === 'running' && (j.startWarnings || []).length && !cl.has('job:' + j.uid))
+      .forEach(j => out.push({ key: 'job:' + j.uid, level: 'warn', text: '▶ ' + lineName(j.lineId) + ': ' + j.startWarnings.map(w => w.text).join('; '), nav: 'prod' }));
+    S.holds.filter(h => h.status !== 'closed' && !cl.has('hold:' + h.id))
+      .forEach(h => out.push({ key: 'hold:' + h.id, level: 'bad', text: '⛔ ' + lineName(h.lineId) + ' · ' + holdProds(h) + ' — ' + t('oldHoldOpen', { h: fmtDT(h.openedAt) }) }));
+    MU.warnings().forEach(w => out.push({ level: 'bad', text: '🔧 ' + MU.warnText(w), nav: 'maint' }));
+    FU.warnings().forEach(w => out.push({ level: w.level === 'bad' ? 'bad' : 'warn', text: '✔ ' + FU.warnText(w), nav: 'fssc' }));
+    const rp = reportPendingDay(); if (rp) out.push({ level: 'info', text: t('reportReady', { d: rp }), repday: rp });
+    return out;
+  }
+  const ISS_CLS = { bad: 'b-reject', warn: 'b-warn', info: 'b-info' };
+  function issueRow(i) {
+    const link = i.nav ? ` data-nav="${esc(i.nav)}"${i.ptab ? ` data-ptab="${esc(i.ptab)}"` : ''}` : i.repday ? ` data-repday="${esc(i.repday)}"` : i.newsample ? ` data-newsample="${esc(i.newsample)}"` : i.key ? ' data-nav="holds"' : '';
+    return `<div class="banner ${ISS_CLS[i.level] || 'b-warn'}"${link}>${esc(i.text)}</div>`;
   }
 
   // ---------- alertas ----------
@@ -160,8 +194,8 @@
   function overdueList() {
     const out = [];
     S.cfg.lines.forEach(l => {
-      const st = S.lineState[l.id];
-      if (!st || !st.running) return;
+      const st = lineRun(l.id);
+      if (!st.running) return;
       lineProds(st).forEach(pid => {
         const prod = product(pid); if (!prod) return;
         const d = L.dueStatus(prod, lineSamples(l.id), st.since, Date.now(), S.cfg.graceMin);
@@ -185,7 +219,7 @@
   function render() {
     document.documentElement.lang = S.lang;
     const sh = L.shiftOf(Date.now());
-    const openN = S.holds.filter(h => h.status !== 'closed').length;
+    const openN = issues().filter(i => i.level !== 'info').length;
     $('#app').innerHTML = `
       <header class="top">
         <div class="brand"><b>${esc(t('appTitle'))}</b><span class="mill">${esc(t('mill_' + S.cfg.millType))}</span></div>
@@ -199,7 +233,7 @@
       </header>
       <main id="main">${view()}</main>
       <nav class="bottom">
-        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⛔', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
+        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⚠', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
       </nav>
       ${S.modal ? modal() : ''}`;
   }
@@ -234,22 +268,15 @@
   }
   function viewHome() {
     if (!products().length) return `<section class="card warnbox"><h2>${esc(t('mill_' + S.cfg.millType))}</h2><p>${esc(t('notConfigured'))}</p></section>`;
-    const banners = [];
-    if (!S.pinSet) banners.push(`<div class="banner b-warn" data-nav="settings">${esc(t('setPinFirst'))}</div>`);
-    if (PU.stockDue()) banners.push(`<div class="banner b-warn" data-nav="prod" data-ptab="bins">📦 ${esc(t('stockDue'))}</div>`);
-    const rp = reportPendingDay();
-    if (rp) banners.push(`<div class="banner b-info" data-repday="${esc(rp)}">${esc(t('reportReady', { d: rp }))}</div>`);
-    const od = overdueList();
-    if (od.length) banners.push(`<div class="banner b-reject">⏰ ${esc(t('overdueN', { n: od.length }))}</div>`);
-    MU.warnings().forEach(w => banners.push(`<div class="banner b-reject" data-nav="maint">🔧 ${esc(MU.warnText(w))}</div>`));
-    FU.warnings().forEach(w => banners.push(`<div class="banner ${w.level === 'bad' ? 'b-reject' : 'b-warn'}" data-nav="fssc">✔ ${esc(FU.warnText(w))}</div>`));
-    return banners.join('') + S.cfg.lines.map(lineCard).join('');
+    const iss = issues(), MAXH = 8;
+    const summary = `<section class="card"><div class="row between"><h2>${esc(t('issuesTitle'))}</h2><span class="status ${iss.some(i => i.level === 'bad') ? 'd-reject' : iss.length ? 'd-warn' : 'd-accept'}">${iss.length}</span></div>
+      ${iss.length ? iss.slice(0, MAXH).map(issueRow).join('') + (iss.length > MAXH ? `<button class="btn ghost small" data-nav="holds">${esc(t('seeAllN', { n: iss.length }))}</button>` : '') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>`;
+    return summary + S.cfg.lines.map(lineCard).join('');
   }
   function lineCard(l) {
-    const st = S.lineState[l.id] || {};
+    const st = lineRun(l.id);
     const status = lineStatus(l.id);
     const pids = lineProds(st), multi = pids.length > 1;
-    const hold = openHold(l.id);
     let due = '';
     if (st.running) pids.forEach(pid => {
       const prod = product(pid); if (!prod) return;
@@ -262,15 +289,11 @@
     const statusCls = { hold: 'd-reject', warn: 'd-warn', ok: 'd-accept', stopped: 'd-record', nodata: 'd-record' }[status];
     return `<section class="card line">
       <div class="row between"><h2>${esc(l.name)}</h2><span class="status ${statusCls}">${esc(t('st_' + status))}</span></div>
-      ${hold ? `<div class="banner b-reject" data-nav="holds">${esc(t('holdSince', { h: fmtDT(hold.openedAt) }))} — ${esc(t('hs_' + hold.status))}</div>` : ''}
       ${PU.homeLine(l.id)}
-      ${multi ? `<div class="kv"><span>${esc(t('runningProducts'))}</span><b>${esc(pids.map(prodName).join(' + '))}</b></div>` : `<label class="fld">${esc(t('runningProduct'))}
-        <select data-lineprod="${esc(l.id)}">
-          <option value="">—</option>
-          ${products().map(p => `<option value="${esc(p.id)}" ${st.productId === p.id ? 'selected' : ''}>${esc(prodName(p.id))}</option>`).join('')}
-        </select></label>`}
+      ${st.running ? `<div class="kv"><span>${esc(multi ? t('runningProducts') : t('runningProduct'))}</span><b>${esc(pids.map(prodName).join(' + '))}</b></div>`
+        : `<p class="sub">${esc(t('noJobLine'))}</p>`}
       <div class="row">
-        <button class="btn ${st.running ? 'ghost' : ''}" data-run="${esc(l.id)}">${esc(st.running ? t('stopLine') : t('startLine'))}</button>
+        ${st.running ? '' : `<button class="btn" data-nav="prod" data-ptab="jobs">${esc(t('goProd'))}</button>`}
         <button class="btn primary" data-newsample="${esc(l.id)}">${esc(t('newSample'))}</button>
       </div>
       ${st.running ? `<div class="sub">${esc(t('runningSince', { h: fmtDT(st.since) }))}</div>` : ''}
@@ -281,7 +304,7 @@
   // ----- Amostra -----
   function newForm(lineId, correctsId) {
     const lid = lineId || (S.cfg.lines[0] && S.cfg.lines[0].id);
-    const st = S.lineState[lid] || {};
+    const st = lineRun(lid);
     S.form = { lineId: lid, productId: st.productId || (products()[0] && products()[0].id), time: localInput(Date.now()),
       operator: S.operator, values: {}, physical: {}, notes: '', correctsId: correctsId || null, reason: '' };
     if (correctsId) {
@@ -301,7 +324,7 @@
     if (!products().length) return `<section class="card"><p>${esc(t('notConfigured'))}</p></section>`;
     if (!S.form) newForm();
     const f = S.form, prod = product(f.productId);
-    const st = S.lineState[f.lineId] || {};
+    const st = lineRun(f.lineId);
     const due = prod && st.running && lineProds(st).indexOf(prod.id) >= 0 ? L.dueStatus(prod, lineSamples(f.lineId), st.since, Date.now(), S.cfg.graceMin) : null;
     const pendingShift = due ? due.shift.filter(x => !x.done).map(x => x.param) : [];
     const byFreq = fr => L.PARAMS.filter(p => !L.EXTRA.includes(p) && prod.limits[p] && prod.limits[p].freq === fr && (p !== 'granB' || prod.limits.granB.sieve || L.hasLimits(prod.limits.granB)));
@@ -351,7 +374,7 @@
   function liveDecision(ev) {
     if (!ev) return '';
     if (ev.errors.some(e => e.code === 'empty')) return `<div class="dec d-record">${esc(t('enterValues'))}</div>`;
-    return `<div class="dec ${decCls(ev.decision)}"><b>${esc(decLabel(ev.decision))}</b>${ev.decision === 'reject' ? ' — ' + esc(t('holdWillOpen')) : ''}</div>`;
+    return `<div class="dec ${decCls(ev.decision)}"><b>${esc(decLabel(ev.decision))}</b>${ev.decision === 'reject' || ev.decision === 'warn' ? ' — ' + esc(t('warnWillShow')) : ''}</div>`;
   }
   function updateLive() {
     const ev = formEval(); const prod = product(S.form.productId);
@@ -372,7 +395,7 @@
     if (!String(f.operator).trim()) return toast(t('needOperator'));
     if (!isFinite(tms)) return toast(t('badTime'));
     if (tms > Date.now() + 5 * 60000) return toast(t('futureTime'));
-    if (tms < Date.now() - 24 * 3600000) return toast(t('tooOld'));
+    if (tms < Date.now() - L.MAX_BACK_DAYS * 24 * 3600000) return toast(t('tooOld'));   // v2.6.0: resultados entram mais tarde, com a hora da amostragem
     if (f.correctsId && !String(f.reason).trim()) return toast(t('needReason'));
     if (ev.errors.length) return toast(ev.errors.some(e => e.code === 'empty') ? t('enterValues') : ev.errors.some(e => e.code === 'incomplete') ? t('physIncomplete') : t('fixInvalid'));
     const sample = {
@@ -382,12 +405,10 @@
       limits: JSON.parse(JSON.stringify(prod.limits)), millType: S.cfg.millType, limitsVersion: S.cfg.limitsVersion || null
     };
     if (f.correctsId) { sample.correctsId = f.correctsId; sample.correctionReason = String(f.reason).trim(); }
+    if (L.isLateEntry(tms, sample.savedAt)) sample.late = true;
+    // v2.6.0: sem novas retenções (Zhax: "Warning only"); uma retenção antiga ainda aberta continua a seguir as re-amostras
     const existing = openHold(f.lineId);
-    const holdFn = s => {
-      if (existing) return [L.holdAfterSample(existing, s)];
-      if (s.decision === 'reject') return [L.newHold(s)];
-      return [];
-    };
+    const holdFn = s => existing ? [L.holdAfterSample(existing, s)] : [];
     const alertObj = (sample.decision === 'warn' || sample.decision === 'reject') ? { t: tms, lineId: f.lineId, productId: f.productId, decision: sample.decision, crew: L.crewOfTime(tms) } : null;
     try {
       await DB.saveSampleBundle(sample, holdFn, alertObj);
@@ -416,7 +437,7 @@
     const rows = [];
     window.WaImport.parse(w.text).forEach(m => {
       const tms = window.WaImport.timeOf(w.day, m.hour, m.minute);
-      const timeErr = tms > now + 5 * 60000 ? 'futureTime' : tms < now - 24 * 3600000 ? 'tooOld' : null;
+      const timeErr = tms > now + 5 * 60000 ? 'futureTime' : tms < now - L.MAX_BACK_DAYS * 24 * 3600000 ? 'tooOld' : null;
       const base = { msg: m, t: tms, timeErr };
       m.errors.forEach(e => rows.push(Object.assign({}, base, { kind: 'error', code: e.code, text: e.text, ok: false })));
       m.samples.forEach(s => {
@@ -478,7 +499,8 @@
             source: 'whatsapp', sourceText: m.raw, instrument: m.equipment || null, sourceSender: m.header ? m.header.sender : null
           };
           const existing = openHold(w.lineId);
-          const holdFn = s => existing ? [L.holdAfterSample(existing, s)] : s.decision === 'reject' ? [L.newHold(s)] : [];
+          const holdFn = s => existing ? [L.holdAfterSample(existing, s)] : [];   // v2.6.0: sem novas retenções
+          if (L.isLateEntry(tms, sample.savedAt)) sample.late = true;
           const alertObj = (sample.decision === 'warn' || sample.decision === 'reject') ? { t: tms, lineId: w.lineId, productId: r.productId, decision: sample.decision, crew: L.crewOfTime(tms) } : null;
           await DB.saveSampleBundle(sample, holdFn, alertObj);
           await reloadData();
@@ -505,11 +527,40 @@
 
   // ----- Retenções -----
   function viewHolds() {
-    const open = S.holds.filter(h => h.status !== 'closed').sort((a, b) => b.openedAt - a.openedAt);
+    const iss = issues();
+    const keyed = iss.filter(i => i.key), other = iss.filter(i => !i.key);
+    const done = (S.prodChanges || []).filter(c => c.kind === 'warnClear').sort((a, b) => b.t - a.t).slice(0, 20);
     const closed = S.holds.filter(h => h.status === 'closed').sort((a, b) => b.closedAt - a.closedAt).slice(0, 20);
-    return `<section class="card"><h2>${esc(t('openHolds'))}</h2>${open.length ? open.map(holdCard).join('') : `<p class="sub">${esc(t('noHolds'))}</p>`}</section>
+    return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2><p class="sub">${esc(t('warnHelp'))}</p>
+        ${keyed.length ? keyed.map(warnCard).join('') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>
+      ${other.length ? `<section class="card"><h3>${esc(t('otherIssues'))}</h3>${other.map(issueRow).join('')}</section>` : ''}
+      <section class="card"><h3>${esc(t('clearedTitle'))}</h3>${done.map(c => `<div class="rowitem"><small>${esc(fmtDT(c.t))} · ${esc(t('role_' + c.role))} ${esc(c.by)}: ${esc(c.reason)}</small><br><small class="sub">${esc(c.text || c.key)}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
       <section class="card"><h3>${esc(t('closedHolds'))}</h3>${closed.map(h => `<div class="rowitem"><b>${esc(lineName(h.lineId))}</b> · ${esc(holdProds(h))}<br><small>${esc(fmtDT(h.openedAt))} → ${esc(fmtDT(h.closedAt))} · ${esc(h.reasons.map(r => paramLabel(r, product(h.productId))).join(', '))}</small>
         ${(h.actions || []).map(a => `<div class="act"><small>${esc(fmtDT(a.at))} · ${esc(a.by)}: ${esc(a.text)}</small></div>`).join('')}</div>`).join('') || `<p class="sub">—</p>`}</section>`;
+  }
+  function warnCard(i) {
+    const k = esc(i.key), open = S.clearKey === i.key;
+    return `<div class="hold"><div class="${ISS_CLS[i.level] === 'b-reject' ? 'txt-reject' : ''}"><b>${esc(i.text)}</b></div>
+      ${open ? `<div class="holdform">
+        <label class="fld req">${esc(t('clearRole'))}<select id="wc_role">${CLEAR_ROLES.map(r => `<option value="${r}">${esc(t('role_' + r))}</option>`).join('')}</select></label>
+        <label class="fld req">${esc(t('name'))}<input id="wc_by" value="${esc(S.operator)}"></label>
+        <label class="fld req">${esc(t('clearReason'))}<textarea rows="2" id="wc_reason"></textarea></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="wc_pin"></label>
+        <button class="btn primary" data-wsave="${k}">${esc(t('clearBtn'))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
+      : `<div class="row">${i.newsample ? `<button class="btn small" data-newsample="${esc(i.newsample)}">${esc(t('newSample'))}</button>` : ''}${i.detail ? `<button class="btn small" data-correct="${esc(i.detail)}">${esc(t('correct'))}</button>` : ''}<button class="btn ghost small" data-wopen="${k}">${esc(t('explainBtn'))}</button></div>`}</div>`;
+  }
+  async function clearWarning(key) {
+    const i = issues().find(x => x.key === key);
+    if (!i) { S.clearKey = null; return render(); }
+    const role = $('#wc_role').value, by = $('#wc_by').value.trim(), reason = $('#wc_reason').value.trim();
+    if (!by || !reason) return toast(t('needClear'));
+    const r = await checkPin($('#wc_pin').value);
+    if (!r.ok) return toast(pinMsg(r));
+    const tms = Date.now();
+    try { await DB.add('prodChanges', Object.assign(PU.newRec(tms), { kind: 'warnClear', key, role, by, reason, text: i.text, t: tms })); }
+    catch (e) { return toast(t('saveFailed')); }
+    S.operator = by; await DB.setConfig('operator', S.operator);
+    S.clearKey = null; await PU.reload(); toast(t('clearSaved')); render();
   }
   function holdCard(h) {
     const prod = product(h.productId);
@@ -555,7 +606,7 @@
     const open = S.detailId === x.id;
     return `<div class="rowitem ${sup ? 'superseded' : ''}" data-detail="${x.id}">
       <div class="row between"><span><b>${esc(fmtTime(x.t))}</b> · ${esc(lineName(x.lineId))} · ${esc(prodName(x.productId))}</span><span class="chip ${decCls(x.decision)}">${esc(decLabel(x.decision))}</span></div>
-      <small>#${esc(L.shortId(x.id))} · ${esc(t('crew'))} ${esc(x.crew)} · ${esc(x.operator)}${x.correctsId ? ' · ' + esc(t('corrects', { id: L.shortId(x.correctsId) })) : ''}${sup ? ' · ' + esc(t('supersededTag')) : ''}</small>
+      <small>#${esc(L.shortId(x.id))} · ${esc(t('crew'))} ${esc(x.crew)} · ${esc(x.operator)}${x.correctsId ? ' · ' + esc(t('corrects', { id: L.shortId(x.correctsId) })) : ''}${x.late ? ' · ' + esc(t('lateTag')) : ''}${sup ? ' · ' + esc(t('supersededTag')) : ''}</small>
       <div><small>${esc(vals)}${x.physical ? ' · ' + esc(t('physical')) + ': ' + esc(Object.values(x.physical).includes('abn') ? t('abnormal') : t('normal')) : ''}</small></div>
       ${open ? `<div class="detail">${x.failures.length ? x.failures.map(f => `<div class="${decCls(f.decision)} pad">${esc(f.param in { odour: 1, colour: 1, mould: 1, insects: 1, foreign: 1 } ? t('ph_' + f.param) : paramLabel(f.param, prod))}: ${esc(f.value === 'abn' ? t('abnormal') : fmtNum(f.value))} — ${esc(decLabel(f.decision))}</div>`).join('') : ''}
         ${x.notes ? `<p><small>${esc(x.notes)}</small></p>` : ''}${x.correctionReason ? `<p><small>${esc(t('correctionReason'))}: ${esc(x.correctionReason)}</small></p>` : ''}
@@ -766,12 +817,13 @@
   document.addEventListener('click', async e => {
     const pel = e.target.closest(PU.CLICK_SEL);
     if (pel) return PU.onClick(pel);
-    const el = e.target.closest('[data-nav],[data-newsample],[data-run],[data-phys],[data-haction],[data-detail],[data-correct],[data-repday],#saveSample,#waParse,#waImport,#closeModal,#genXlsx,#savePin,#openLimits,#saveLimits,#saveLines,#askNotif,#testAlert,#exportBk,#exportLim');
+    const el = e.target.closest('[data-nav],[data-newsample],[data-wopen],[data-wsave],[data-phys],[data-haction],[data-detail],[data-correct],[data-repday],#saveSample,#waParse,#waImport,#closeModal,#genXlsx,#savePin,#openLimits,#saveLimits,#saveLines,#askNotif,#testAlert,#exportBk,#exportLim');
     if (!el) return;
     if (el.dataset.nav) { S.view = el.dataset.nav; S.modal = null; if (S.view === 'prodset') S.prodDraft = null; if (S.view === 'sample' && !S.form) newForm(); render(); window.scrollTo(0, 0); return; }
     if (el.dataset.repday) { S.repDay = el.dataset.repday; S.view = 'report'; render(); return; }
     if (el.dataset.newsample) { newForm(el.dataset.newsample); S.view = 'sample'; render(); window.scrollTo(0, 0); return; }
-    if (el.dataset.run) return toggleRun(el.dataset.run);
+    if (el.dataset.wopen !== undefined) { S.clearKey = el.dataset.wopen || null; const y = window.scrollY; render(); window.scrollTo(0, y); return; }
+    if (el.dataset.wsave) return clearWarning(el.dataset.wsave);
     if (el.dataset.phys) { S.form.physical[el.dataset.phys] = el.dataset.phys === 'colour' ? Number(el.dataset.pv) : el.dataset.pv; const y = window.scrollY; render(); window.scrollTo(0, y); return; }
     if (el.dataset.haction) return recordHoldAction(el.dataset.haction);
     if (el.dataset.correct) { e.stopPropagation(); newForm(null, el.dataset.correct); S.view = 'sample'; render(); window.scrollTo(0, 0); return; }
@@ -807,8 +859,7 @@
     const el = e.target;
     if (PU.onChange(el)) return;
     if (el.id === 'waLine' || el.id === 'waDay') { const w = waState(); if (el.id === 'waLine') w.lineId = el.value; else if (el.value) w.day = el.value; if (w.rows) waAnalyse(); render(); return; }
-    if (el.dataset.lineprod) return changeLineProduct(el.dataset.lineprod, el.value, el);
-    if (el.id === 'f_line') { S.form.lineId = el.value; const st = S.lineState[el.value]; if (st && st.productId) S.form.productId = st.productId; render(); return; }
+    if (el.id === 'f_line') { S.form.lineId = el.value; const st = lineRun(el.value); if (st.productId) S.form.productId = st.productId; render(); return; }
     if (el.id === 'f_prod') { S.form.productId = el.value; render(); return; }
     if (el.id === 'recDay') { S.recDay = el.value; render(); return; }
     if (el.id === 'recLine') { S.recLine = el.value; render(); return; }
@@ -820,21 +871,6 @@
     if (el.id === 'importLim') { const f = el.files[0]; el.value = ''; return importLimitsMaster(f); }   // limpa para poder escolher o mesmo ficheiro de novo (ex.: após PIN errado)
   });
 
-  async function toggleRun(lineId) {
-    const st = Object.assign({}, S.lineState[lineId] || {});
-    if (!st.running && !st.productId) return toast(t('selectProductFirst'));
-    st.running = !st.running; st.since = Date.now();
-    S.lineState = Object.assign({}, S.lineState, { [lineId]: st });
-    await DB.setConfig('lineState', S.lineState); render();
-  }
-  async function changeLineProduct(lineId, pid, el) {
-    const st = Object.assign({}, S.lineState[lineId] || {});
-    if (st.running && st.productId && pid !== st.productId && !confirm(t('confirmChange'))) { el.value = st.productId; return; }
-    st.productId = pid || null; st.products = pid ? [pid] : []; st.since = Date.now();
-    if (!pid) st.running = false;
-    S.lineState = Object.assign({}, S.lineState, { [lineId]: st });
-    await DB.setConfig('lineState', S.lineState); render();
-  }
   async function savePin() {
     const n1 = $('#pinNew').value, n2 = $('#pinNew2').value;
     if (!/^\d{4,8}$/.test(n1)) return toast(t('pinFormat'));

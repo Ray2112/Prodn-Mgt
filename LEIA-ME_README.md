@@ -1,4 +1,17 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.5.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.6.0
+
+> **v2.6.0 — Registos, não controlo (Zhax, 12-11-2026).** A app regista o que acontece no turno; nada segura a ordem nem a produção.
+> - **Avisos em vez de bloqueios:** bin cheia, grão insuficiente, silo de outra linha, receita, humidificador — a ordem e a transferência gravam-se e o aviso fica registado.
+> - **CQ:** um resultado fora do limite é só aviso (sem retenção). Fecha-se com nova amostra / correcção, ou com a explicação do Chief Miller, do supervisor de CQ ou do Production Manager, com PIN. As amostras podem entrar até 7 dias depois, com a hora da amostragem (marcadas «registada mais tarde»).
+> - **Separador ⚠ Avisos** (antes Retenções) e **resumo de todos os avisos** na página inicial.
+> - **Linha em produção = ordem em curso.** Saem «Arrancar / Parar linha», o estado PARADA e a escolha do produto na página inicial (corrige linha «em produção» sem ordem e produtos de ordens anteriores).
+> - **Mergulho das bins B01–B04:** espaço vazio D (m) → (20 − D) × 6 750 kg; capacidade B01–B04 passa a 135 000 kg.
+> - **Saídas das bins de produto** durante o dia (ensaque, granel, transferência, outro).
+> - **Leitura da manhã:** acima da capacidade ou produto diferente do registado = aviso; a leitura fica gravada.
+> - **Preventiva:** tarefa sem registo conta como em atraso.
+> - **Envio diário:** aviso na página inicial quando o telemóvel não está ligado ao Dropbox, o envio falhou ou o dia de ontem não foi enviado.
+>
+> *EN:* records, not control. Nothing blocks a job: operational problems are recorded warnings; QC out-of-limit results are warnings (no hold) closed by a correction or an explanation (Chief Miller / QC supervisor / Production Manager, PIN); samples accepted up to 7 days late. Warnings tab and Home summary. A line runs when a job runs (Start/Stop line removed). B01–B04 dips (20 − D) × 6 750 kg, capacity 135 t. Product bin dispatch. Preventive tasks with no record are overdue. Upload warning.
 
 > **v2.5.0 — Códigos de paragem v3 (Downtime Codes v3).** Lista de 60 códigos segundo as decisões de 5, 6 e 9 de novembro de 2026.
 > - P25 (ROLL DAMAGE IN PRODUCTION) removido; os registos antigos mantêm o código guardado.

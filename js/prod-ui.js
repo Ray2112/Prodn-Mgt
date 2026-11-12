@@ -315,7 +315,7 @@ window.ProdUI = function (C) {
     const rows = r.calc.parts ? `<div class="kv"><span>${esc(t('fromSilos'))}</span><b>${esc(r.calc.parts.map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}</b></div>` : '';
     const free = isNum(r.calc.freeKg) ? `<div class="kv"><span>${esc(t('freeInBin'))}</span><b>${fmtKg(r.calc.freeKg)} kg</b></div>` : '';
     return `${rows}${free}${r.errors.length ? `<div class="dec d-reject"><b>${esc(t('trBlocked'))}</b>${r.errors.map(e => `<div class="li">• ${esc(trErrText(e))}</div>`).join('')}</div>` : `<div class="dec d-accept"><b>${esc(t('trOk'))}</b></div>`}
-      ${r.warnings.length ? `<div class="dec d-warn">${r.warnings.map(w => `<div class="li">• ${esc(t('jw_' + w.code, w))}</div>`).join('')}</div>` : ''}`;
+      ${r.warnings.length ? `<div class="dec d-warn">${r.warnings.map(w => `<div class="li">• ${esc(w.soft ? trErrText(w) : t('jw_' + w.code, w))}</div>`).join('')}</div>` : ''}`;
   }
   async function saveTransfer() {
     const f = S.trForm;
@@ -324,7 +324,7 @@ window.ProdUI = function (C) {
     if (r.errors.length) { keepScroll(); return C.toast(t('trBlocked')); }
     const tms = now(), sn = snapshot();
     const m = Object.assign(base(tms), { type: 'TRANSFER', binId: f.binId, t: tms, kg: r.values.kg, parts: r.calc.parts,
-      snapshotUid: sn ? sn.uid : null, warnings: r.warnings.map(w => w.code + (w.silo ? ':' + w.silo : '')), by: String(f.by).trim() });
+      snapshotUid: sn ? sn.uid : null, warnings: r.warnings.map(w => w.code + (w.silo ? ':' + w.silo : '') + (w.bin ? ':' + w.bin : '')), by: String(f.by).trim() });
     try { await DB.add('grainMoves', m); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = m.by; await DB.setConfig('operator', S.operator);
     S.trForm = null; await reload(); C.toast(t('trSaved', { kg: fmtKg(m.kg), b: m.binId })); keepScroll();
@@ -371,6 +371,7 @@ window.ProdUI = function (C) {
       ${P.jobOutputs(j).map(o => `<div class="kv"><span>${esc(t('expectedProduct'))}${P.jobOutputs(j).length > 1 ? ' · ' + esc(C.prodName(o.productId)) : ''}</span><b>${isNum(o.expectedKg) ? fmtKg(o.expectedKg) + ' kg (' + esc(C.fmtNum(o.extraction)) + ' %)' : esc(t('extractionNotSet'))}${P.jobOutputs(j).length > 1 ? ' → ' + esc((o.bins || []).join(', ')) : ''}</b></div>`).join('')}
       ${j.status === 'done' && isNum(j.actualKg) ? `<div class="kv"><span>${esc(t('actualGrain'))}</span><b>${fmtKg(j.actualKg)} kg</b></div>` : ''}
       ${j.closeNote ? `<p><small>${esc(j.closeNote)}</small></p>` : ''}
+      ${(j.startWarnings || []).length ? `<div class="dec d-warn"><b>${esc(t('jobWarnTitle'))}</b>${j.startWarnings.map(w => `<div class="li">• ${esc(w.text)}</div>`).join('')}</div>` : ''}
       ${readingsBlock(j)}
       ${qc}
       ${j.status === 'running' && !closing ? `<button class="btn ghost small" data-closejob="${esc(j.uid)}">${esc(t('closeJob'))}</button>` : ''}
@@ -593,6 +594,8 @@ window.ProdUI = function (C) {
     if (e.code === 'source_incompatible') return t('je_source_incompatible', { bin: e.bin, why: t('why_' + e.why) });
     return t('je_' + e.code, v);
   }
+  // v2.6.0: problemas de operação (soft) usam o texto je_; os restantes avisos o texto jw_
+  const warnText = w => w.soft ? errText(w) : t('jw_' + w.code, w);
   function jobCheckHtml() {
     const r = P.validateJob(S.jobForm, ctxFor());
     const c = r.calc;
@@ -607,7 +610,7 @@ window.ProdUI = function (C) {
     if (c.alloc && c.alloc.length) rows.push(`<div class="kv"><span>${esc(t('fromBins'))}</span><b>${allocText(c.alloc)}</b></div>`);
     return `${rows.join('')}
       ${r.errors.length ? `<div class="dec d-reject"><b>${esc(t('jobBlocked'))}</b>${r.errors.map(e => `<div class="li">• ${esc(errText(e))}</div>`).join('')}</div>` : `<div class="dec d-accept"><b>${esc(t('jobOk'))}</b></div>`}
-      ${r.warnings.length ? `<div class="dec d-warn">${r.warnings.map(w => `<div class="li">• ${esc(t('jw_' + w.code, w))}</div>`).join('')}</div>` : ''}
+      ${r.warnings.length ? `<div class="dec d-warn"><b>${esc(t('jobWarnTitle'))}</b>${r.warnings.map(w => `<div class="li">• ${esc(warnText(w))}</div>`).join('')}</div>` : ''}
       ${jobOptionsHtml(S.jobForm, r)}`;
   }
   async function startJob() {
@@ -631,6 +634,7 @@ window.ProdUI = function (C) {
       extraction: r.calc.extraction, dampenerMaxLh: P.dampenerMax(S.cfgP, f.lineId),
       recipe: { colours: f.recipe.colours.slice(), grades: f.recipe.grades.slice(), source: 'job' },
       warnings: r.warnings.map(w => w.code + (w.bin ? ':' + w.bin : '') + (w.productId ? '@' + w.productId : '')),
+      startWarnings: r.warnings.filter(w => w.soft).map(w => ({ code: w.code, text: warnText(w) })),   // v2.6.0: a ordem arranca; os avisos ficam registados
       leader: String(f.leader).trim(), leaderCrew: leaderCrewOf(String(f.leader).trim())
     });
     job.readings = [{ uid: newUid(), deviceId: S.deviceId, createdAt: new Date(now()).toISOString(), t: tms, crew: L.crewOfTime(tms), period: job.period, prodDay: job.prodDay, m0: job.m0, waterLh: job.waterLh, by: job.leader, kind: 'start' }];
@@ -927,11 +931,14 @@ window.ProdUI = function (C) {
           <span class="chip ${st.productId ? 'd-warn' : 'd-accept'}">${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</span></div>${levelBar(b.id)}
           ${st.since ? `<small>${esc(t('since'))} ${esc(C.fmtDT(st.since))}${job ? ' · ' + esc(C.lineName(job.lineId)) + (job.status === 'running' ? ' (' + esc(t('js_running')) + ')' : '') : ''}${st.last && st.last.by ? ' · ' + esc(st.last.by) : ''}</small>` : ''}
           ${mine ? `<div class="holdform">
+            ${mine === 'out' ? `<div class="grid2"><label class="fld req">${esc(t('outKg'))}<input inputmode="decimal" id="ba_kg"></label>
+              <label class="fld req">${esc(t('outDest'))}<select id="ba_dest">${P.OUT_DESTS.map(d => `<option value="${d}">${esc(t('dest_' + d))}</option>`).join('')}</select></label></div>
+              <label class="fld">${esc(t('notes'))}<input id="ba_note"></label>` : ''}
             ${mine === 'set' ? `<label class="fld req">${esc(t('product'))}<select id="ba_prod"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}">${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
             <label class="fld req">${esc(t('name'))}<input id="ba_by" value="${esc(S.operator)}"></label>
-            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="ba_pin"></label><p class="sub">${esc(t('setBinNote'))}</p>` : `<p class="sub">${esc(t('emptyBinNote'))}</p>`}
-            <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
-          : `<div class="row">${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button></div>`}</div>`;
+            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="ba_pin"></label><p class="sub">${esc(t('setBinNote'))}</p>` : mine === 'out' ? `<p class="sub">${esc(t('outNote'))}</p>` : `<p class="sub">${esc(t('emptyBinNote'))}</p>`}
+            <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : mine === 'out' ? 'outbin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
+          : `<div class="row">${st.productId ? `<button class="btn small" data-binact="out" data-bin="${esc(b.id)}">${esc(t('binOutBtn'))}</button>` : ''}${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button></div>`}</div>`;
       }).join('')}</section>`;
   }
   // ---------- totais das bins de manhã (v2.4.0) ----------
@@ -956,31 +963,49 @@ window.ProdUI = function (C) {
     P.STOCK_KINDS.forEach(k => {
       h += `<h4>${esc(t('stockKind_' + k))}</h4><table class="tbl stock"><tr><th></th><th>${esc(t('stockKg'))}</th>${k === 'product' ? `<th>${esc(t('product'))}</th>` : ''}</tr>` +
         B.filter(b => b.kind === k).map(b => { const x = f.levels[b.id] || {};
-          return `<tr><td><b>${esc(b.id)}</b><br><small>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : ''}</small></td><td><input inputmode="decimal" data-stk="${esc(b.id)}|kg" value="${esc(x.kg || '')}"></td>${k === 'product'
+          const dip = k === 'dirty' && P.DIP.bins.indexOf(b.id) >= 0, dk = dip && String(x.dipM || '').trim() !== '' ? P.dipKg(x.dipM) : null;
+          const kgCell = dip ? `<label class="fld">${esc(t('dipD'))}<input inputmode="decimal" data-stk="${esc(b.id)}|dipM" value="${esc(x.dipM || '')}"></label><small id="dipkg_${esc(b.id)}">${dipKgText(x.dipM, dk)}</small>`
+            : `<input inputmode="decimal" data-stk="${esc(b.id)}|kg" value="${esc(x.kg || '')}">`;
+          return `<tr><td><b>${esc(b.id)}</b><br><small>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : ''}</small></td><td>${kgCell}</td>${k === 'product'
             ? `<td><select data-stk="${esc(b.id)}|productId"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}" ${x.productId === p.id ? 'selected' : ''}>${esc(C.prodName(p.id))}</option>`).join('')}</select></td>` : ''}</tr>`; }).join('') + '</table>';
     });
     return h + `<label class="fld req">${esc(t('name'))}<input data-stk="by" value="${esc(f.by)}"></label>
       <button class="btn primary big" data-pact="stocksave">${esc(t('save'))}</button><button class="btn ghost" data-pact="stockcancel">${esc(t('cancel'))}</button></section>`;
   }
+  // v2.6.0: mergulho das bins de milho sujo, (20 − D) × 6 750 kg
+  const dipKgText = (raw, kg) => String(raw || '').trim() === '' ? esc(t('dipHint')) : isNum(kg) ? '= ' + fmtKg(kg) + ' kg' : esc(t('dipBad'));
   function newStockForm() {
     const levels = {};
     P.stockBins(S.cfgP).filter(b => b.kind === 'product').forEach(b => { const st = P.binState(b.id, S.binEvents); levels[b.id] = { kg: '', productId: st.productId || '' }; });
     S.stockForm = { levels, by: S.operator };
   }
+  const stockMsg = e => t((e.warn ? 'jw_' : 'je_') + e.code, { bin: e.bin, cap: isNum(e.cap) ? fmtKg(e.cap) : '', kg: isNum(e.kg) ? fmtKg(e.kg) : '', max: e.max || '', current: e.current ? C.prodName(e.current) : '' });
   async function stockSave() {
     const f = S.stockForm, r = P.validateBinStock(f, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
-    if (r.errors.length) return C.toast(r.errors.map(e => t('je_' + e.code, { bin: e.bin, cap: isNum(e.cap) ? fmtKg(e.cap) : '', current: e.current ? C.prodName(e.current) : '' })).join(' · '));
+    if (r.errors.length) return C.toast(r.errors.map(stockMsg).join(' · '));
     const tms = now(), by = String(f.by).trim();
     // leitura + conteúdo das bins de produto (SET/EMPTY), tudo-ou-nada
-    const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by }) }].concat(r.binOps.map((o, i) =>
+    const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, warnings: r.warnings.map(w => w.code + ':' + w.bin) }) }].concat(r.binOps.map((o, i) =>
       ({ store: 'binEvents', op: 'add', obj: Object.assign(base(tms), { binId: o.binId, type: o.type, productId: o.productId, t: tms, seq: i + 1, by, previous: o.previous, source: 'stock' }) })));
     try { await DB.batch(ops); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = String(f.by).trim(); await DB.setConfig('operator', S.operator);
-    S.stockForm = null; await reload(); C.toast(t('stockSaved')); keepScroll();
+    S.stockForm = null; await reload();
+    C.toast(r.warnings.length ? t('stockSaved') + ' — ' + r.warnings.map(w => stockMsg(Object.assign({ warn: true }, w))).join(' · ') : t('stockSaved')); keepScroll();
   }
   // Aviso na página inicial: leitura do dia de produção em falta
   const stockDue = () => !P.stockDone(S.stocks, L.prodDay(now()));
 
+  // v2.6.0: saída de produto da bin durante o dia (ensaque, granel, transferência, outra); baixa o nível, não muda o conteúdo
+  async function binOut() {
+    const id = S.binAct.id;
+    const r = P.validateDispatch({ binId: id, kg: $('#ba_kg').value, dest: $('#ba_dest').value, by: $('#ba_by').value, note: $('#ba_note').value }, S.cfgP, S.binEvents);
+    if (r.errors.length) return C.toast(r.errors.map(e => t('je_' + e.code, { bin: e.bin, field: e.field ? t('f_' + e.field) : '' })).join(' · '));
+    const tms = now(), v = r.values;
+    try { await DB.add('binEvents', Object.assign(base(tms), { binId: id, type: 'OUT', productId: v.productId, kg: v.kg, dest: v.dest, note: v.note, t: tms, seq: 0, by: v.by })); }
+    catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = v.by; await DB.setConfig('operator', S.operator);
+    S.binAct = null; await reload(); C.toast(t('outSaved', { kg: fmtKg(v.kg), b: id })); keepScroll();
+  }
   async function binAction(mode) {
     const id = S.binAct.id, by = $('#ba_by').value.trim();
     if (!by) return C.toast(t('needName'));
@@ -1158,7 +1183,7 @@ window.ProdUI = function (C) {
     if (el.dataset.emptydirty) { S.emptyBin = el.dataset.emptydirty; keepScroll(); return; }
     if (el.dataset.jmode) { S.jobForm.mode = el.dataset.jmode === 'blend' ? 'blend' : 'seq'; keepScroll(); return; }
     if (el.dataset.logact) { S.logAct = { uid: el.dataset.uid, mode: el.dataset.logact === 'close' ? 'close' : 'void' }; keepScroll(); return; }
-    if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: el.dataset.binact === 'set' ? 'set' : 'empty' }; keepScroll(); return; }
+    if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
     switch (el.dataset.pact) {
       case 'newjob': newJobForm(); keepScroll(); return;
       case 'addoutput': S.jobForm.outputs.push(newOutput()); keepScroll(); return;
@@ -1184,6 +1209,7 @@ window.ProdUI = function (C) {
       case 'shiftxlsx': return shiftExcel();
       case 'emptybin': return binAction('empty');
       case 'setbin': return binAction('set');
+      case 'outbin': return binOut();
       case 'cancelba': S.binAct = null; keepScroll(); return;
       case 'saveprodset': return saveProdSet();
       case 'dbsignin': return dropboxSignIn();
@@ -1201,6 +1227,7 @@ window.ProdUI = function (C) {
     const k = el.dataset.stk;
     if (k === 'by') { S.stockForm.by = el.value; return; }
     const [id, f] = k.split('|'); S.stockForm.levels[id] = Object.assign({}, S.stockForm.levels[id], { [f]: el.value });
+    if (f === 'dipM') { const o = $('#dipkg_' + CSS.escape(id)); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); }
   }
   function onInput(el) {
     if (el.dataset.jbl && S.jobForm) {
@@ -1253,5 +1280,16 @@ window.ProdUI = function (C) {
     return false;
   }
 
-  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue };
+  // v2.6.0: aviso de envio na página inicial — telemóvel sem ligação ao Dropbox, último envio falhado, ou dia de ontem por enviar
+  function uploadIssue() {
+    if (!window.DayRecords || !dbCfg()) return null;
+    if (!dbSess()) return t('upNotConnected');
+    const s = dayStatus();
+    if (s.failed) return t('upFailed', { e: s.lastError || '' });
+    const y = L.prodDay(now() - 24 * 3600000);
+    if (!lsGet(DAY_SENT_KEY, {})[window.DayRecords.dayPath(dbCfg().recordsDir, y)]) return t('upNotSent', { d: y });
+    return null;
+  }
+  const newRec = tms => base(tms);
+  return { load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };

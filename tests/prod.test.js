@@ -30,10 +30,10 @@ t('caudal por defeito = capacidade/24', () => {
   assert.strictEqual(P.defaultFeedKgh(c, 'X'), null);
 });
 
-t('dados mestre: S01–S21; B01–B04 sujo 130 000 kg (C/D); B05–B06 temperado C 95 000 kg; B07–B08 D 55 000 kg; silos de produto B', () => {
+t('dados mestre: S01–S21; B01–B04 sujo 135 000 kg (C/D); B05–B06 temperado C 95 000 kg; B07–B08 D 55 000 kg; silos de produto B', () => {
   const c = P.defaultProdConfig();
   assert.strictEqual(c.grainSilos.length, 21); assert.strictEqual(c.grainSilos[0], 'S01'); assert.strictEqual(c.grainSilos[20], 'S21');
-  assert.deepStrictEqual(c.dirtyBins, ['B01', 'B02', 'B03', 'B04'].map(id => ({ id, lines: ['C', 'D'], capKg: 130000 })));
+  assert.deepStrictEqual(c.dirtyBins, ['B01', 'B02', 'B03', 'B04'].map(id => ({ id, lines: ['C', 'D'], capKg: 135000 })));
   assert.deepStrictEqual(c.temperedBins, [{ id: 'B05', lines: ['C'], capKg: 95000 }, { id: 'B06', lines: ['C'], capKg: 95000 },
     { id: 'B07', lines: ['D'], capKg: 55000 }, { id: 'B08', lines: ['D'], capKg: 55000 }]);
   assert.deepStrictEqual(c.bins.map(b => b.id), ['B34', 'B35', 'B40', 'B43', 'B44', 'B45', 'B46', 'B47', 'B09', 'B10']);
@@ -143,26 +143,26 @@ t('transferência válida: esvazia o 1.º silo, depois o seguinte', () => {
   const r = P.validateTransfer(baseTr(), tctx());
   assert.deepStrictEqual(codes(r), []);
   assert.deepStrictEqual(r.calc.parts, [part('S01', 60000), part('S02', 40000)]);
-  assert.strictEqual(r.calc.freeKg, 130000);
+  assert.strictEqual(r.calc.freeKg, 135000);
   assert.ok(r.warnings.some(w => w.code === 'silo_event' && w.silo === 'S02'));
   assert.ok(r.warnings.some(w => w.code === 'snapshot_old'));
 });
 
 t('transferência: silo fora da lista canónica, outro cereal, Vermelho, stock, capacidade', () => {
   const t1 = baseTr(); t1.silos = ['Silo 15'];
-  assert.ok(codes(P.validateTransfer(t1, tctx())).includes('silo_not_canonical'));
+  assert.ok(P.validateTransfer(t1, tctx()).warnings.some(e => e.code === 'silo_not_canonical'));
   t1.silos = ['S06'];
-  assert.ok(P.validateTransfer(t1, tctx()).errors.some(e => e.code === 'silo_other_cereal' && e.cereal === 'Trigo'));
+  assert.ok(P.validateTransfer(t1, tctx()).warnings.some(e => e.code === 'silo_other_cereal' && e.cereal === 'Trigo'));
   t1.silos = ['S05'];
-  assert.ok(codes(P.validateTransfer(t1, tctx())).includes('silo_red'));
+  assert.ok(P.validateTransfer(t1, tctx()).warnings.some(e => e.code === 'silo_red'));
   t1.silos = ['S01'];
-  assert.ok(P.validateTransfer(t1, tctx()).errors.some(e => e.code === 'silo_short' && e.short === 40000));
-  // B01 já com 100 t: só cabem 30 t
+  assert.ok(P.validateTransfer(t1, tctx()).warnings.some(e => e.code === 'silo_short' && e.short === 40000));
+  // B01 já com 100 t: só cabem 35 t (135 t)
   const c = tctx({ moves: [mv('B01', [part('S02', 100000)])] });
   const r = P.validateTransfer(Object.assign(baseTr(), { silos: ['S03'], kg: '40.000' }), c);
-  assert.ok(r.errors.some(e => e.code === 'dirty_bin_full' && e.free === 30000));
+  assert.ok(r.warnings.some(e => e.code === 'dirty_bin_full' && e.free === 35000));
   // S02 já transferiu 100 t depois do snapshot → sem stock
-  assert.ok(P.validateTransfer(Object.assign(baseTr(), { binId: 'B02', silos: ['S02'], kg: '10.000' }), c).errors.some(e => e.code === 'silo_short'));
+  assert.ok(P.validateTransfer(Object.assign(baseTr(), { binId: 'B02', silos: ['S02'], kg: '10.000' }), c).warnings.some(e => e.code === 'silo_short'));
   assert.strictEqual(P.availableKg(c.snapshot, c.moves, 'S02'), 0);
   // transferência anterior ao snapshot já está no stock da app de Silos: não desconta
   assert.strictEqual(P.availableKg(c.snapshot, [mv('B01', [part('S02', 100000)], T0 - 1000)], 'S02'), 100000);
@@ -221,13 +221,13 @@ t('ordem válida: repartição pelos silos de moagem, água, caudal, produto esp
 
 t('grão insuficiente nos silos de moagem → seleccionar mais', () => {
   const j = baseJob(); j.sources = ['B01'];
-  const e = P.validateJob(j, ctx()).errors.find(x => x.code === 'source_short');
+  const e = P.validateJob(j, ctx()).warnings.find(x => x.code === 'source_short');
   assert.ok(e); assert.strictEqual(e.short, 40000);
   // grão já tirado por outra ordem em curso não está disponível
   const c = ctx({ jobs: [{ uid: 'x', status: 'running', lineId: 'D', startedAt: T0 + 500, grainKg: 50000, alloc: [{ bin: 'B02', kg: 50000 }] }] });
   assert.ok(!codes(P.validateJob(baseJob(), c)).includes('source_short'));               // 60 000 + 50 000 ≥ 100 000
   const r = P.validateJob(Object.assign(baseJob(), { targetKg: '84.000' }), c);     // 84 000 ÷ 70 % = 120 000 kg
-  assert.ok(r.errors.some(x => x.code === 'source_short' && x.short === 10000));   // 60 000 + 50 000
+  assert.ok(r.warnings.some(x => x.code === 'source_short' && x.short === 10000));   // 60 000 + 50 000
 });
 
 t('conteúdo fora da receita da ordem: aviso, não bloqueia (v1.4.0); silo vazio bloqueia', () => {
@@ -236,14 +236,14 @@ t('conteúdo fora da receita da ordem: aviso, não bloqueia (v1.4.0); silo vazio
   assert.ok(!codes(r).includes('source_incompatible'));
   assert.deepStrictEqual(r.calc.offRecipe.map(x => [x.bin, x.items[0].why]), [['B03', 'colour'], ['B04', 'grade']]);
   const c = ctx(); c.moves = c.moves.filter(m => m.binId !== 'B02');
-  assert.ok(P.validateJob(baseJob(), c).errors.some(x => x.code === 'source_empty' && x.bin === 'B02'));
+  assert.ok(P.validateJob(baseJob(), c).warnings.some(x => x.code === 'source_empty' && x.bin === 'B02'));
 });
 
 t('silos temperados: obrigatório e da linha', () => {
   const j = baseJob(); j.tempered = [];
   assert.ok(codes(P.validateJob(j, ctx())).includes('no_tempered'));
   j.tempered = ['B07'];
-  assert.ok(P.validateJob(j, ctx()).errors.some(x => x.code === 'tempered_line' && x.bin === 'B07'));
+  assert.ok(P.validateJob(j, ctx()).warnings.some(x => x.code === 'tempered_line' && x.bin === 'B07'));
   j.tempered = ['B01'];
   assert.ok(codes(P.validateJob(j, ctx())).includes('tempered_unknown'));
   j.tempered = ['B05']; j.sources = ['B05'];
@@ -286,7 +286,7 @@ t('receita e extracção da ordem: obrigatórias (v1.4.0), campos em falta', () 
 
 t('molhador acima de 2 500 L/h bloqueia', () => {
   const j = baseJob(); j.m0 = '10'; j.m1 = '20'; j.feedKgh = '25000';   // 25 000 kg/h × 10/80 = 3 125 L/h
-  const e = P.validateJob(j, ctx()).errors.find(x => x.code === 'dampener_max');
+  const e = P.validateJob(j, ctx()).warnings.find(x => x.code === 'dampener_max');
   assert.ok(e); assert.strictEqual(e.need, 3125);
   j.feedKgh = '20000';                                                // 2 500 L/h exactamente: permitido
   assert.ok(!codes(P.validateJob(j, ctx())).includes('dampener_max'));
@@ -300,7 +300,7 @@ t('molhador por linha (v1.4.0): C 2 500 L/h, D 1 500 L/h', () => {
   const old = P.defaultProdConfig(); delete old.dampenerMaxLhByLine; assert.strictEqual(P.dampenerMax(old, 'D'), 2500);
   // linha D: 15 000 kg/h × 10/80 = 1 875 L/h → bloqueia; 12 000 kg/h = 1 500 L/h → permitido
   const j = Object.assign(baseJob(), { lineId: 'D', tempered: ['B07'], bins: ['B43'], m0: '10', m1: '20', feedKgh: '15000' });
-  const e = P.validateJob(j, ctx()).errors.find(x => x.code === 'dampener_max');
+  const e = P.validateJob(j, ctx()).warnings.find(x => x.code === 'dampener_max');
   assert.ok(e); assert.strictEqual(e.need, 1875); assert.strictEqual(e.max, 1500);
   j.feedKgh = '12000'; const r = P.validateJob(j, ctx());
   assert.ok(!codes(r).includes('dampener_max')); assert.strictEqual(r.calc.waterLh, 1500); assert.strictEqual(r.calc.dampenerMaxLh, 1500);
@@ -339,7 +339,7 @@ t('silo de moagem repetido e desconhecido', () => {
 t('capacidade dos silos de produto', () => {
   // 100 t de grão × 70 % = 70 t; B34 (60 t) não chega, B34+B35 (120 t) chega
   const j = baseJob(); j.bins = ['B34'];
-  const e = P.validateJob(j, ctx()).errors.find(x => x.code === 'bin_capacity');
+  const e = P.validateJob(j, ctx()).warnings.find(x => x.code === 'bin_capacity');
   assert.ok(e); assert.strictEqual(e.need, 70000); assert.strictEqual(e.cap, 60000);
   j.bins = ['B34', 'B35'];
   assert.ok(!codes(P.validateJob(j, ctx())).includes('bin_capacity'));
@@ -348,7 +348,7 @@ t('capacidade dos silos de produto', () => {
   assert.ok(!codes(r2).includes('bin_capacity'));
   assert.ok(r2.warnings.some(w => w.code === 'bin_level_unknown'));
   // v1.8.0: a capacidade compara a quantidade alvo (kg), por isso não depende da extracção
-  assert.ok(codes(P.validateJob(Object.assign(baseJob(), { bins: ['B34'], targetExtraction: '' }), ctx())).includes('bin_capacity'));
+  assert.ok(P.validateJob(Object.assign(baseJob(), { bins: ['B34'], targetExtraction: '' }), ctx()).warnings.some(w => w.code === 'bin_capacity'));
 });
 
 t('mistura: percentagens, humidade ponderada, stock por silo de moagem', () => {
@@ -363,7 +363,7 @@ t('mistura: percentagens, humidade ponderada, stock por silo de moagem', () => {
   j.blend.B01.pct = '70';
   assert.ok(P.validateJob(j, ctx()).errors.some(e => e.code === 'blend_sum' && e.sum === 130));
   j.blend.B02.pct = '30';
-  const sh = P.validateJob(j, ctx()).errors.find(e => e.code === 'feed_short');
+  const sh = P.validateJob(j, ctx()).warnings.find(e => e.code === 'feed_short');
   assert.ok(sh); assert.strictEqual(sh.bin, 'B01'); assert.strictEqual(sh.short, 10000);
   j.blend.B02.m0 = 'x';
   assert.ok(codes(P.validateJob(j, ctx())).includes('blend_m0'));
@@ -376,7 +376,8 @@ t('fila de alimentação: défice do silo de milho sujo coberto pela fila', () =
   const j = baseJob(); j.mode = 'blend'; j.m0 = ''; j.impurities = '';
   j.blend = { B01: { pct: '70', m0: '12', impurities: '1' }, B02: { pct: '30', m0: '14', impurities: '2' } };
   // B01 precisa de 70 000 kg e tem 60 000 kg → défice 10 000 kg
-  assert.ok(codes(P.validateJob(j, snapCtx())).includes('feed_short'));
+  const all = r => codes(r).concat(r.warnings.filter(w => w.soft).map(w => w.code));   // v2.6.0: problemas de operação são avisos
+  assert.ok(all(P.validateJob(j, snapCtx())).includes('feed_short'));
   j.feedQueue = { B01: ['S05'] };
   const r = P.validateJob(j, snapCtx());
   assert.deepStrictEqual(codes(r), []);
@@ -384,7 +385,7 @@ t('fila de alimentação: défice do silo de milho sujo coberto pela fila', () =
   assert.deepStrictEqual(r.calc.feedPlan[0].switches, []);
   // fila com silo de cereal errado: erro explícito, não usado
   j.feedQueue = { B01: ['S06'] };
-  const bad = codes(P.validateJob(j, snapCtx()));
+  const bad = all(P.validateJob(j, snapCtx()));
   assert.ok(bad.includes('feed_silo_invalid')); assert.ok(bad.includes('feed_short'));
 });
 
@@ -409,7 +410,7 @@ t('produto: troca entre silos de produto registada no plano', () => {
   const r = P.validateJob(j, ctx());
   const o = r.calc.outputs[0];
   assert.ok(Array.isArray(o.binPlan) && Array.isArray(o.binSwitches));
-  if (!r.errors.some(e => e.code === 'bin_capacity')) {
+  if (!r.warnings.some(e => e.code === 'bin_capacity')) {
     const sum = o.binPlan.reduce((a, p) => a + p.kg, 0);
     assert.strictEqual(Math.round(sum * 1000) / 1000, o.expectedKg);
   }
@@ -432,7 +433,7 @@ t('cor/grau fora da receita da ordem: registado como aviso, não bloqueia (opç�
   // outro cereal num silo de moagem bloqueia sempre
   const c = ctx(); c.moves.push(mv('B02', [{ silo: 'S06', kg: 1000, cereal: 'Trigo', colour: '', grade: 'G1' }], T0 + 150));
   const r3 = P.validateJob(j, c);
-  assert.ok(r3.errors.some(e => e.code === 'source_incompatible' && e.bin === 'B02' && e.why === 'other_cereal'));
+  assert.ok(r3.warnings.some(e => e.code === 'source_incompatible' && e.bin === 'B02' && e.why === 'other_cereal'));
 });
 
 
@@ -471,8 +472,8 @@ t('vários produtos (v1.8.0): grão = produto principal (1.º); outros só quant
   ck.moves.push(mv('B03', [part('S07', 400000)], T0 + 200));
   const rk = P.validateJob(jk, ck);
   assert.strictEqual(rk.calc.grainKg, 700000);
-  const cap = rk.errors.find(e => e.code === 'bin_capacity'); assert.ok(cap); assert.strictEqual(cap.productId, 'brew_grits'); assert.strictEqual(cap.need, 210000);
-  assert.ok(!rk.errors.some(e => e.code === 'bin_capacity' && e.productId === 'fuba2'));   // 315 t ≤ 376 t
+  const cap = rk.warnings.find(e => e.code === 'bin_capacity'); assert.ok(cap); assert.strictEqual(cap.productId, 'brew_grits'); assert.strictEqual(cap.need, 210000);
+  assert.ok(!rk.warnings.some(e => e.code === 'bin_capacity' && e.productId === 'fuba2'));   // 315 t ≤ 376 t
   // ordem antiga (v1.4.0) lida pelo mesmo caminho
   const old = { productId: 'super', extraction: 70, expectedKg: 70000, bins: ['B44'] };
   assert.deepStrictEqual(P.jobProducts(old), ['super']);

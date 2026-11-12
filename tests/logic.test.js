@@ -435,3 +435,17 @@ console.log('OK — limitDiff por defeito');
   assert.strictEqual(L.stampContract({ id: 'd' }, null, true).shift, undefined, 'sem hora: sem turno');
   console.log('OK — turno D/N e turma no contrato');
 }
+
+// v2.6.0: avisos de CQ em vez de retenções (Zhax, 12-11-2026)
+{
+  const Lg = require('../js/logic.js');
+  const a = (id, t, decision, extra) => Object.assign({ id, t, lineId: 'C', productId: 'fuba2', decision }, extra || {});
+  const s = [a('1', 100, 'reject'), a('2', 200, 'warn'), a('3', 300, 'accept', { productId: 'super' })];
+  assert.deepStrictEqual(Lg.openQcWarnings(s, new Set(), 0).map(x => x.id), ['2', '1'], 'outro produto não fecha o aviso');
+  assert.deepStrictEqual(Lg.openQcWarnings(s.concat([a('4', 250, 'accept')]), new Set(), 0).map(x => x.id), [], 'amostra aceite posterior fecha');
+  assert.deepStrictEqual(Lg.openQcWarnings(s, new Set(['qc:1']), 0).map(x => x.id), ['2'], 'explicação fecha');
+  assert.deepStrictEqual(Lg.openQcWarnings(s.concat([a('5', 210, 'accept', { correctsId: '2' })]), new Set(), 0).map(x => x.id), [], 'correcção substitui e fecha');
+  assert.deepStrictEqual(Lg.openQcWarnings(s, new Set(), 150).map(x => x.id), ['2'], 'só desde fromT');
+  assert.strictEqual(Lg.isLateEntry(0, 61 * 60000), true); assert.strictEqual(Lg.isLateEntry(0, 60 * 60000), false);
+  console.log('avisos de CQ: OK');
+}

@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.5.0';
+  const VERSION = '2.6.0';
   const DECISIONS = ['record', 'accept', 'warn', 'reject'];   // ordem de gravidade
   const RANK = { record: 0, accept: 1, warn: 2, reject: 3 };
   const CREWS = ['A', 'B', 'C', 'D'];
@@ -264,6 +264,21 @@
     return samples.filter(s => !superseded.has(s.id));
   }
 
+  // ---------- avisos de CQ (v2.6.0) ----------
+  // Zhax, 12-11-2026: um resultado fora do limite é só um aviso (sem retenção). O aviso fica aberto até:
+  //  - uma amostra posterior da mesma linha e produto com resultado aceite (correcção ou nova amostra), ou
+  //  - uma explicação do Chief Miller / supervisor de CQ / Production Manager (clears: Set de chaves 'qc:<id>').
+  function openQcWarnings(samples, clears, fromT) {
+    const eff = effective(samples || []);
+    const cl = clears || new Set();
+    return eff.filter(s => (s.decision === 'warn' || s.decision === 'reject') && (!isFinite(fromT) || s.t >= fromT) && !cl.has('qc:' + s.id)
+      && !eff.some(o => o.lineId === s.lineId && o.productId === s.productId && o.t > s.t && (o.decision === 'accept' || o.decision === 'record')))
+      .sort((a, b) => b.t - a.t);
+  }
+  // Amostra registada mais de 60 min depois da hora de amostragem: fica marcada como tardia (aceite).
+  const LATE_ENTRY_MIN = 60, MAX_BACK_DAYS = 7;
+  const isLateEntry = (t, savedAt) => isFinite(t) && isFinite(savedAt) && savedAt - t > LATE_ENTRY_MIN * 60000;
+
   // ---------- edição de limites ----------
   const LIMIT_FIELDS = ['lo', 'hi', 'warnLo', 'warnHi'];
   // Valida um conjunto de limites de um parâmetro. Devolve lista de códigos de erro.
@@ -485,7 +500,7 @@
     });
     return changed ? Object.assign({}, job, { readings }) : job;
   }
-  const api = { VERSION, DECISIONS, RANK, CREWS, MILL_TYPES, PHYSICAL, COLOUR_SCALE, PARAMS, EXTRA, UNITS, FREQS,
+  const api = { openQcWarnings, isLateEntry, LATE_ENTRY_MIN, MAX_BACK_DAYS, VERSION, DECISIONS, RANK, CREWS, MILL_TYPES, PHYSICAL, COLOUR_SCALE, PARAMS, EXTRA, UNITS, FREQS,
     defaultProducts, defaultConfig, num, pct, evalParam, hasLimits, evaluateSample, worst,
     prodDay, prodDayRange, shiftOf, ymd, dueStatus, newHold, holdAfterSample, addHoldAction,
     effective, validateLimit, limitDiff, dayReport, validBackup, findProduct,

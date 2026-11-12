@@ -18,21 +18,23 @@ t('lista das bins: milho sujo, temperado e produto, com capacidade', () => {
   assert.ok(B.every(b => b.capKg > 0));
 });
 
-t('leitura da manhã: kg (formato angolano), acima da capacidade recusado, produto obrigatório em bin de produto com grão', () => {
+t('leitura da manhã: kg (formato angolano), acima da capacidade = aviso, produto obrigatório em bin de produto com grão', () => {
   let r = P.validateBinStock({ levels: { B01: { kg: '45.000' }, B45: { kg: '120 000', productId: 'super' }, B44: { kg: '0' } }, by: 'Ana' }, cfgP);
   assert.deepStrictEqual(r.errors, []);
-  assert.deepStrictEqual(r.values, { B01: { kg: 45000, productId: null, kind: 'dirty', capKg: 130000 }, B45: { kg: 120000, productId: 'super', kind: 'product', capKg: 188000 }, B44: { kg: 0, productId: null, kind: 'product', capKg: 188000 } });
+  assert.deepStrictEqual(r.values, { B01: { kg: 45000, productId: null, kind: 'dirty', capKg: 135000 }, B45: { kg: 120000, productId: 'super', kind: 'product', capKg: 188000 }, B44: { kg: 0, productId: null, kind: 'product', capKg: 188000 } });
   r = P.validateBinStock({ levels: { B01: { kg: '140.000' }, B45: { kg: '10.000' }, B02: { kg: 'abc' } }, by: '' }, cfgP);
-  assert.deepStrictEqual(codes(r), ['stock_over_cap', 'stock_bad', 'stock_product', 'stock_by']);
+  assert.deepStrictEqual(codes(r), ['stock_bad', 'stock_product', 'stock_by']);
+  assert.deepStrictEqual(r.warnings.map(w => w.code), ['stock_over_cap'], 'v2.6.0: acima da capacidade é aviso, a leitura fica gravada');
   assert.deepStrictEqual(codes(P.validateBinStock({ levels: {}, by: 'Ana' }, cfgP)), ['stock_none']);
 });
 
-t('leitura actualiza o conteúdo das bins de produto (SET/EMPTY); produto diferente recusado', () => {
+t('leitura actualiza o conteúdo das bins de produto (SET/EMPTY); produto diferente = aviso', () => {
   const ev = [{ binId: 'B44', type: 'FILL', productId: 'fuba1', t: T0 - H }, { binId: 'B47', type: 'FILL', productId: 'super', t: T0 - H }];
   let r = P.validateBinStock({ levels: { B45: { kg: '100', productId: 'super' }, B47: { kg: '0' } }, by: 'Ana' }, cfgP, { binEvents: ev, jobs: [] });
   assert.deepStrictEqual(r.binOps.map(o => [o.binId, o.type, o.productId]), [['B45', 'SET', 'super'], ['B47', 'EMPTY', null]]);
   r = P.validateBinStock({ levels: { B44: { kg: '100', productId: 'super' } }, by: 'Ana' }, cfgP, { binEvents: ev, jobs: [] });
-  assert.deepStrictEqual(codes(r), ['stock_product_mismatch']);
+  assert.deepStrictEqual([codes(r), r.warnings.map(w => w.code), r.binOps.map(o => [o.binId, o.type, o.productId, o.previous])],
+    [[], ['stock_product_mismatch'], [['B44', 'SET', 'super', 'fuba1']]], 'v2.6.0: produto diferente = aviso; a leitura passa a definir o conteúdo');
   r = P.validateBinStock({ levels: { B47: { kg: '0' } }, by: 'Ana' }, cfgP, { binEvents: ev, jobs: [{ status: 'running', bins: ['B47'] }] });
   assert.deepStrictEqual(r.binOps, [], 'ordem em curso a encher: não esvazia');
 });
@@ -42,7 +44,7 @@ t('milho sujo: leitura + transferências − ordens depois da leitura; vazio rec
   const moves = [mv('B01', 999, T0 - H), mv('B01', 30000, T0 + H)];
   const jobs = [{ uid: 'j', status: 'running', startedAt: T0 + 2 * H, alloc: [{ bin: 'B01', kg: 20000 }] }, { uid: 'old', status: 'running', startedAt: T0 - H, alloc: [{ bin: 'B01', kg: 5000 }] }];
   let L = P.binLevel('B01', { cfgP, stocks, moves, jobs });
-  assert.deepStrictEqual([L.kg, L.inKg, L.outKg, L.freeKg, L.state, L.source], [60000, 30000, 20000, 70000, 'OK', 'reading']);
+  assert.deepStrictEqual([L.kg, L.inKg, L.outKg, L.freeKg, L.state, L.source], [60000, 30000, 20000, 75000, 'OK', 'reading']);
   L = P.binLevel('B01', { cfgP, stocks, moves: moves.concat([mv('B01', 0, T0 + 3 * H, 'EMPTY')]), jobs });
   assert.deepStrictEqual([L.kg, L.state], [0, 'EMPTY'], 'vazio depois da leitura');
   assert.strictEqual(P.binLevel('B02', { cfgP, stocks, moves: [mv('B02', 40000, T0)], jobs: [] }).source, 'calc');
@@ -71,12 +73,12 @@ function ctx(extra) {
 const baseJob = bins => ({ productId: 'super', lineId: 'C', targetKg: '70.000', sources: ['B01', 'B02'], tempered: ['B05'], bins,
   m0: '12,0', impurities: '1,5', m1: '16', feedKgh: '', recipe: { colours: ['Branco'], grades: ['G1'] }, targetExtraction: '70' });
 
-t('ordem: bin cheia bloqueia; espaço livre real; fila para a próxima bin; próximas bins sugeridas', () => {
+t('ordem: bin cheia = aviso; espaço livre real; fila para a próxima bin; próximas bins sugeridas', () => {
   const stocks = [stock(T0, { B45: { kg: 188000, productId: 'super' }, B44: { kg: 150000, productId: 'super' }, B46: { kg: 0 } })];
   let r = P.validateJob(baseJob(['B45']), ctx({ stocks }));
-  assert.ok(codes(r).indexOf('bin_full') >= 0, 'B45 cheia');
+  assert.ok(r.warnings.some(w => w.code === 'bin_full'), 'B45 cheia: aviso (v2.6.0)');
   r = P.validateJob(baseJob(['B44']), ctx({ stocks }));
-  const cap = r.errors.find(e => e.code === 'bin_capacity');
+  const cap = r.warnings.find(e => e.code === 'bin_capacity');
   assert.deepStrictEqual([cap.need, cap.cap], [70000, 38000], 'só cabem 38 000 kg na B44');
   assert.ok(!r.warnings.some(w => w.code === 'bin_level_unknown'), 'com leitura, o nível já não é desconhecido');
   // pela ordem das Definições; B45 (cheia) e B43 (linha D) ficam de fora; B46 lida a zero: 188 000 kg livres
@@ -91,12 +93,12 @@ t('ordem: bin cheia bloqueia; espaço livre real; fila para a próxima bin; pró
 t('fonte da ordem e transferência usam a leitura da manhã', () => {
   const stocks = [stock(T0, { B01: { kg: 0 }, B02: { kg: 100000 } })];
   const r = P.validateJob(baseJob(['B46']), ctx({ stocks }));
-  assert.ok(codes(r).indexOf('source_empty') >= 0, 'B01 lida a zero');
-  const full = [stock(T0, { B03: { kg: 125000 } })];
+  assert.ok(r.warnings.some(w => w.code === 'source_empty'), 'B01 lida a zero');
+  const full = [stock(T0, { B03: { kg: 130000 } })];
   const tr = P.validateTransfer({ binId: 'B03', silos: [], kg: '10.000', silosConfirmed: true }, { cfgP, millType: 'maize', snapshot: null, moves: [], jobs: [], stocks: full });
-  assert.ok(codes(tr).indexOf('dirty_bin_full') >= 0, 'só cabem 5 000 kg');
+  assert.ok(tr.warnings.some(w => w.code === 'dirty_bin_full' && w.free === 5000), 'só cabem 5 000 kg');
   const st = P.buildBinsStatus(cfgP, [], [], { now: T0, stocks: full });
-  assert.strictEqual(st.bins.find(b => b.id === 'B03').kg, 125000);
+  assert.strictEqual(st.bins.find(b => b.id === 'B03').kg, 130000);
 });
 
 t('cópia de segurança aceita binStock', () => {
