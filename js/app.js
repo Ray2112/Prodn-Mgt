@@ -131,6 +131,7 @@
     const out = [], cl = clears(), nowMs = Date.now();
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
     const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings' });
+    const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift' });
     if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins' });
     const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
     L.openQcWarnings(S.samples, cl, from).forEach(s => out.push({ key: 'qc:' + s.id, level: s.decision === 'reject' ? 'bad' : 'warn',
@@ -911,7 +912,7 @@
   // ---------- arranque ----------
   async function start() {
     PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin, pinMsg, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
-      lineName, lineStatus, anyLabel, decLabel, decCls, waLink });
+      lineName, lineStatus, anyLabel, decLabel, decCls, waLink, plan: () => S.plan });
     // Manutenção: registos na loja 'maint'; passagens de rolos = dados mestre js/roll-passages.js (tabelas de estriagem C e D)
     const crewOf = (day, period) => L.crewOfTime(L.prodDayRange(day)[0] + (period === 'N' ? 12 : 0) * 3600000 + 60000);
     const mUid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -928,9 +929,11 @@
       load: () => DB.all('fssc'), add: rec => DB.add('fssc', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
       operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })),
       complaints: true, products: () => products().map(p => prodName(p.id)) });
-    S.rollHours = readRollHours();
+    S.rollHours = readRollHours(); S.plan = readPlan();
     await load(); render();
     refreshRollHours().then(ok => { if (ok) render(); });
+    refreshPlan().then(ok => { if (ok) render(); });
+    setInterval(() => refreshPlan(), 3600000);
     setInterval(() => refreshRollHours().then(ok => { if (ok && S.view === 'maint') render(); }), 3600000);
     setInterval(() => { const c = $('#clock'); if (c) c.textContent = fmtTime(Date.now()); }, 15000);
     setInterval(checkOverdue, 60000);
@@ -952,6 +955,24 @@
       if (!okHours(h)) return false;
       S.rollHours = h;
       try { localStorage.setItem(RH_KEY, JSON.stringify(h)); } catch (e) { /* sem espaço: fica só em memória */ }
+      return true;
+    } catch (e) { return false; }
+  }
+  // v2.7.0: plano de produção (production-plan.json do pipeline: OEE THROUGHPUT, TARGET (kg)) para o login de turno
+  const PLAN_KEY = 'mill-qc.plan.v1';
+  const okPlan = p => !!(p && p.kind === 'production-plan' && p.days && typeof p.days === 'object');
+  function readPlan() { try { const p = JSON.parse(localStorage.getItem(PLAN_KEY) || 'null'); return okPlan(p) ? p : null; } catch (e) { return null; } }
+  async function refreshPlan() {
+    try {
+      const tok = await PU.dropboxToken();
+      if (!tok) return false;
+      const r = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Dropbox-API-Arg': JSON.stringify({ path: '/production-plan.json' }) } });
+      if (!r.ok) return false;
+      const p = await r.json();
+      if (!okPlan(p)) return false;
+      S.plan = p;
+      try { localStorage.setItem(PLAN_KEY, JSON.stringify(p)); } catch (e) { /* sem espaço: fica só em memória */ }
       return true;
     } catch (e) { return false; }
   }

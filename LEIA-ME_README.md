@@ -1,4 +1,14 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.6.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.7.0
+
+> **v2.7.0 — Turno e paragens (Zhax, 12-11-2026).**
+> - **Produção → Turno:** login de turno (chefe de turno, trabalhos a fazer com os objectivos do plano, estado actual, leituras iniciais das 7 balanças: Limpeza, Impurezas, B1, Fuba 1, Fuba 2, Gérmen, Farinha animal = Z.F, comentários) e logout (estado, actividades feitas, leituras finais, quantidade de cada balança no turno, % do objectivo do dia).
+> - **Plano:** o objectivo vem do OEE (folha THROUGHPUT, coluna TARGET (kg)), enviado pelo pipeline em production-plan.json; o ficheiro Production Plan - 2026.xlsx deixa de ser usado.
+> - **Produção → Paragens:** categoria (mecânica, eléctrica, processo, outra) → código dos Downtime Codes v3 (avarias para mecânica e eléctrica) → início e fim (duração calculada) → falha e acção.
+> - **Arranque da produção:** a ordem regista a hora de arranque (até 24 h atrás).
+> - **Parar linha e relatório do turno:** fecha a ordem e descarrega o relatório do turno em Excel, que passa a ter a folha «Turno — login e logout».
+> - Aviso na página inicial quando o turno actual não tem login (depois da primeira meia hora).
+>
+> *EN:* shift login (leader, jobs and targets from the plan, state, 7 scale readings, comments) and logout (state, activities done, end readings, shift quantities, % of the day target); plan from the OEE THROUGHPUT TARGET column via production-plan.json; Stoppages tab (category → v3 code → start/finish → fault and action); job start time; "Stop line and shift report" closes the job and downloads the Excel shift report; Home warning when the current shift has no login.
 
 > **v2.6.0 — Registos, não controlo (Zhax, 12-11-2026).** A app regista o que acontece no turno; nada segura a ordem nem a produção.
 > - **Avisos em vez de bloqueios:** bin cheia, grão insuficiente, silo de outra linha, receita, humidificador — a ordem e a transferência gravam-se e o aviso fica registado.

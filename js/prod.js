@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.6.0';
+  const VERSION = '2.7.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -958,6 +958,58 @@
     return { issues, acts, jobs, downtimeMin: downtime, byTier3, byOee, openIssues: issues.filter(i => i.status !== 'closed').length };
   }
 
+  // ---------- login / logout de turno e paragens (v2.7.0, Zhax 12-11-2026) ----------
+  // Balanças do turno, com os nomes do SCADA (Z.F = Animal Meal, confirmado por Zhax a 12-11-2026).
+  const SCALES = ['clean', 'screenings', 'b1', 'flour1', 'flour2', 'germ', 'zf'];
+  const SCALE_SCADA = { clean: 'Clean', screenings: 'Screening', b1: 'B1', flour1: 'Flour 1', flour2: 'Flour 2', germ: 'Germ', zf: 'Z.F' };
+  // Categoria da paragem → nível dos Downtime Codes v3 (mecânica e eléctrica são avarias: Breakdown)
+  const STOP_CATS = ['mechanical', 'electrical', 'process', 'other'];
+  const STOP_TIER = { mechanical: 'Breakdown', electrical: 'Breakdown', process: 'Process', other: 'Other' };
+  const codesForCat = (cat, list) => (list || DOWNTIME_CODES).filter(c => c.active !== false && c.tier3 === STOP_TIER[cat]);
+  // f: {category, code, start, end (ms), fault, action}. Duração calculada (minutos inteiros); avaria precisa de descrição da falha.
+  function validateStop(f, list) {
+    const e = [];
+    if (STOP_CATS.indexOf(f.category) < 0) e.push('category');
+    const cd = f.code ? findCode(f.code, list) : null;
+    if (!cd || cd.active === false || (STOP_TIER[f.category] && cd.tier3 !== STOP_TIER[f.category])) e.push('code');
+    const a = Number(f.start), b = Number(f.end);
+    if (!isFinite(a) || !f.start) e.push('start');
+    if (!isFinite(b) || !f.end) e.push('end');
+    else if (isFinite(a) && (b < a || b - a > 24 * 3600000)) e.push('end');
+    if (!String(f.fault || '').trim()) e.push('fault');
+    return { errors: e, downtimeMin: e.indexOf('start') < 0 && e.indexOf('end') < 0 ? Math.round((b - a) / 60000) : null };
+  }
+  // Leituras das balanças (texto → kg); em branco fica null (nunca 0); inválido → erro
+  function readScales(o) {
+    const out = {}, bad = [];
+    SCALES.forEach(k => {
+      const raw = o && o[k] !== undefined && o[k] !== null ? String(o[k]).trim() : '';
+      if (raw === '') { out[k] = null; return; }
+      const v = num(raw, 'kg');
+      if (v === null || isNaN(v) || v < 0) bad.push(k); else out[k] = r3(v);
+    });
+    return { values: out, bad };
+  }
+  // Quantidade do turno por balança = fim − início (só com as duas leituras; negativa fica null e é assinalada)
+  function shiftScaleKg(start, end) {
+    const kg = {}, flags = [];
+    SCALES.forEach(k => {
+      const a = start && start[k], b = end && end[k];
+      if (!isNum(a) || !isNum(b)) { kg[k] = null; return; }
+      if (b < a) { kg[k] = null; flags.push(k); return; }
+      kg[k] = r3(b - a);
+    });
+    return { kg, negative: flags };
+  }
+  // Plano do dia (production-plan.json do pipeline: OEE THROUGHPUT, coluna TARGET (kg)) para a linha
+  function dayPlan(plan, day, lineId) {
+    return ((plan && plan.days && plan.days[day]) || []).filter(r => !lineId || (r.line || 'C') === lineId);
+  }
+  // % do objectivo do dia: B1 do dia até agora (turnos com login e logout) ÷ objectivo. Sem objectivo ou sem B1 → null.
+  function achievedPct(dayB1Kg, targetKg) {
+    return isNum(dayB1Kg) && isNum(targetKg) && targetKg > 0 ? Math.round(dayB1Kg / targetKg * 1000) / 10 : null;
+  }
+
   // Chefe de turno da turma (vazio se não definido)
   const crewLeader = (cfgP, crew) => ((cfgP && cfgP.leaders) || {})[crew] || '';
   const leaderNames = cfgP => ['A', 'B', 'C', 'D'].map(k => ({ crew: k, name: crewLeader(cfgP, k) })).filter(x => x.name);
@@ -1049,7 +1101,7 @@
     return out;
   }
 
-  const api = { DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };
