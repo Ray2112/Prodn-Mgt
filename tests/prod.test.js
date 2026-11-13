@@ -658,7 +658,7 @@ t('bins-status: ciclo atual, saldo e transferências desde o último vazio', () 
   assert.strictEqual(b.state, 'OK');
   assert.strictEqual(b.transfers.length, 2);             // a transferência antes do vazio não entra
   assert.strictEqual(b.transfers[0].parts[0].silo, 'S06');
-  assert.strictEqual(b.capKg, 130000);
+  assert.deepStrictEqual([b.capKg, b.binCapKg, b.continuousFeed], [null, 130000, true], 'v2.8.1: sem verificação de espaço na Grain-Mgt (enchimento contínuo)');
 });
 
 t('bins-status: ordem em curso desconta o grão planeado; estado FULL/EMPTY', () => {
