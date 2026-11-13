@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.1
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.2
+
+> **v2.8.2 — Conciliação das bins limpa desde já (Zhax, 13-11-2026).** A conciliação na Grain-Mgt passa a contar só desde 14/11/2026 07:00 também antes dessa hora: o histórico antigo (descargas registadas só numa das apps) deixa de aparecer como diferença.
+>
+> *EN:* the Grain-Mgt bin reconciliation counts only from 14/11/2026 07:00, also before that time, so the old history (discharges recorded in one app only) no longer shows as differences.
 
 > **v2.8.1 — Bins de milho sujo com enchimento contínuo (Zhax, 13-11-2026).** B01–B04 (135 t cada) enchem e esvaziam ao mesmo tempo: a limpeza consome enquanto a Grain-Mgt descarrega. As descargas podem somar mais do que 135 t; a Grain-Mgt deixa de pedir para parar por falta de espaço ou «acima da capacidade». O nível de cada bin é o mergulho da manhã; as entradas desde o último vazio aparecem só como informação.
 >
