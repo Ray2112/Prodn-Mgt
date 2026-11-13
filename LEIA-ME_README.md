@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.1
+
+> **v2.8.1 — Bins de milho sujo com enchimento contínuo (Zhax, 13-11-2026).** B01–B04 (135 t cada) enchem e esvaziam ao mesmo tempo: a limpeza consome enquanto a Grain-Mgt descarrega. As descargas podem somar mais do que 135 t; a Grain-Mgt deixa de pedir para parar por falta de espaço ou «acima da capacidade». O nível de cada bin é o mergulho da manhã; as entradas desde o último vazio aparecem só como informação.
+>
+> *EN:* B01–B04 are filled continuously while cleaning draws from them; discharges may total more than 135 t and Grain-Mgt no longer asks to stop for space; the bin level is the morning dip, intake since the last empty is information only.
 
 > **v2.8.0 — Stock dos silos e descargas da Grain-Mgt, automáticos (Zhax, 13-11-2026).**
 > - O stock dos silos passa a vir sozinho da Grain-Mgt (ficheiro /Apps/Mill-App-Sync/silos-status.json, lido a cada 15 min e ao abrir). A importação da cópia à mão continua possível.

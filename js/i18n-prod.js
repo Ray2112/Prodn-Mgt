@@ -124,6 +124,8 @@
     upNotConnected: 'Este telemóvel não está ligado ao Dropbox: os registos do dia não são enviados. Ligue em Definições.', upFailed: 'Envio dos registos falhou: {e}. Use «Enviar agora» em Definições.',
     upNotSent: 'O dia {d} ainda não foi enviado ao Dropbox. Use «Enviar agora» em Definições.',
     // v2.8.0 — stock e descargas da Grain-Mgt
+    dipLevelAt: 'Nível pelo mergulho de {h}.', dipNeeded: 'Nível desconhecido: registe o mergulho em Silos de produto → totais da manhã.',
+    continuousIn: 'Recebido desde o último vazio: {kg} kg (enchimento contínuo, pode passar a capacidade)',
     snapAuto: 'Stock lido automaticamente da Grain-Mgt (última gravação {e}, lido às {f}).',
     srdTitle: 'Stock dos silos (Grain-Mgt, automático)', srdOn: 'Leitura ligada neste dispositivo (Mill-App-Read, só leitura).', srdNotConnected: 'Leitura não ligada neste dispositivo.',
     srdLast: 'Última cópia da Grain-Mgt: {e} (lida às {f}); {n} descarga(s) para as bins B01–B04 desde 14/11/2026 07:00.', srdNone: 'Ainda sem leitura.',
@@ -292,6 +294,8 @@
     upNotConnected: 'This phone is not connected to Dropbox: the day records are not sent. Connect in Settings.', upFailed: 'Sending the records failed: {e}. Use "Enviar agora" in Settings.',
     upNotSent: 'Day {d} has not been sent to Dropbox yet. Use "Enviar agora" in Settings.',
     // v2.8.0 — stock and discharges from Grain-Mgt
+    dipLevelAt: 'Level from the dip at {h}.', dipNeeded: 'Level unknown: record the dip in Product bins → morning totals.',
+    continuousIn: 'Received since the last empty: {kg} kg (continuous filling, may exceed the capacity)',
     snapAuto: 'Stock read automatically from Grain-Mgt (last save {e}, read at {f}).',
     srdTitle: 'Silo stock (Grain-Mgt, automatic)', srdOn: 'Reading connected on this device (Mill-App-Read, read-only).', srdNotConnected: 'Reading not connected on this device.',
     srdLast: 'Last Grain-Mgt copy: {e} (read at {f}); {n} discharge(s) to bins B01–B04 since 14/11/2026 07:00.', srdNone: 'Not read yet.',

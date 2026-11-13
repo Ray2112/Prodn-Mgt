@@ -497,8 +497,17 @@ window.ProdUI = function (C) {
   }
   function dirtyCard(b) {
     const st = dirtyState(b.id);
-    const pct = isNum(b.capKg) && b.capKg > 0 ? Math.max(0, Math.min(100, Math.round(st.kg / (b.capKg / 100)))) : null;
     const mine = S.emptyBin === b.id;
+    if (P.CONTINUOUS_FEED) {
+      // v2.8.1: nível = mergulho medido; as entradas somam-se sem limite (a bin enche enquanto a limpeza consome)
+      const lv = levelOf(b.id), inSince = st.comps.reduce((s, c) => s + c.kg, 0);
+      return `<div class="rowitem"><div class="row between"><span><b>${esc(b.id)}</b> <small>${esc(t('fedBy'))} ${esc(b.lines.join('/'))}${isNum(b.capKg) ? ' · ' + fmtKg(b.capKg) + ' kg' : ''}</small></span>
+          <span class="chip ${lv && isNum(lv.kg) ? 'd-warn' : 'd-record'}">${lv && isNum(lv.kg) ? fmtKg(lv.kg) + ' kg' + (isNum(lv.pct) ? ' · ' + String(lv.pct).replace('.', ',') + ' %' : '') : esc(t('stockUnknown'))}</span></div>
+        ${lv && lv.reading ? `<small>${esc(t('dipLevelAt', { h: C.fmtDT(lv.reading.t) }))}</small><br>` : `<small>${esc(t('dipNeeded'))}</small><br>`}
+        ${inSince > 0 ? `<small>${esc(t('continuousIn', { kg: fmtKg(inSince) }))}: ${esc(compText(st.comps))}</small>` : ''}
+        ${st.runningJobs.length ? `<div><small>${esc(t('inUseBy', { n: st.runningJobs.length }))}</small></div>` : ''}</div>`;
+    }
+    const pct = isNum(b.capKg) && b.capKg > 0 ? Math.max(0, Math.min(100, Math.round(st.kg / (b.capKg / 100)))) : null;
     return `<div class="rowitem"><div class="row between"><span><b>${esc(b.id)}</b> <small>${esc(t('fedBy'))} ${esc(b.lines.join('/'))}${isNum(b.capKg) ? ' · ' + fmtKg(b.capKg) + ' kg' : ''}</small></span>
         <span class="chip ${st.kg > 0 ? 'd-warn' : 'd-accept'}">${st.kg > 0 ? fmtKg(st.kg) + ' kg' + (pct !== null ? ' · ' + pct + ' %' : '') : esc(t('binEmpty'))}</span></div>
       ${st.kg < 0 ? `<div class="banner b-reject"><small>${esc(t('negativeBin'))}</small></div>` : ''}

@@ -39,16 +39,15 @@ t('leitura actualiza o conteúdo das bins de produto (SET/EMPTY); produto difere
   assert.deepStrictEqual(r.binOps, [], 'ordem em curso a encher: não esvazia');
 });
 
-t('milho sujo: leitura + transferências − ordens depois da leitura; vazio recomeça; sem leitura = cálculo antigo', () => {
+t('milho sujo (v2.8.1, enchimento contínuo): nível = mergulho; entradas/saídas só informativas; vazio recomeça; sem leitura = desconhecido', () => {
   const stocks = [stock(T0, { B01: { kg: 50000 } })];
   const moves = [mv('B01', 999, T0 - H), mv('B01', 30000, T0 + H)];
   const jobs = [{ uid: 'j', status: 'running', startedAt: T0 + 2 * H, alloc: [{ bin: 'B01', kg: 20000 }] }, { uid: 'old', status: 'running', startedAt: T0 - H, alloc: [{ bin: 'B01', kg: 5000 }] }];
   let L = P.binLevel('B01', { cfgP, stocks, moves, jobs });
-  assert.deepStrictEqual([L.kg, L.inKg, L.outKg, L.freeKg, L.state, L.source], [60000, 30000, 20000, 75000, 'OK', 'reading']);
+  assert.deepStrictEqual([L.kg, L.inKg, L.outKg, L.freeKg, L.state, L.source], [50000, 30000, 20000, 85000, 'OK', 'reading']);
   L = P.binLevel('B01', { cfgP, stocks, moves: moves.concat([mv('B01', 0, T0 + 3 * H, 'EMPTY')]), jobs });
   assert.deepStrictEqual([L.kg, L.state], [0, 'EMPTY'], 'vazio depois da leitura');
-  assert.strictEqual(P.binLevel('B02', { cfgP, stocks, moves: [mv('B02', 40000, T0)], jobs: [] }).source, 'calc');
-  assert.strictEqual(P.binLevel('B02', { cfgP, stocks, moves: [mv('B02', 40000, T0)], jobs: [] }).kg, 40000);
+  assert.deepStrictEqual([P.binLevel('B02', { cfgP, stocks, moves: [mv('B02', 40000, T0)], jobs: [] }).kg, P.binLevel('B02', { cfgP, stocks, moves: [mv('B02', 40000, T0)], jobs: [] }).state], [null, 'UNKNOWN'], 'sem mergulho o nível é desconhecido');
 });
 
 t('produto: leitura + o planeado pelas ordens iniciadas depois; cheia; temperado só a leitura; sem leitura = desconhecido', () => {

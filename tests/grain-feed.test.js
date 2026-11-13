@@ -27,3 +27,12 @@ assert.deepStrictEqual(b1.transfers.map(t => t.parts[0].silo), ['S03'], 'transfe
 const before = P.buildBinsStatus(cfgP, [empty, manual], [], { now: P.autoFeedFromMs() - 60000, feedFrom: P.autoFeedFromMs() });
 assert.strictEqual(before.bins.find(b => b.id === 'B01').transfers.length, 1, 'antes da passagem nada muda');
 console.log('grain-feed: OK');
+
+// v2.8.1: enchimento contínuo — 994 t descarregadas para B01 (135 t) não dão "acima da capacidade" nem falta de espaço
+{
+  const T = P.autoFeedFromMs() + 3600000;
+  const many = Array.from({ length: 8 }, (_, i) => ({ uid: 'x' + i, type: 'TRANSFER', binId: 'B01', t: T + i, kg: 124250, parts: [{ silo: 'S03', kg: 124250 }] }));
+  const b = P.buildBinsStatus(cfgP, many, [], { now: T + 100, feedFrom: P.autoFeedFromMs() }).bins.find(x => x.id === 'B01');
+  assert.deepStrictEqual([b.state, b.capKg, b.binCapKg, b.transfers.length], ['OK', null, 135000, 8]);
+  console.log('continuous feed: OK');
+}
