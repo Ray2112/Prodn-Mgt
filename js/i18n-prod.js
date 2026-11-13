@@ -123,6 +123,14 @@
     bin: 'Silo', content: 'Conteúdo', since: 'desde', setBinNote: 'Definir conteúdo sem ordem exige PIN (ex.: estado inicial).',
     upNotConnected: 'Este telemóvel não está ligado ao Dropbox: os registos do dia não são enviados. Ligue em Definições.', upFailed: 'Envio dos registos falhou: {e}. Use «Enviar agora» em Definições.',
     upNotSent: 'O dia {d} ainda não foi enviado ao Dropbox. Use «Enviar agora» em Definições.',
+    // v2.8.0 — stock e descargas da Grain-Mgt
+    snapAuto: 'Stock lido automaticamente da Grain-Mgt (última gravação {e}, lido às {f}).',
+    srdTitle: 'Stock dos silos (Grain-Mgt, automático)', srdOn: 'Leitura ligada neste dispositivo (Mill-App-Read, só leitura).', srdNotConnected: 'Leitura não ligada neste dispositivo.',
+    srdLast: 'Última cópia da Grain-Mgt: {e} (lida às {f}); {n} descarga(s) para as bins B01–B04 desde 14/11/2026 07:00.', srdNone: 'Ainda sem leitura.',
+    srdConnect: 'Ligar leitura dos silos', srdReadNow: 'Ler agora', srdRead: 'Stock dos silos lido da Grain-Mgt.', srdFailed: 'Leitura falhou: {e}',
+    srdConnected: 'Leitura dos silos ligada.', srdCancelled: 'Dropbox (silos): ligação cancelada.', srdRefused: 'Dropbox (silos) recusou o código ({s}).', srdNetwork: 'Dropbox (silos): falha de rede.',
+    srdOff: 'Stock dos silos: leitura da Grain-Mgt não ligada neste telemóvel. Ligue em Definições.', srdOld: 'Stock dos silos da Grain-Mgt não lido há mais de 2 h (última leitura {h}).',
+    srdFeedNote: 'Desde 14/11/2026 07:00 as descargas silo → bin registam-se só na Grain-Mgt («Discharge to line») e chegam aqui automaticamente.', srdFromGm: 'Grain-Mgt',
     // v2.7.0 — login / logout de turno, paragens, arranque da produção (Zhax, 12-11-2026)
     ptab_shift: 'Turno', ptab_stops: 'Paragens', shiftTitle: 'Turno — login e logout', planFrom: 'Plano do OEE (THROUGHPUT, TARGET) de {g}.', planMissing: 'Plano ainda não recebido (production-plan.json no Dropbox): ligue o Dropbox em Definições.',
     planNone: 'Sem plano no OEE para {d}.', planNoProduct: 'sem produção', targetT: 'objectivo', loginTitle: 'Login de turno',
@@ -283,6 +291,14 @@
     bin: 'Bin', content: 'Content', since: 'since', setBinNote: 'Setting content without a job needs the PIN (e.g. initial state).',
     upNotConnected: 'This phone is not connected to Dropbox: the day records are not sent. Connect in Settings.', upFailed: 'Sending the records failed: {e}. Use "Enviar agora" in Settings.',
     upNotSent: 'Day {d} has not been sent to Dropbox yet. Use "Enviar agora" in Settings.',
+    // v2.8.0 — stock and discharges from Grain-Mgt
+    snapAuto: 'Stock read automatically from Grain-Mgt (last save {e}, read at {f}).',
+    srdTitle: 'Silo stock (Grain-Mgt, automatic)', srdOn: 'Reading connected on this device (Mill-App-Read, read-only).', srdNotConnected: 'Reading not connected on this device.',
+    srdLast: 'Last Grain-Mgt copy: {e} (read at {f}); {n} discharge(s) to bins B01–B04 since 14/11/2026 07:00.', srdNone: 'Not read yet.',
+    srdConnect: 'Connect silo reading', srdReadNow: 'Read now', srdRead: 'Silo stock read from Grain-Mgt.', srdFailed: 'Reading failed: {e}',
+    srdConnected: 'Silo reading connected.', srdCancelled: 'Dropbox (silos): connection cancelled.', srdRefused: 'Dropbox (silos) refused the code ({s}).', srdNetwork: 'Dropbox (silos): network failure.',
+    srdOff: 'Silo stock: Grain-Mgt reading not connected on this phone. Connect in Settings.', srdOld: 'Grain-Mgt silo stock not read for more than 2 h (last read {h}).',
+    srdFeedNote: 'Since 14/11/2026 07:00 silo → bin discharges are recorded only in Grain-Mgt ("Discharge to line") and arrive here automatically.', srdFromGm: 'Grain-Mgt',
     // v2.7.0 — shift login / logout, stoppages, start of production (Zhax, 12 Nov 2026)
     ptab_shift: 'Shift', ptab_stops: 'Stoppages', shiftTitle: 'Shift — login and logout', planFrom: 'Plan from the OEE (THROUGHPUT, TARGET), {g}.', planMissing: 'Plan not received yet (production-plan.json in Dropbox): connect Dropbox in Settings.',
     planNone: 'No plan in the OEE for {d}.', planNoProduct: 'no production', targetT: 'target', loginTitle: 'Shift login',

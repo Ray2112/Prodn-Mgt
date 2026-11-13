@@ -131,6 +131,7 @@
     const out = [], cl = clears(), nowMs = Date.now();
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
     const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings' });
+    const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings' });
     const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift' });
     if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins' });
     const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
