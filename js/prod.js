@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.7.0';
+  const VERSION = '2.8.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -253,6 +253,32 @@
       })
     };
   }
+  // ---------- stock dos silos e descargas vindos da Grain-Mgt (v2.8.0, Zhax 13-11-2026) ----------
+  // A Grain-Mgt é o único registo das descargas silo → bin ("Discharge to line"). Ela envia /Apps/Mill-App-Sync/silos-status.json
+  // (formato da cópia de segurança); esta app lê-o e (1) usa-o como stock dos silos, (2) transforma as descargas para B01–B04
+  // em transferências, só a partir de AUTO_FEED_FROM. As transferências à mão deixam de existir a partir dessa hora.
+  const AUTO_FEED_FROM = '2026-11-14T07:00';   // hora local: início do dia de produção de 14-11-2026
+  const autoFeedFromMs = () => new Date(AUTO_FEED_FROM).getTime();
+  const gmEvMs = e => new Date(String(e.date || '') + 'T' + (e.time || '00:00')).getTime();   // hora local do telemóvel (Grain-Mgt)
+  function parseSilosStatus(o, nowMs) {
+    if (!o || o.kind !== 'silos-status' || o.writer !== 'grain-mgt') throw new Error('not-silos-status');
+    const snap = snapshotFromSilosBackup(Object.assign({}, o, { events: (o.events || []).filter(e => e && !e.test) }), nowMs);   // registos de teste nunca contam
+    snap.source = 'grain-mgt-auto'; snap.uid = 'auto:' + (o.exportedAt || nowMs);
+    return snap;
+  }
+  // Descargas OUT da Grain-Mgt com bin de milho sujo → transferências (uid 'gm:<uid>'; não são gravadas, recalculam-se a cada leitura)
+  function grainMgtMoves(o, cfgP, fromMs) {
+    const dirty = (cfgP.dirtyBins || []).map(b => b.id);
+    const main = (o.settings || []).find(s => s && s.key === 'main');
+    const silos = {}; ((main && main.value && main.value.silos) || []).forEach(s => { if (s && s.id) silos[s.id] = s; });
+    return (o.events || []).filter(e => e && e.type === 'OUT' && !e.test && dirty.indexOf(e.bin) >= 0 && isNum(Number(e.kg)) && Number(e.kg) > 0)
+      .map(e => ({ e, t: gmEvMs(e) })).filter(x => isFinite(x.t) && (!isNum(fromMs) || x.t >= fromMs))
+      .map(({ e, t }) => {
+        const s = silos[e.silo] || {}, kg = r3(Number(e.kg));
+        return { uid: 'gm:' + (e.uid || (e.deviceId || '') + ':' + e.seq + ':' + e.date + e.time), type: 'TRANSFER', binId: e.bin, t, kg, source: 'grain-mgt',
+          parts: [{ silo: e.silo, kg, cereal: s.cereal || '', colour: s.colour || '', grade: s.grade || '' }], by: e.operator || '', prodLot: e.prodLot || null };
+      }).sort((a, b) => a.t - b.t);
+  }
   // Grão já transferido para silos de moagem depois da exportação do snapshot (para não contar duas vezes)
   const snapTime = snap => snap ? (snap.exportedAt ? Date.parse(snap.exportedAt) : snap.importedAt) : 0;
   function transferredAfter(snapshot, moves) {
@@ -466,7 +492,8 @@
       const st = dirtyBinState(b.id, moves, jobs);
       const lv = binLevel(b.id, { cfgP, stocks: o.stocks, moves, jobs });   // v2.4.0: com a leitura da manhã
       if (lv && isNum(lv.kg)) st.kg = lv.kg;
-      const since = isNum(st.since) ? st.since : null;
+      const cut = isNum(o.feedFrom) && now >= o.feedFrom ? o.feedFrom : null;   // v2.8.0: conciliação só desde a passagem para a Grain-Mgt
+      const since = isNum(st.since) ? (cut !== null ? Math.max(st.since, cut) : st.since) : cut;
       const transfers = (moves || [])
         .filter(m => m.binId === b.id && m.type === 'TRANSFER' && (since === null || m.t > since))
         .sort((a, c) => a.t - c.t || (a.createdAt || 0) - (c.createdAt || 0))
@@ -1101,7 +1128,7 @@
     return out;
   }
 
-  const api = { SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };

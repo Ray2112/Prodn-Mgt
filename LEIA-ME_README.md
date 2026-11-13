@@ -1,4 +1,12 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.7.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.0
+
+> **v2.8.0 — Stock dos silos e descargas da Grain-Mgt, automáticos (Zhax, 13-11-2026).**
+> - O stock dos silos passa a vir sozinho da Grain-Mgt (ficheiro /Apps/Mill-App-Sync/silos-status.json, lido a cada 15 min e ao abrir). A importação da cópia à mão continua possível.
+> - Desde 14/11/2026 07:00 as descargas silo → bin registam-se só na Grain-Mgt («Discharge to line») e entram aqui como transferências para B01–B04. A transferência à mão e as transferências da fila de alimentação ao iniciar a ordem deixam de existir.
+> - A conciliação das bins na Grain-Mgt passa a contar só desde essa hora.
+> - Definições → «Ligar leitura dos silos» (app Mill-App-Read, só leitura). Aviso na página inicial quando não está ligada ou a leitura tem mais de 2 h.
+>
+> *EN:* silo stock comes automatically from Grain-Mgt (silos-status.json, every 15 min); from 14/11/2026 07:00 silo → bin discharges are recorded only in Grain-Mgt and arrive here as B01–B04 transfers (manual and feed-queue transfers stop); the bin reconciliation counts only from then; Settings → "Connect silo reading" (Mill-App-Read).
 
 > **v2.7.0 — Turno e paragens (Zhax, 12-11-2026).**
 > - **Produção → Turno:** login de turno (chefe de turno, trabalhos a fazer com os objectivos do plano, estado actual, leituras iniciais das 7 balanças: Limpeza, Impurezas, B1, Fuba 1, Fuba 2, Gérmen, Farinha animal = Z.F, comentários) e logout (estado, actividades feitas, leituras finais, quantidade de cada balança no turno, % do objectivo do dia).

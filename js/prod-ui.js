@@ -46,8 +46,11 @@ window.ProdUI = function (C) {
     if (migrated) { try { await DB.setConfig('cfgP', S.cfgP); } catch (e) { /* tenta de novo na próxima abertura */ } }
     S.ctx = Object.assign({ operatorId: '', testMode: false }, (await DB.getConfig('ctx')) || {});
     applyCtx();
+    loadAutoSiloCache();
     await reload();
     scheduleDaySync();   // envia pendentes de sessões anteriores
+    refreshSilos().then(ok => { if (ok) C.render(); });
+    setInterval(() => refreshSilos().then(ok => { if (ok && S.view === 'prod') C.render(); }), 15 * 60000);
   }
   // Operador e modo de teste (deste dispositivo) vão para todos os registos novos (contrato v1)
   function applyCtx() {
@@ -64,7 +67,8 @@ window.ProdUI = function (C) {
     S.shiftLog = await DB.all('shiftLog');
     S.siloSnaps = await DB.all('siloSnapshots');
     S.prodChanges = await DB.all('prodChanges');
-    S.moves = await DB.all('grainMoves');
+    S.dbMoves = await DB.all('grainMoves');
+    combineMoves();
     S.readings = await DB.all('shiftReadings');
     S.stocks = await DB.all('binStock');   // totais das bins de manhã (v2.4.0)
     refreshBinsStatus();
@@ -75,7 +79,7 @@ window.ProdUI = function (C) {
   function refreshBinsStatus() {
     if (!S.cfgP) return;
     try {
-      const out = P.buildBinsStatus(S.cfgP, S.moves, S.jobs, { now: Date.now(), writerVersion: P.VERSION, site: S.cfgP.site || '', stocks: S.stocks });
+      const out = P.buildBinsStatus(S.cfgP, S.moves, S.jobs, { now: Date.now(), writerVersion: P.VERSION, site: S.cfgP.site || '', stocks: S.stocks, feedFrom: P.autoFeedFromMs() });
       S.binsStatus = out;
       localStorage.setItem(BINS_STATUS_KEY, JSON.stringify(out));
       sendBinsStatus(out);
@@ -103,6 +107,7 @@ window.ProdUI = function (C) {
     const A = dbAuth(), c = dbCfg();
     const p = new URLSearchParams(location.search);
     if (!A || !c || !p.get('code') && !p.get('error')) return;
+    if (await siloReturn(p)) return;   // v2.8.0: retorno da ligação de leitura dos silos
     let st = null;
     try { st = JSON.parse(sessionStorage.getItem(DB_STATE_KEY) || 'null'); } catch (e) { st = null; }
     sessionStorage.removeItem(DB_STATE_KEY);
@@ -117,6 +122,78 @@ window.ProdUI = function (C) {
       dbSave(A.parseTokenResponse(json, Date.now()));
       C.toast('Dropbox ligado.');
     } catch (e) { C.toast('Dropbox: falha de rede ao ligar.'); console.warn('dropbox token', e); }
+  }
+  // ---- v2.8.0: leitura do stock dos silos da Grain-Mgt (Mill-App-Read, só leitura) ----
+  const SR_SESS_KEY = 'mill-qc.siloRead', SR_STATE_KEY = 'mill-qc.siloReadState.v1', AUTO_SILO_KEY = 'mill-qc.autoSilo.v1';
+  const srSess = () => { try { return JSON.parse(localStorage.getItem(SR_SESS_KEY) || 'null'); } catch (e) { return null; } };
+  async function siloSignIn() {
+    const A = dbAuth(), c = dbCfg();
+    if (!A || !c || !c.siloReadAppKey) return C.toast('Dropbox: módulo em falta.');
+    const getRandom = b => crypto.getRandomValues(b);
+    const verifier = A.randomToken(getRandom), state = A.randomToken(getRandom);
+    sessionStorage.setItem(SR_STATE_KEY, JSON.stringify({ verifier, state }));
+    const challenge = await A.challengeOf(verifier, d => crypto.subtle.digest('SHA-256', d));
+    location.href = A.buildAuthorizeUrl({ appKey: c.siloReadAppKey, redirectUri: dbRedirect(), challenge, state });
+  }
+  async function siloReturn(p) {
+    const A = dbAuth(), c = dbCfg();
+    let st = null;
+    try { st = JSON.parse(sessionStorage.getItem(SR_STATE_KEY) || 'null'); } catch (e) { st = null; }
+    if (!st || st.state !== p.get('state')) return false;
+    sessionStorage.removeItem(SR_STATE_KEY);
+    history.replaceState(null, '', location.pathname);
+    if (p.get('error')) { C.toast(t('srdCancelled')); return true; }
+    try {
+      const req = A.buildTokenRequest({ appKey: c.siloReadAppKey, code: p.get('code'), verifier: st.verifier, redirectUri: dbRedirect() });
+      const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+      const json = await r.json().catch(() => null);
+      if (!r.ok) { C.toast(t('srdRefused', { s: r.status })); return true; }
+      localStorage.setItem(SR_SESS_KEY, JSON.stringify(A.parseTokenResponse(json, Date.now())));
+      C.toast(t('srdConnected')); refreshSilos().then(ok => { if (ok) C.render(); });
+    } catch (e) { C.toast(t('srdNetwork')); }
+    return true;
+  }
+  async function siloToken() {
+    const A = dbAuth(), c = dbCfg(), sess = srSess();
+    if (!A || !c || !sess || !sess.refreshToken) return null;
+    if (A.isUsable(sess, Date.now())) return sess.accessToken;
+    const req = A.buildRefreshRequest({ appKey: c.siloReadAppKey, refreshToken: sess.refreshToken });
+    const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+    if (!r.ok) throw new Error('renovação recusada (' + r.status + ')');
+    const next = Object.assign({}, sess, A.parseTokenResponse(await r.json(), Date.now()));
+    if (!next.refreshToken) next.refreshToken = sess.refreshToken;
+    localStorage.setItem(SR_SESS_KEY, JSON.stringify(next));
+    return next.accessToken;
+  }
+  function useSilosStatus(o, fetchedAt) {
+    S.autoSilo = { snap: P.parseSilosStatus(o, fetchedAt), moves: P.grainMgtMoves(o, S.cfgP, P.autoFeedFromMs()), fetchedAt, exportedAt: o.exportedAt };
+    combineMoves();
+  }
+  async function refreshSilos() {
+    S.autoSiloErr = null;
+    try {
+      const tok = await siloToken();
+      if (!tok) return false;
+      const r = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Dropbox-API-Arg': JSON.stringify({ path: dbCfg().silosStatusPath }) } });
+      if (!r.ok) { S.autoSiloErr = 'HTTP ' + r.status; return false; }
+      const o = await r.json();
+      useSilosStatus(o, Date.now());
+      try { localStorage.setItem(AUTO_SILO_KEY, JSON.stringify({ o, fetchedAt: S.autoSilo.fetchedAt })); } catch (e) { /* sem espaço: fica só em memória */ }
+      refreshBinsStatus();
+      return true;
+    } catch (e) { S.autoSiloErr = String(e && e.message || e); return false; }
+  }
+  function loadAutoSiloCache() {
+    try { const c = JSON.parse(localStorage.getItem(AUTO_SILO_KEY) || 'null'); if (c && c.o) useSilosStatus(c.o, c.fetchedAt); } catch (e) { S.autoSilo = null; }
+  }
+  // Aviso na página inicial: depois da passagem, sem ligação de leitura ou leitura com mais de 2 h
+  function siloFeedIssue() {
+    if (!feedAuto() || !dbCfg() || !dbCfg().siloReadAppKey) return null;
+    if (!srSess()) return t('srdOff');
+    const a = S.autoSilo && S.autoSilo.fetchedAt ? S.autoSilo.fetchedAt : null;   // a cópia reflecte o estado actual quando é lida
+    if (!a || now() - a > 2 * 3600000) return t('srdOld', { h: a ? C.fmtDT(a) : '—' });
+    return null;
   }
   function dropboxSignOut() { try { localStorage.removeItem(DB_SESS_KEY); } catch (e) { /* ignorar */ } C.toast('Dropbox desligado neste dispositivo.'); }
   // Devolve um access token válido, renovando se preciso. null se não houver sessão.
@@ -213,7 +290,15 @@ window.ProdUI = function (C) {
   // UUID v4 por registo (o dispositivo vai em deviceId); recurso antigo se randomUUID não existir
   const newUid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : P.uid(S.deviceId, now(), (++seq).toString(36) + Math.random().toString(36).slice(2, 6));
   const base = tms => ({ uid: newUid(), deviceId: S.deviceId, createdAt: now(), crew: L.crewOfTime(tms), period: L.shiftOf(tms).period, prodDay: L.prodDay(tms), shift: L.prodDay(tms) + '/' + L.shiftOf(tms).period });
-  const snapshot = () => (S.siloSnaps || []).slice().sort((a, b) => b.importedAt - a.importedAt)[0] || null;
+  // v2.8.0: o stock mais recente entre as cópias importadas e a leitura automática da Grain-Mgt
+  const snapAt = s => s ? (s.exportedAt ? Date.parse(s.exportedAt) : s.importedAt) : 0;
+  const snapshot = () => (S.siloSnaps || []).concat(S.autoSilo && S.autoSilo.snap ? [S.autoSilo.snap] : []).sort((a, b) => snapAt(b) - snapAt(a))[0] || null;
+  function combineMoves() {
+    const gm = S.autoSilo && S.autoSilo.moves ? S.autoSilo.moves : [];
+    const known = new Set((S.dbMoves || []).map(m => m.uid));
+    S.moves = (S.dbMoves || []).concat(gm.filter(m => !known.has(m.uid)));
+  }
+  const feedAuto = () => now() >= P.autoFeedFromMs();   // a partir de 14-11-2026 07:00 as descargas vêm só da Grain-Mgt
   const runningJob = lineId => (S.jobs || []).find(j => j.status === 'running' && j.lineId === lineId);
   const lineIds = () => S.cfg.lines.map(l => l.id);
   const binById = id => S.cfgP.bins.find(b => b.id === id);
@@ -388,8 +473,8 @@ window.ProdUI = function (C) {
     const sh = L.shiftOf(now());
     const exp = sn ? (sn.exportedAt ? Date.parse(sn.exportedAt) : sn.importedAt) : null;
     return `<section class="card"><h3>${esc(t('grainStock'))}</h3>
-      ${sn ? `<p class="sub">${esc(t('snapFrom', { e: C.fmtDT(exp), i: C.fmtDT(sn.importedAt) }))}</p>
-        ${exp < sh.start ? `<div class="banner b-warn">${esc(t('snapOld'))}</div>` : ''}
+      ${sn ? `<p class="sub">${esc(sn.source === 'grain-mgt-auto' ? t('snapAuto', { e: C.fmtDT(exp), f: C.fmtDT(S.autoSilo.fetchedAt) }) : t('snapFrom', { e: C.fmtDT(exp), i: C.fmtDT(sn.importedAt) }))}</p>
+        ${sn.source !== 'grain-mgt-auto' && exp < sh.start ? `<div class="banner b-warn">${esc(t('snapOld'))}</div>` : ''}
         ${P.nonCanonical(sn, S.cfgP.grainSilos).length ? `<div class="banner b-reject">${esc(t('nonCanonical', { s: P.nonCanonical(sn, S.cfgP.grainSilos).join(', '), list: siloRange() }))}</div>` : ''}` : `<div class="banner b-warn">${esc(t('snapNone'))}</div>`}
       <p class="sub">${esc(t('snapHow'))}</p>
       <label class="btn ghost">${esc(t('importSilos'))}<input type="file" id="importSilos" accept="application/json" hidden></label></section>`;
@@ -403,11 +488,11 @@ window.ProdUI = function (C) {
   function viewGrain() {
     const recent = (S.moves || []).slice().sort((a, b) => b.t - a.t).slice(0, 10);
     return snapCard() +
-      (S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
+      (feedAuto() ? `<section class="card"><p class="sub">${esc(t('srdFeedNote'))}</p></section>` : S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
       `<section class="card"><h3>${esc(t('dirtyBins'))}</h3>${(S.cfgP.dirtyBins || []).map(dirtyCard).join('')}</section>
       <section class="card"><h3>${esc(t('temperedBins'))}</h3>${(S.cfgP.temperedBins || []).map(b => `<div class="kv"><span><b>${esc(b.id)}</b> · ${esc(t('fedBy'))} ${esc(b.lines.join('/'))}</span><b>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : esc(t('capNotSet'))}</b></div>`).join('')}
         <p class="sub">${esc(t('temperedNote'))}</p></section>
-      <section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
+      <section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
       <section class="card"><p class="sub">${esc(t('masterNote', { s: S.cfgP.masterSource || '' }))}</p></section>`;
   }
   function dirtyCard(b) {
@@ -788,7 +873,7 @@ window.ProdUI = function (C) {
     });
     job.readings = [{ uid: newUid(), deviceId: S.deviceId, createdAt: new Date(now()).toISOString(), t: tms, crew: L.crewOfTime(tms), period: job.period, prodDay: job.prodDay, m0: job.m0, waterLh: job.waterLh, by: job.leader, kind: 'start' }];
     // fila de alimentação: transferências silo → silo de milho sujo, gravadas com a ordem (atómico com a ordem)
-    const feedMoves = (r.calc.feedPlan || []).filter(p => p.parts.length).map(p => {
+    const feedMoves = (feedAuto() ? [] : (r.calc.feedPlan || [])).filter(p => p.parts.length).map(p => {   // v2.8.0: depois da passagem a Grain-Mgt regista as descargas
       const sn = snapshot();
       const partsFull = p.parts.map(x => { const s = sn.silos.find(z => z.id === x.silo); return { silo: x.silo, kg: x.kg, cereal: s.cereal, colour: s.colour, grade: s.grade }; });
       const kg = Math.round(partsFull.reduce((a, x) => a + x.kg, 0) * 1000) / 1000;
@@ -1203,6 +1288,10 @@ window.ProdUI = function (C) {
       <p class="sub">${dbSess() && dbSess().refreshToken ? 'Ligado neste dispositivo. O bins-status.json e os registos do dia são enviados após cada gravação.' : 'Não ligado. Sem ligação, nada é enviado (os registos continuam guardados neste dispositivo).'}</p>
       ${daySyncLine()}
       <button class="btn" data-pact="dbsignin">Ligar ao Dropbox</button> <button class="btn" data-pact="dbsyncnow">Enviar agora</button> <button class="btn ghost" data-pact="dbsignout">Desligar</button></section>
+      <section class="card"><h3>${esc(t('srdTitle'))}</h3>
+      <p class="sub">${esc(srSess() ? t('srdOn') : t('srdNotConnected'))}</p>
+      <p class="sub">${esc(S.autoSilo ? t('srdLast', { e: C.fmtDT(Date.parse(S.autoSilo.exportedAt)), f: C.fmtDT(S.autoSilo.fetchedAt), n: S.autoSilo.moves.length }) : t('srdNone'))}${S.autoSiloErr ? ' · ' + esc(S.autoSiloErr) : ''}</p>
+      <button class="btn" data-pact="srdsignin">${esc(t('srdConnect'))}</button> <button class="btn" data-pact="srdnow">${esc(t('srdReadNow'))}</button></section>
       <section class="card"><h3>${esc(t('codesTitle'))}</h3>
       <p class="sub">${esc(t('codesSummary', { n: codes().filter(c => c.active !== false).length, s: S.cfgP.codesSource || '', pt: codes().filter(c => c.namePt).length, o: codes().filter(c => c.oee).length }))}</p>
       <button class="btn" data-nav="codes">${esc(t('editCodes'))}</button></section>`;
@@ -1373,6 +1462,8 @@ window.ProdUI = function (C) {
       case 'shiftlogin': return shiftLogin();
       case 'shiftlogout': return shiftLogout();
       case 'savestop': return saveStop();
+      case 'srdsignin': return siloSignIn();
+      case 'srdnow': return refreshSilos().then(ok => { C.toast(ok ? t('srdRead') : t('srdFailed', { e: S.autoSiloErr || t('srdNotConnected') })); keepScroll(); });
       case 'emptybin': return binAction('empty');
       case 'setbin': return binAction('set');
       case 'outbin': return binOut();
@@ -1461,5 +1552,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };
