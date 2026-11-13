@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.2
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.3
+
+> **v2.8.3 — Paragens da Manutenção como no separador Paragens (Zhax, 13-11-2026).** Tipo (mecânica, eléctrica, processo, outra) → código v3 → hora de início e de fim (duração calculada) → falha → acção. Módulo partilhado com a Grain-Mgt 0.12.0.
+>
+> *EN:* Maintenance stoppages now as in the Stoppages tab: type → v3 code → start and end (duration calculated) → fault → action; shared module with Grain-Mgt 0.12.0.
 
 > **v2.8.2 — Conciliação das bins limpa desde já (Zhax, 13-11-2026).** A conciliação na Grain-Mgt passa a contar só desde 14/11/2026 07:00 também antes dessa hora: o histórico antigo (descargas registadas só numa das apps) deixa de aparecer como diferença.
 >
