@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.8.1';
+  const VERSION = '2.8.2';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -496,7 +496,9 @@
       const st = dirtyBinState(b.id, moves, jobs);
       const lv = binLevel(b.id, { cfgP, stocks: o.stocks, moves, jobs });   // v2.4.0: com a leitura da manhã
       if (lv && isNum(lv.kg)) st.kg = lv.kg;
-      const cut = isNum(o.feedFrom) && now >= o.feedFrom ? o.feedFrom : null;   // v2.8.0: conciliação só desde a passagem para a Grain-Mgt
+      // v2.8.2 (Zhax, 13-11-2026): a conciliação começa na passagem para a Grain-Mgt já agora (antes dela não há nada a comparar),
+      // para a Grain-Mgt deixar de mostrar o histórico anterior, que tinha descargas registadas só numa das apps.
+      const cut = isNum(o.feedFrom) ? o.feedFrom : null;
       const since = isNum(st.since) ? (cut !== null ? Math.max(st.since, cut) : st.since) : cut;
       const transfers = (moves || [])
         .filter(m => m.binId === b.id && m.type === 'TRANSFER' && (since === null || m.t > since))

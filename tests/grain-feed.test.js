@@ -25,7 +25,8 @@ const bs = P.buildBinsStatus(cfgP, [empty, manual].concat(mv), [], { now: P.auto
 const b1 = bs.bins.find(b => b.id === 'B01');
 assert.deepStrictEqual(b1.transfers.map(t => t.parts[0].silo), ['S03'], 'transferência à mão antes da passagem fica fora da conciliação');
 const before = P.buildBinsStatus(cfgP, [empty, manual], [], { now: P.autoFeedFromMs() - 60000, feedFrom: P.autoFeedFromMs() });
-assert.strictEqual(before.bins.find(b => b.id === 'B01').transfers.length, 1, 'antes da passagem nada muda');
+assert.strictEqual(before.bins.find(b => b.id === 'B01').transfers.length, 0, 'v2.8.2: a janela começa na passagem mesmo antes dela (sem histórico antigo)');
+assert.strictEqual(Date.parse(before.bins.find(b => b.id === 'B01').since), P.autoFeedFromMs(), 'since = hora da passagem');
 console.log('grain-feed: OK');
 
 // v2.8.1: enchimento contínuo — 994 t descarregadas para B01 (135 t) não dão "acima da capacidade" nem falta de espaço
