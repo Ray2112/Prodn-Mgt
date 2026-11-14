@@ -1,4 +1,12 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.9.1
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.10.0
+
+> **v2.10.0 — Release 4 (Zhax, 14-11-2026).**
+> - **PIN de cada chefe de turno:** o supervisor define-o em Definições → Produção (por turma A–D). O login e o logout do turno pedem o PIN do chefe; PIN errado não grava. Chefe ainda sem PIN: grava com aviso. O PIN fica só no telemóvel (defina-o em cada um); nos registos fica só a nota de que foi mudado.
+> - **Sem fórmulas no ecrã:** mergulhos, água, caudal, stock das bins, balanças e FSSC mostram só os resultados.
+> - **Água adicionada (L)** no arranque da ordem, ao lado da calculada; aparece na ordem e no Excel. Vazio = não registada.
+> - **Relatório por turno:** em Relatório escolha Dia inteiro, Dia 07–19 ou Noite 19–07; o Excel (CQ, produção, actividades / limpeza, segurança) fica só desse turno.
+>
+> *EN:* each shift leader's PIN, set by the supervisor in Settings → Production, asked at shift login and logout (wrong PIN not saved; no PIN yet = saved with a warning; the PIN stays on the phone only); no formulas on screen, results only; "Water added (L)" at job start; Report by shift (whole day, Day 07–19, Night 19–07), Excel for that shift.
 
 > **v2.9.1 — Limpar todos os avisos (Zhax, 14-11-2026).** No separador Avisos, o botão «Limpar todos os avisos (n)» fecha todos os avisos de uma vez, com uma só explicação (função, nome, motivo e PIN), gravada como um registo. Um aviso volta se a situação mudar (ex.: mais tarefas em atraso); os do dia (login do turno, leitura da manhã, envio) voltam no dia seguinte se continuarem.
 >

@@ -24,6 +24,7 @@ window.ProdUI = function (C) {
   async function load() {
     dropboxReturn();
     S.cfgP = (await DB.getConfig('cfgP')) || P.defaultProdConfig();
+    S.leaderPins = (await DB.getConfig('leaderPins')) || {};
     // configuração anterior à v1.3: acrescenta os dados mestre em falta (não altera listas já existentes)
     const d = P.defaultProdConfig();
     ['grainSilos', 'dirtyBins', 'temperedBins', 'masterSource', 'leaders', 'dampenerMaxLhByLine'].forEach(k => { if (S.cfgP[k] === undefined) S.cfgP[k] = d[k]; });
@@ -312,6 +313,17 @@ window.ProdUI = function (C) {
     const known = list.some(x => x.name === value);
     return `<select ${attr}><option value="">—</option>${list.map(x => `<option value="${esc(x.name)}" ${x.name === value ? 'selected' : ''}>${esc(x.name)} (${esc(t('crew'))} ${esc(x.crew)})</option>`).join('')}${value && !known ? `<option value="${esc(value)}" selected>${esc(value)}</option>` : ''}</select>`;
   }
+  // v2.10.0 (Zhax, 14-11-2026): PIN de cada chefe de turno, definido pelo supervisor em Definições → Produção.
+  // Fica só neste telemóvel (config 'leaderPins' = {A: {salt, hash, setAt}}), nunca nos ficheiros do dia.
+  const hex = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
+  const pinHash = async (salt, pin) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin)));
+  async function makeLeaderPin(pin) { const salt = hex(crypto.getRandomValues(new Uint8Array(16))); return { salt, hash: await pinHash(salt, pin), setAt: new Date().toISOString() }; }
+  // 'ok' | 'bad' | 'none' (chefe sem PIN definido: grava com aviso)
+  async function leaderPinCheck(crew, pin) {
+    const p = crew && (S.leaderPins || {})[crew];
+    if (!p) return 'none';
+    return (await pinHash(p.salt, String(pin || ''))) === p.hash ? 'ok' : 'bad';
+  }
   const leaderCrewOf = name => { const x = P.leaderNames(S.cfgP).find(l => l.name === name); return x ? x.crew : null; };
 
   // ---------- vista principal ----------
@@ -385,7 +397,8 @@ window.ProdUI = function (C) {
       <p class="sub">${esc(plan ? t('planFrom', { g: C.fmtDT(Date.parse(plan.generatedAt)) }) : t('planMissing'))}</p></section>`;
     const head = head0 + dipCard();
     if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3><p class="sub">${esc(t('loginHelp'))}</p>
-      <label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
+      <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
+        <label class="fld req">${esc(t('leaderPin'))}<input type="password" inputmode="numeric" id="lg_pin" autocomplete="off"></label></div>
       <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
       <div class="grid2"><label class="fld">${esc(t('sjPick'))}<select id="lg_jobsel"><option value="">—</option>${P.SHIFT_JOBS.map(k => `<option value="${k}">${esc(t('sj_' + k))}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('sjOtherText'))}<input id="lg_jobtxt"></label></div>
@@ -408,7 +421,8 @@ window.ProdUI = function (C) {
       <label class="fld req">${esc(t('activitiesDone'))}<textarea rows="3" id="lo_acts">${esc(sm.acts.map(a => t('at_' + (ACT.has(a.type) ? a.type : 'other')) + (a.description ? ': ' + a.description : '')).join('\n'))}</textarea></label>
       <h4>${esc(t('scalesEnd'))}</h4>${scaleInputs('los')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lo_comments"></textarea></label>
-      <label class="fld req">${esc(t('name'))}<input id="lo_by" value="${esc(li.leader || S.operator)}"></label>
+      <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lo_by"', li.leader || S.operator)}</label>
+        <label class="fld req">${esc(t('leaderPin'))}<input type="password" inputmode="numeric" id="lo_pin" autocomplete="off"></label></div>
       <button class="btn primary big" data-pact="shiftlogout">${esc(t('logoutBtn'))}</button></section>`;
     return head + loginCard + `<section class="card"><h3>${esc(t('logoutTitle'))} · ${esc(C.fmtDT(lo.t))}</h3>
       <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + lo.state))}</b></div>
@@ -421,22 +435,26 @@ window.ProdUI = function (C) {
   async function shiftLogin() {
     const sel = shiftSel(), leader = ($('#lg_leader') || {}).value || '';
     if (!leader.trim()) return C.toast(t('needLeader'));
+    const pinR = await leaderPinCheck(leaderCrewOf(leader.trim()), ($('#lg_pin') || {}).value);
+    if (pinR === 'bad') return C.toast(t('leaderPinBad'));
     const sc = P.readScales(scaleVals('lgs'));
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: L.crewOfTime(start + 60000),
       leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
-      planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim() });
+      planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim(), leaderPin: pinR === 'ok' ? 'ok' : 'notSet' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = rec.by; await DB.setConfig('operator', S.operator); S.lgJobs = [];
-    await reload(); C.toast(t('loginSaved')); keepScroll();
+    await reload(); C.toast(pinR === 'ok' ? t('loginSaved') : t('loginSaved') + ' · ' + t('leaderPinNone')); keepScroll();
   }
   async function shiftLogout() {
     const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
     if (!li) return;
     const by = $('#lo_by').value.trim(), acts = $('#lo_acts').value.trim();
     if (!by || !acts) return C.toast(t('needTextName'));
+    const pinR = await leaderPinCheck(leaderCrewOf(by), ($('#lo_pin') || {}).value);
+    if (pinR === 'bad') return C.toast(t('leaderPinBad'));
     const sc = P.readScales(scaleVals('los'));
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
     const q = P.shiftScaleKg(li.scalesStart, sc.values);
@@ -447,10 +465,10 @@ window.ProdUI = function (C) {
     const tms = now();
     const rec = Object.assign(base(tms), { kind: 'logout', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew,
       state: $('#lo_state').value === 'off' ? 'off' : 'on', activitiesDone: acts, scalesEnd: sc.values, shiftKg: q.kg, negative: q.negative,
-      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, loginUid: li.uid });
+      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, loginUid: li.uid, leaderPin: pinR === 'ok' ? 'ok' : 'notSet' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
-    await reload(); C.toast(t('logoutSaved')); keepScroll();
+    await reload(); C.toast(pinR === 'ok' ? t('logoutSaved') : t('logoutSaved') + ' · ' + t('leaderPinNone')); keepScroll();
   }
   // Aviso na página inicial: turno actual sem login
   function shiftIssue() {
@@ -643,6 +661,7 @@ window.ProdUI = function (C) {
       ${(j.switchLog || []).length ? `<div class="dec d-record"><b>${esc(t('switchesTitle'))}</b>${j.switchLog.map(x => `<div class="li">• ${esc(x.kind === 'feed' ? t('feedSwitchLine', { bin: x.bin, from: x.from, to: x.to }) : t('productSwitchLine', { from: x.from, to: x.to }))}</div>`).join('')}</div>` : ''}
       <div class="kv"><span>${esc(t('moistureFromTo'))}</span><b>${esc(C.fmtNum(j.m0))} → ${esc(C.fmtNum(j.m1))} % · ${esc(t('impurities'))} ${esc(C.fmtNum(j.impurities))} %</b></div>
       <div class="kv"><span>${esc(t('water'))}</span><b>${fmtKg(j.waterLh)} L/h · ${esc(t('total'))} ${fmtKg(j.waterL)} L</b></div>
+      <div class="kv"><span>${esc(t('waterAdded'))}</span><b>${isNum(j.waterAddedL) ? fmtKg(j.waterAddedL) + ' L' : '—'}</b></div>
       ${P.jobOutputs(j).map(o => `<div class="kv"><span>${esc(t('expectedProduct'))}${P.jobOutputs(j).length > 1 ? ' · ' + esc(C.prodName(o.productId)) : ''}</span><b>${isNum(o.expectedKg) ? fmtKg(o.expectedKg) + ' kg (' + esc(C.fmtNum(o.extraction)) + ' %)' : esc(t('extractionNotSet'))}${P.jobOutputs(j).length > 1 ? ' → ' + esc((o.bins || []).join(', ')) : ''}</b></div>`).join('')}
       ${j.status === 'done' && isNum(j.actualKg) ? `<div class="kv"><span>${esc(t('actualGrain'))}</span><b>${fmtKg(j.actualKg)} kg</b></div>` : ''}
       ${j.closeNote ? `<p><small>${esc(j.closeNote)}</small></p>` : ''}
@@ -793,7 +812,9 @@ window.ProdUI = function (C) {
         <label class="fld req">${esc(t('m1'))} (%)<input inputmode="decimal" data-jfi="m1" value="${esc(f.m1)}"></label>
       </div>
       ${f.mode === 'blend' ? `<p class="sub">${esc(t('blendMoistNote'))}</p>` : ''}
-      <p class="sub">${esc(t('waterHint'))}</p></section>
+      <p class="sub">${esc(t('waterHint'))}</p>
+      <label class="fld">${esc(t('waterAdded'))} (L)<input inputmode="decimal" data-jfi="waterAddedL" value="${esc(f.waterAddedL || '')}"></label>
+      <p class="sub">${esc(t('waterAddedHint'))}</p></section>
     <section class="card">
       <label class="fld req">${esc(t('jobStartTime'))}<input type="datetime-local" id="jf_start" value="${esc(f.startTime || '')}"></label>
       <label class="fld req">${esc(t('shiftLeader'))}${leaderField('data-jfl="leader"', f.leader)}</label>
@@ -900,6 +921,9 @@ window.ProdUI = function (C) {
     const tms = st0;
     // produtos da ordem: extracção (número e texto tal como escrito), produto esperado, silos
     const outs = r.calc.outputs.map((o, i) => Object.assign({}, o, { extractionRaw: String(f.outputs[i].targetExtraction) }));
+    // v2.10.0: água realmente adicionada (L), escrita pelo chefe de turno; vazio = não registada (nunca estimada)
+    const wa = String(f.waterAddedL || '').trim() === '' ? null : P.num(f.waterAddedL);
+    if (wa !== null && (isNaN(wa) || wa < 0)) return C.toast(t('fixInvalid') + ': ' + t('waterAdded'));
     const sourceComps = {};
     f.sources.forEach(id => { sourceComps[id] = dirtyState(id).comps; });   // conteúdo de cada silo de moagem no arranque (rastreabilidade)
     const job = Object.assign(base(tms), {
@@ -909,7 +933,7 @@ window.ProdUI = function (C) {
       blendInputs: f.mode === 'blend' ? JSON.parse(JSON.stringify(f.blend)) : null,
       offRecipe: r.calc.offRecipe,
       m0: r.values.m0, m1: r.values.m1, impurities: r.values.impurities, feedKgh: r.calc.feedKgh,
-      waterL: r.calc.waterL, waterLh: r.calc.waterLh, expectedKg: isNum(r.calc.expectedKg) ? r.calc.expectedKg : null,
+      waterL: r.calc.waterL, waterLh: r.calc.waterLh, waterAddedL: wa, expectedKg: isNum(r.calc.expectedKg) ? r.calc.expectedKg : null,
       extraction: r.calc.extraction, dampenerMaxLh: P.dampenerMax(S.cfgP, f.lineId),
       recipe: { colours: f.recipe.colours.slice(), grades: f.recipe.grades.slice(), source: 'job' },
       warnings: r.warnings.map(w => w.code + (w.bin ? ':' + w.bin : '') + (w.productId ? '@' + w.productId : '')),
@@ -1175,13 +1199,13 @@ window.ProdUI = function (C) {
     const add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
     add(t('x_jobs'), [[t('waShiftTitle', { d: ls.day, s: t('shift_' + ls.period) })], [],
       [t('line'), t('product'), t('status'), t('startedAt'), t('closedAt'), t('shiftLeader'), t('crew'), t('grainToMill') + ' (kg)', t('fromBins'), t('binContents'), t('temperedBin'), t('toBins'),
-        t('m0'), t('impurities'), t('m1'), t('feedRate') + ' (kg/h)', t('waterRate') + ' (L/h)', t('waterTotal') + ' (L)', t('jobRecipe'), t('x_offRecipe'), t('x_outputs'), t('extraction') + ' % (' + t('total') + ')', t('expectedProduct') + ' (kg, ' + t('total') + ')', t('actualGrain') + ' (kg)', t('notes')],
+        t('m0'), t('impurities'), t('m1'), t('feedRate') + ' (kg/h)', t('waterRate') + ' (L/h)', t('waterTotal') + ' (L)', t('waterAdded') + ' (L)', t('jobRecipe'), t('x_offRecipe'), t('x_outputs'), t('extraction') + ' % (' + t('total') + ')', t('expectedProduct') + ' (kg, ' + t('total') + ')', t('actualGrain') + ' (kg)', t('notes')],
       ...sm.jobs.map(j => [C.lineName(j.lineId), prodNames(j), t('js_' + (JOB_ST[j.status] ? j.status : 'running')), C.fmtDT(j.startedAt), j.closedAt ? C.fmtDT(j.closedAt) : '',
         j.leader, j.crew, j.grainKg, (j.alloc || []).map(a => (a.bin || a.silo) + '=' + a.kg).join('; '),
-        j.sourceComps ? Object.keys(j.sourceComps).map(k => k + ': ' + compText(j.sourceComps[k])).join(' | ') : '', (j.tempered || []).join(', '), (j.bins || []).join(', '), j.m0, j.impurities, j.m1, P.feedKghOf(j), j.waterLh, j.waterL,
+        j.sourceComps ? Object.keys(j.sourceComps).map(k => k + ': ' + compText(j.sourceComps[k])).join(' | ') : '', (j.tempered || []).join(', '), (j.bins || []).join(', '), j.m0, j.impurities, j.m1, P.feedKghOf(j), j.waterLh, j.waterL, isNum(j.waterAddedL) ? j.waterAddedL : '',
         j.recipe && P.recipeSet(j.recipe) ? j.recipe.colours.join('/') + ' · ' + j.recipe.grades.join('/') : '',
         (j.offRecipe || []).map(x => x.bin || x.silo).join(', ') + (j.offRecipeAuth ? ' (' + j.offRecipeAuth.by + ': ' + j.offRecipeAuth.reason + ')' : ''),
-        P.jobOutputs(j).map(o => C.prodName(o.productId) + ' ' + (isNum(o.extraction) ? o.extraction + ' %' : '—') + ' = ' + (isNum(o.expectedKg) ? o.expectedKg + ' kg' : '—') + ' → ' + (o.bins || []).join('/')).join(' | '),
+        P.jobOutputs(j).map(o => C.prodName(o.productId) + ' ' + (isNum(o.extraction) ? o.extraction + ' %' : '—') + ' · ' + (isNum(o.expectedKg) ? o.expectedKg + ' kg' : '—') + ' → ' + (o.bins || []).join('/')).join(' | '),
         isNum(j.extraction) ? j.extraction : '', isNum(j.expectedKg) ? j.expectedKg : '', isNum(j.actualKg) ? j.actualKg : '', j.closeNote || ''])]);
     const mvs = (S.moves || []).filter(m => m.t >= range[0] && m.t < range[1]).sort((a, b) => a.t - b.t);
     add(t('x_moves'), [[t('dateTime'), t('crew'), t('type'), t('dirtyBin'), t('silo'), 'kg', t('colour'), t('grade'), t('name')],
@@ -1278,7 +1302,7 @@ window.ProdUI = function (C) {
       <button class="btn primary big" data-pact="stocksave">${esc(t('save'))}</button><button class="btn ghost" data-pact="stockcancel">${esc(t('cancel'))}</button></section>`;
   }
   // v2.6.0: mergulho das bins de milho sujo, (20 − D) × 6 750 kg
-  const dipKgText = (raw, kg) => String(raw || '').trim() === '' ? esc(t('dipHint')) : isNum(kg) ? '= ' + fmtKg(kg) + ' kg' : esc(t('dipBad'));
+  const dipKgText = (raw, kg) => String(raw || '').trim() === '' ? esc(t('dipHint')) : isNum(kg) ? fmtKg(kg) + ' kg' : esc(t('dipBad'));
   function newStockForm() {
     const levels = {};
     P.stockBins(S.cfgP).filter(b => b.kind === 'product').forEach(b => { const st = P.binState(b.id, S.binEvents); levels[b.id] = { kg: '', productId: st.productId || '' }; });
@@ -1366,7 +1390,9 @@ window.ProdUI = function (C) {
         <label class="fld">${esc(t('temperedBins'))}<textarea rows="2" data-ps="temperedBins">${esc(P.binsText(d.temperedBins || []))}</textarea></label>
         <label class="fld">${esc(t('ptab_bins'))}<textarea rows="4" data-ps="bins">${esc(P.binsText(d.bins))}</textarea></label>
         <h3>${esc(t('leaders'))}</h3><p class="sub">${esc(t('leadersHelp'))}</p>
-        <div class="grid2">${['A', 'B', 'C', 'D'].map(k => `<label class="fld">${esc(t('crew'))} ${k}<input data-ps="leader|${k}" value="${esc((d.leaders || {})[k] || '')}" maxlength="60"></label>`).join('')}</div>
+        <div class="grid2">${['A', 'B', 'C', 'D'].map(k => `<label class="fld">${esc(t('crew'))} ${k}<input data-ps="leader|${k}" value="${esc((d.leaders || {})[k] || '')}" maxlength="60"></label>
+          <label class="fld">${esc(t('leaderPinNew', { c: k }))} <small>${esc((S.leaderPins || {})[k] ? t('leaderPinIsSet') : t('leaderPinNotSet'))}</small><input type="password" inputmode="numeric" autocomplete="off" data-lpin="${k}"></label>`).join('')}</div>
+        <p class="sub">${esc(t('leaderPinHelp'))}</p>
         <h3>${esc(t('floors'))}</h3><p class="sub">${esc(t('floorsHelp'))}</p>
         <label class="fld"><input data-ps="floors" value="${esc((d.floors || []).join(', '))}"></label></section>
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="psBy"></label>
@@ -1395,17 +1421,22 @@ window.ProdUI = function (C) {
     if (errs.length) return C.toast(t('limitErrors') + ': ' + errs.join(', '));
     if (JSON.stringify(n.bins) !== JSON.stringify(S.cfgP.bins)) n.binSource = t('changedBy', { by, d: C.fmtDT(now()).slice(0, 10) });
     if (['grainSilos', 'dirtyBins', 'temperedBins'].some(k => JSON.stringify(n[k]) !== JSON.stringify(S.cfgP[k]))) n.masterSource = P.MASTER_SOURCE + ' + ' + t('changedBy', { by, d: C.fmtDT(now()).slice(0, 10) });
+    const newPins = [...document.querySelectorAll('[data-lpin]')].filter(el => el.value.trim()).map(el => ({ crew: el.dataset.lpin, pin: el.value.trim() }));
+    if (newPins.some(x => !/^\d{4,8}$/.test(x.pin))) return C.toast(t('leaderPinFormat'));
     const diff = P.prodConfigDiff(S.cfgP, n);
-    if (!diff.length) return C.toast(t('noChanges'));
+    if (!diff.length && !newPins.length) return C.toast(t('noChanges'));
     const r = await C.checkPin($('#psPin').value);
     if (!r.ok) return C.toast(C.pinMsg(r));
     const tms = now();
     try {
-      await DB.batch(diff.map(x => ({ store: 'prodChanges', op: 'add', obj: Object.assign(base(tms), { t: tms, by, reason }, x) })));
+      // o PIN não vai para os registos: só fica a nota de que foi mudado, por quem e porquê
+      const pinRecs = newPins.map(x => ({ field: 'leaderPin.' + x.crew, old: JSON.stringify((S.leaderPins || {})[x.crew] ? 'set' : null), new: JSON.stringify('set') }));
+      if (diff.length || pinRecs.length) await DB.batch(diff.concat(pinRecs).map(x => ({ store: 'prodChanges', op: 'add', obj: Object.assign(base(tms), { t: tms, by, reason }, x) })));
       await DB.setConfig('cfgP', n);
+      if (newPins.length) { const lp = Object.assign({}, S.leaderPins); for (const x of newPins) lp[x.crew] = await makeLeaderPin(x.pin); await DB.setConfig('leaderPins', lp); S.leaderPins = lp; }
     } catch (e) { return C.toast(t('saveFailed')); }
     S.cfgP = n; S.prodDraft = null; await reload();
-    C.toast(t('limitsSaved', { n: diff.length })); S.view = 'settings'; C.render(); window.scrollTo(0, 0);
+    C.toast(t('limitsSaved', { n: diff.length + newPins.length })); S.view = 'settings'; C.render(); window.scrollTo(0, 0);
   }
 
   // ---------- códigos de paragem: editor (autorização) ----------

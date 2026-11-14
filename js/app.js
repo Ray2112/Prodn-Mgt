@@ -9,7 +9,7 @@
   const S = {
     view: 'home', lang: 'pt', cfg: null, crew: null, operator: '', lineState: {},
     samples: [], holds: [], alerts: [], limitChanges: [], reports: [],
-    form: null, limitsProduct: null, limitsDraft: null, recDay: null, recLine: '', repDay: null,
+    form: null, limitsProduct: null, limitsDraft: null, recDay: null, recLine: '', repDay: null, repShift: '',
     detailId: null, modal: null, notified: {}, pinLock: { fails: 0, until: 0 }
   };
   const DEC_OK = { record: 1, accept: 1, warn: 1, reject: 1 };
@@ -670,11 +670,12 @@
   // ----- Relatório -----
   function viewReport() {
     const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000);
-    const r = L.dayReport(day, S.samples, S.holds, S.cfg);
+    const r = L.shiftReport(L.dayReport(day, S.samples, S.holds, S.cfg), S.repShift);   // v2.10.0: dia inteiro ou um turno
     const gen = S.reports.filter(x => x.day === day);
-    const bk = window.DayBook.summary(bookData(), [r.start, r.end]);   // v2.9.0: produção, grão, produtos, paragens, segurança, actividades
+    const bk = window.DayBook.summary(bookData(), [r.start, r.end]); if (S.repShift) bk.prod = bk.prod.filter(p => p.period === S.repShift);   // v2.9.0: produção, grão, produtos, paragens, segurança, actividades
     return `<section class="card"><h2>${esc(t('dailyReport'))}</h2>
-      <label class="fld">${esc(t('prodDay'))}<input type="date" id="repDay" value="${esc(day)}"></label>
+      <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="repDay" value="${esc(day)}"></label>
+        <label class="fld">${esc(t('shift'))}<select id="repShift"><option value="">${esc(t('wholeDay'))}</option><option value="D" ${S.repShift === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${S.repShift === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       <p class="sub">${esc(t('periodFromTo', { a: fmtDT(r.start), b: fmtDT(r.end) }))}</p>
       <div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
       <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>
@@ -742,19 +743,20 @@
   }
   async function genExcel() {
     const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000);
-    const r = L.dayReport(day, S.samples, S.holds, S.cfg);
+    const r = L.shiftReport(L.dayReport(day, S.samples, S.holds, S.cfg), S.repShift);
     const wb = buildWorkbook(r);
     // v2.9.0: livro do dia — produção, grão, produtos, paragens, segurança, actividades e todos os registos
     const bk = window.DayBook.summary(bookData(), [r.start, r.end]), XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31));
     add(t('rp_prod'), [[t('shift'), 'B1 (kg)', 'Fuba 1 (kg)', 'Fuba 2 (kg)', t('scale_germ') + ' (kg)', t('scale_zf') + ' (kg)', t('scale_clean') + ' (kg)', t('scale_screenings') + ' (kg)', t('srExtraction') + ' (%)', t('targetT') + ' (kg)', t('targetAchieved') + ' (%)'],
-      ...bk.prod.map(p => [t('shift_' + p.period), p.b1, p.flour1, p.flour2, p.germ, p.zf, p.clean, p.screenings, p.extraction, p.target, p.pct])]);
+      ...bk.prod.filter(p => !S.repShift || p.period === S.repShift).map(p => [t('shift_' + p.period), p.b1, p.flour1, p.flour2, p.germ, p.zf, p.clean, p.screenings, p.extraction, p.target, p.pct])]);
     add(t('rp_grain'), [[t('dateTime'), t('dirtyBin'), t('silo'), 'kg', t('rcSource')], ...bk.items.filter(x => x.kind === 'transfer').map(x => [fmtDT(x.t), x.rec.binId, (x.rec.parts || []).map(p => p.silo).join(', '), x.rec.kg, x.rec.source === 'grain-mgt' ? 'Grain-Mgt' : 'Prodn-Mgt'])]);
     add(t('rp_products'), [[t('dateTime'), t('bin'), t('product'), t('type'), 'kg', t('outDest')], ...bk.items.filter(x => x.cat === 'products').map(x => [fmtDT(x.t), x.rec.binId, prodName(x.rec.productId), x.rec.type, x.rec.kg == null ? '' : x.rec.kg, x.rec.dest ? t('dest_' + x.rec.dest) : ''])]);
     add(t('rp_stops'), [[t('downtimeCode'), 'Tier', 'min', t('rcSource')], ...bk.stops.list.map(x => [x.code || '', x.tier || '', x.min == null ? '' : x.min, x.src])]);
     add(t('rp_safety'), [[t('dateTime'), t('sfType'), t('description'), t('sfInjured'), t('actionTaken'), t('reportedBy')], ...bk.safety.list.map(x => [fmtDT(x.t), t('sf_' + x.sType), x.description, x.injured || '', x.action || '', x.by])]);
     add(t('rp_acts'), [[t('dateTime'), t('activityType'), t('floor'), 'kg', t('description'), t('doneBy')], ...bk.acts.list.map(a => [fmtDT(a.t), t('at_' + a.type), a.floor || '', a.qtyKg == null ? '' : a.qtyKg, a.description || '', a.by])]);
     add(t('rp_all'), [[t('dateTime'), t('rcCategory'), t('description')], ...bk.items.map(x => [fmtDT(x.t), t('rc_' + x.cat), x.cat === 'qc' ? prodName(x.rec.productId) + ' · ' + decLabel(x.rec.decision) : bookText(x)])]);
-    window.XLSX.writeFile(wb, day + (S.lang === 'en' ? '_Mill-' + S.cfg.millType + '_Daily-Report.xlsx' : '_Moagem-' + S.cfg.millType + '_Relatorio-Diario.xlsx'));   // v2.9.0: nome na língua da app
+    const sh = S.repShift ? '_' + (S.lang === 'en' ? (S.repShift === 'D' ? 'Day' : 'Night') : (S.repShift === 'D' ? 'Dia' : 'Noite')) : '';
+    window.XLSX.writeFile(wb, day + sh + (S.lang === 'en' ? '_Mill-' + S.cfg.millType + (sh ? '_Shift-Report.xlsx' : '_Daily-Report.xlsx') : '_Moagem-' + S.cfg.millType + (sh ? '_Relatorio-Turno.xlsx' : '_Relatorio-Diario.xlsx')));   // v2.9.0: nome na língua da app
     await DB.add('reports', { day, t: Date.now() }); await reloadData(); render();
   }
 
@@ -949,6 +951,7 @@
     if (el.id === 'recDay') { S.recDay = el.value; render(); return; }
     if (el.id === 'recLine') { S.recLine = el.value; render(); return; }
     if (el.id === 'repDay') { S.repDay = el.value; render(); return; }
+    if (el.id === 'repShift') { S.repShift = el.value; render(); return; }
     if (el.id === 'limProd') { S.limitsProduct = el.value; S.limitsDraft = null; render(); return; }
     if (el.id === 'langSel') { S.lang = el.value; await DB.setConfig('lang', S.lang); render(); return; }
     if (el.id === 'millSel') { const cfg = Object.assign({}, S.cfg, { millType: el.value }); await DB.setConfig('cfg', cfg); S.cfg = cfg; S.form = null; render(); return; }
