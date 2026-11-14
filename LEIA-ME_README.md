@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.3
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.4
+
+> **v2.8.4 — Dropbox na língua escolhida (Zhax, 13-11-2026).** O cartão do Dropbox em Definições, o estado do envio diário e as mensagens de ligação passam a aparecer em português ou em inglês, conforme a língua da app.
+>
+> *EN:* the Dropbox card in Settings, the daily-send status and the connection messages now follow the app language.
 
 > **v2.8.3 — Paragens da Manutenção como no separador Paragens (Zhax, 13-11-2026).** Tipo (mecânica, eléctrica, processo, outra) → código v3 → hora de início e de fim (duração calculada) → falha → acção. Módulo partilhado com a Grain-Mgt 0.12.0.
 >

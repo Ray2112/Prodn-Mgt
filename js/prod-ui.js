@@ -95,7 +95,7 @@ window.ProdUI = function (C) {
   const dbRedirect = () => location.origin + location.pathname.replace(/index\.html$/i, '');   // v2.3.3: igual seja aberta em ./ ou ./index.html
   async function dropboxSignIn() {
     const A = dbAuth(), c = dbCfg();
-    if (!A || !c) return C.toast('Dropbox: módulo em falta.');
+    if (!A || !c) return C.toast(t('dx_nomodule'));
     const getRandom = b => crypto.getRandomValues(b);
     const verifier = A.randomToken(getRandom), state = A.randomToken(getRandom);
     sessionStorage.setItem(DB_STATE_KEY, JSON.stringify({ verifier, state }));
@@ -112,23 +112,23 @@ window.ProdUI = function (C) {
     try { st = JSON.parse(sessionStorage.getItem(DB_STATE_KEY) || 'null'); } catch (e) { st = null; }
     sessionStorage.removeItem(DB_STATE_KEY);
     history.replaceState(null, '', location.pathname);
-    if (p.get('error')) return C.toast('Dropbox: ligação cancelada (' + p.get('error') + ').');
-    if (!st || st.state !== p.get('state')) return C.toast('Dropbox: resposta não confere. Tente ligar de novo.');
+    if (p.get('error')) return C.toast(t('dx_cancelled', { e: p.get('error') }));
+    if (!st || st.state !== p.get('state')) return C.toast(t('dx_mismatch'));
     try {
       const req = A.buildTokenRequest({ appKey: c.appKey, code: p.get('code'), verifier: st.verifier, redirectUri: dbRedirect() });
       const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
       const json = await r.json().catch(() => null);
-      if (!r.ok) return C.toast('Dropbox recusou o código (' + r.status + ').');
+      if (!r.ok) return C.toast(t('dx_refused', { s: r.status }));
       dbSave(A.parseTokenResponse(json, Date.now()));
-      C.toast('Dropbox ligado.');
-    } catch (e) { C.toast('Dropbox: falha de rede ao ligar.'); console.warn('dropbox token', e); }
+      C.toast(t('dx_connected'));
+    } catch (e) { C.toast(t('dx_network')); console.warn('dropbox token', e); }
   }
   // ---- v2.8.0: leitura do stock dos silos da Grain-Mgt (Mill-App-Read, só leitura) ----
   const SR_SESS_KEY = 'mill-qc.siloRead', SR_STATE_KEY = 'mill-qc.siloReadState.v1', AUTO_SILO_KEY = 'mill-qc.autoSilo.v1';
   const srSess = () => { try { return JSON.parse(localStorage.getItem(SR_SESS_KEY) || 'null'); } catch (e) { return null; } };
   async function siloSignIn() {
     const A = dbAuth(), c = dbCfg();
-    if (!A || !c || !c.siloReadAppKey) return C.toast('Dropbox: módulo em falta.');
+    if (!A || !c || !c.siloReadAppKey) return C.toast(t('dx_nomodule'));
     const getRandom = b => crypto.getRandomValues(b);
     const verifier = A.randomToken(getRandom), state = A.randomToken(getRandom);
     sessionStorage.setItem(SR_STATE_KEY, JSON.stringify({ verifier, state }));
@@ -195,7 +195,7 @@ window.ProdUI = function (C) {
     if (!a || now() - a > 2 * 3600000) return t('srdOld', { h: a ? C.fmtDT(a) : '—' });
     return null;
   }
-  function dropboxSignOut() { try { localStorage.removeItem(DB_SESS_KEY); } catch (e) { /* ignorar */ } C.toast('Dropbox desligado neste dispositivo.'); }
+  function dropboxSignOut() { try { localStorage.removeItem(DB_SESS_KEY); } catch (e) { /* ignorar */ } C.toast(t('dx_signedout')); }
   // Devolve um access token válido, renovando se preciso. null se não houver sessão.
   async function dropboxToken() {
     const A = dbAuth(), c = dbCfg(), sess = dbSess();
@@ -236,7 +236,7 @@ window.ProdUI = function (C) {
   async function syncDays(manual) {
     const R = window.DayRecords, c = dbCfg();
     if (!R || !c || !window.DropboxUpload) return;
-    if (!dbSess()) { if (manual) C.toast('Dropbox: não ligado neste dispositivo.'); return; }
+    if (!dbSess()) { if (manual) C.toast(t('dx_notconnected')); return; }
     if (daySyncing) { dayAgain = true; return; }
     daySyncing = true;
     const st = dayStatus(), sent = lsGet(DAY_SENT_KEY, {}), sentGen = lsGet(DAY_GEN_KEY, {});
@@ -269,7 +269,7 @@ window.ProdUI = function (C) {
     const t0 = new Date().toISOString();
     lsSet(DAY_STATUS_KEY, { lastTryAt: t0, lastOkAt: failed ? (st.lastOkAt || null) : t0, sentNow: ok, failed, lastError: failed ? lastErr : null, undated });
     daySyncing = false;
-    if (manual) C.toast(failed ? 'Dropbox: ' + failed + ' envio(s) falhado(s). Ver Definições.' : 'Dropbox: registos enviados (' + ok + ' dia(s)).');
+    if (manual) C.toast(failed ? t('dx_failed', { n: failed }) : t('dx_sent', { n: ok }));
     if (manual) keepScroll();   // envio automático não redesenha (não tira o foco a um campo em edição)
     if (dayAgain) { dayAgain = false; scheduleDaySync(); }
   }
@@ -280,11 +280,11 @@ window.ProdUI = function (C) {
   // Linha de estado do envio diário (Definições). Falhas ficam visíveis ao operador, não só no console.
   function daySyncLine() {
     const s = dayStatus();
-    if (!s.lastTryAt) return '<p class="sub">Registos diários: ainda não enviados neste dispositivo.</p>';
-    const okTxt = s.lastOkAt ? 'último envio completo ' + esc(C.fmtDT(Date.parse(s.lastOkAt))) : 'nenhum envio completo';
-    const err = s.failed ? `<br><b class="d-reject">Falha: ${esc(s.lastError || '')}. Os dias em falta são reenviados na próxima gravação.</b>` : '';
-    const und = s.undated ? `<br>${esc(String(s.undated))} registo(s) sem data não entram nos ficheiros diários.` : '';
-    return `<p class="sub">Registos diários: ${okTxt}.${err}${und}</p>`;
+    if (!s.lastTryAt) return `<p class="sub">${esc(t('dx_day_none'))}</p>`;
+    const okTxt = s.lastOkAt ? t('dx_day_last', { d: C.fmtDT(Date.parse(s.lastOkAt)) }) : t('dx_day_never');
+    const err = s.failed ? `<br><b class="d-reject">${esc(t('dx_day_fail', { e: s.lastError || '' }))}</b>` : '';
+    const und = s.undated ? `<br>${esc(t('dx_day_undated', { n: s.undated }))}` : '';
+    return `<p class="sub">${esc(okTxt)}${err}${und}</p>`;
   }
   let seq = 0;
   // UUID v4 por registo (o dispositivo vai em deviceId); recurso antigo se randomUUID não existir
@@ -1293,10 +1293,10 @@ window.ProdUI = function (C) {
     return ctxCard + `<section class="card"><h3>${esc(t('prodSettings'))}</h3>
       <p class="sub">${esc(t('prodSettingsSummary', { c: lineIds().map(id => id + ' ' + fmtKg(c.lineKgDay[id]) + ' kg/d').join(' · '), d: lineIds().map(id => id + ' ' + fmtKg(P.dampenerMax(c, id))).join(' · '), b: c.bins.length }))}</p>
       <button class="btn" data-nav="prodset">${esc(t('editProdSettings'))}</button></section>
-      <section class="card"><h3>Dropbox (saldos das bins e registos diários)</h3>
-      <p class="sub">${dbSess() && dbSess().refreshToken ? 'Ligado neste dispositivo. O bins-status.json e os registos do dia são enviados após cada gravação.' : 'Não ligado. Sem ligação, nada é enviado (os registos continuam guardados neste dispositivo).'}</p>
+      <section class="card"><h3>${esc(t('dx_title'))}</h3>
+      <p class="sub">${esc(dbSess() && dbSess().refreshToken ? t('dx_on') : t('dx_off'))}</p>
       ${daySyncLine()}
-      <button class="btn" data-pact="dbsignin">Ligar ao Dropbox</button> <button class="btn" data-pact="dbsyncnow">Enviar agora</button> <button class="btn ghost" data-pact="dbsignout">Desligar</button></section>
+      <button class="btn" data-pact="dbsignin">${esc(t('dx_connect'))}</button> <button class="btn" data-pact="dbsyncnow">${esc(t('dx_sendnow'))}</button> <button class="btn ghost" data-pact="dbsignout">${esc(t('dx_disconnect'))}</button></section>
       <section class="card"><h3>${esc(t('srdTitle'))}</h3>
       <p class="sub">${esc(srSess() ? t('srdOn') : t('srdNotConnected'))}</p>
       <p class="sub">${esc(S.autoSilo ? t('srdLast', { e: C.fmtDT(Date.parse(S.autoSilo.exportedAt)), f: C.fmtDT(S.autoSilo.fetchedAt), n: S.autoSilo.moves.length }) : t('srdNone'))}${S.autoSiloErr ? ' · ' + esc(S.autoSiloErr) : ''}</p>

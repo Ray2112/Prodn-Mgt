@@ -123,6 +123,14 @@
     bin: 'Silo', content: 'Conteúdo', since: 'desde', setBinNote: 'Definir conteúdo sem ordem exige PIN (ex.: estado inicial).',
     upNotConnected: 'Este telemóvel não está ligado ao Dropbox: os registos do dia não são enviados. Ligue em Definições.', upFailed: 'Envio dos registos falhou: {e}. Use «Enviar agora» em Definições.',
     upNotSent: 'O dia {d} ainda não foi enviado ao Dropbox. Use «Enviar agora» em Definições.',
+    // v2.8.4 — Dropbox em português e inglês (Zhax, 13-11-2026: tudo na língua escolhida)
+    dx_title: 'Dropbox (saldos das bins e registos diários)', dx_on: 'Ligado neste dispositivo. O bins-status.json e os registos do dia são enviados após cada gravação.',
+    dx_off: 'Não ligado. Sem ligação, nada é enviado (os registos continuam guardados neste dispositivo).', dx_connect: 'Ligar ao Dropbox', dx_sendnow: 'Enviar agora', dx_disconnect: 'Desligar',
+    dx_nomodule: 'Dropbox: módulo em falta.', dx_cancelled: 'Dropbox: ligação cancelada ({e}).', dx_mismatch: 'Dropbox: resposta não confere. Tente ligar de novo.', dx_refused: 'Dropbox recusou o código ({s}).',
+    dx_connected: 'Dropbox ligado.', dx_network: 'Dropbox: falha de rede ao ligar.', dx_signedout: 'Dropbox desligado neste dispositivo.', dx_notconnected: 'Dropbox: não ligado neste dispositivo.',
+    dx_failed: 'Dropbox: {n} envio(s) falhado(s). Ver Definições.', dx_sent: 'Dropbox: registos enviados ({n} dia(s)).', dx_day_none: 'Registos diários: ainda não enviados neste dispositivo.',
+    dx_day_last: 'Registos diários: último envio completo {d}.', dx_day_never: 'Registos diários: nenhum envio completo.', dx_day_fail: 'Falha: {e}. Os dias em falta são reenviados na próxima gravação.',
+    dx_day_undated: '{n} registo(s) sem data não entram nos ficheiros diários.',
     // v2.8.0 — stock e descargas da Grain-Mgt
     dipLevelAt: 'Nível pelo mergulho de {h}.', dipNeeded: 'Nível desconhecido: registe o mergulho em Silos de produto → totais da manhã.',
     continuousIn: 'Recebido desde o último vazio: {kg} kg (enchimento contínuo, pode passar a capacidade)',
@@ -293,6 +301,14 @@
     bin: 'Bin', content: 'Content', since: 'since', setBinNote: 'Setting content without a job needs the PIN (e.g. initial state).',
     upNotConnected: 'This phone is not connected to Dropbox: the day records are not sent. Connect in Settings.', upFailed: 'Sending the records failed: {e}. Use "Enviar agora" in Settings.',
     upNotSent: 'Day {d} has not been sent to Dropbox yet. Use "Enviar agora" in Settings.',
+    // v2.8.4 — Dropbox in Portuguese and English (Zhax, 13 Nov 2026: everything in the chosen language)
+    dx_title: 'Dropbox (bin balances and day records)', dx_on: 'Connected on this device. bins-status.json and the day records are sent after every save.',
+    dx_off: 'Not connected. Without a connection nothing is sent (records stay saved on this device).', dx_connect: 'Connect to Dropbox', dx_sendnow: 'Send now', dx_disconnect: 'Disconnect',
+    dx_nomodule: 'Dropbox: module missing.', dx_cancelled: 'Dropbox: connection cancelled ({e}).', dx_mismatch: 'Dropbox: response does not match. Try connecting again.', dx_refused: 'Dropbox refused the code ({s}).',
+    dx_connected: 'Dropbox connected.', dx_network: 'Dropbox: network failure while connecting.', dx_signedout: 'Dropbox disconnected on this device.', dx_notconnected: 'Dropbox: not connected on this device.',
+    dx_failed: 'Dropbox: {n} send(s) failed. See Settings.', dx_sent: 'Dropbox: records sent ({n} day(s)).', dx_day_none: 'Day records: not sent from this device yet.',
+    dx_day_last: 'Day records: last complete send {d}.', dx_day_never: 'Day records: no complete send.', dx_day_fail: 'Failed: {e}. Missing days are resent at the next save.',
+    dx_day_undated: '{n} record(s) without a date are not in the day files.',
     // v2.8.0 — stock and discharges from Grain-Mgt
     dipLevelAt: 'Level from the dip at {h}.', dipNeeded: 'Level unknown: record the dip in Product bins → morning totals.',
     continuousIn: 'Received since the last empty: {kg} kg (continuous filling, may exceed the capacity)',
