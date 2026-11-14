@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.9.1';
+  const VERSION = '2.10.0';
   const DECISIONS = ['record', 'accept', 'warn', 'reject'];   // ordem de gravidade
   const RANK = { record: 0, accept: 1, warn: 2, reject: 3 };
   const CREWS = ['A', 'B', 'C', 'D'];
@@ -339,6 +339,16 @@
         warn: samples.filter(x => x.decision === 'warn').length, reject: samples.filter(x => x.decision === 'reject').length } };
   }
 
+  // v2.10.0 (Zhax, 14-11-2026): relatório de um só turno — o relatório do dia cortado a 07–19 (D) ou 19–07 (N)
+  function shiftReport(r, period) {
+    if (period !== 'D' && period !== 'N') return r;
+    const mid = r.start + 12 * 3600000, s = period === 'D' ? r.start : mid, e = period === 'D' ? mid : r.end;
+    const samples = r.samples.filter(x => x.t >= s && x.t < e);
+    return Object.assign({}, r, { start: s, end: e, period, samples, summary: r.summary.filter(g => g.period === period),
+      holds: r.holds.filter(h => h.openedAt < e && (!h.closedAt || h.closedAt >= s)), alerts: samples.filter(x => x.decision === 'warn' || x.decision === 'reject'),
+      totals: { n: samples.length, accept: samples.filter(x => x.decision === 'accept').length, warn: samples.filter(x => x.decision === 'warn').length, reject: samples.filter(x => x.decision === 'reject').length } });
+  }
+
   // ---------- mestre partilhado de limites (ficheiro confidencial — nunca no repositório) ----------
   // version = instante ISO em que os limites foram publicados; compara-se como texto (ordem cronológica).
   // Distribuído à mão no registo de cada telemóvel. Só uma versão mais nova do que a em vigor é aplicada.
@@ -503,7 +513,7 @@
   const api = { openQcWarnings, isLateEntry, LATE_ENTRY_MIN, MAX_BACK_DAYS, VERSION, DECISIONS, RANK, CREWS, MILL_TYPES, PHYSICAL, COLOUR_SCALE, PARAMS, EXTRA, UNITS, FREQS,
     defaultProducts, defaultConfig, num, pct, evalParam, hasLimits, evaluateSample, worst,
     prodDay, prodDayRange, shiftOf, ymd, dueStatus, newHold, holdAfterSample, addHoldAction,
-    effective, validateLimit, limitDiff, dayReport, validBackup, findProduct,
+    effective, validateLimit, limitDiff, dayReport, shiftReport, validBackup, findProduct,
     QC_KEYED, newId, shortId, qcUpgradeKeys, CREW_CYCLE, crewOfTime, CONTRACT_VERSION, stampContract, normalizeReadings,
     LIMITS_MASTER_APP, limitsMasterFile, validLimitsMaster, limitsVersionStatus, applyLimitsMaster };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

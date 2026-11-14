@@ -1,6 +1,7 @@
 /* Textos de Produção PT (pré-AO90) / EN — chaves idênticas. Junta-se a window.I18N. */
 (function () {
   const pt = {
+    leaderPin: 'PIN do chefe de turno', leaderPinBad: 'PIN do chefe de turno errado', leaderPinNone: 'aviso: este chefe ainda não tem PIN (o supervisor define-o em Definições → Produção)', leaderPinNew: 'Novo PIN — turma {c}', leaderPinIsSet: '(definido)', leaderPinNotSet: '(sem PIN)', leaderPinFormat: 'O PIN tem 4 a 8 algarismos', leaderPinHelp: 'Cada chefe de turno entra e sai do turno com o seu PIN. Escreva um PIN só para o criar ou mudar; vazio = fica como está. O PIN fica só neste telemóvel: defina-o em cada telemóvel.', 
     leaders: 'Chefes de turno (por turma)', leadersHelp: 'Ficam só neste telemóvel e nas suas cópias de segurança (não vão para o código da app, que é público). Com a lista preenchida, "Chefe de turno" passa a ser escolhido da lista; por defeito, o chefe da turma seleccionada.',
     leadersNotSet: 'Chefes de turno não definidos — Definições → Produção.',
     nonCanonical: 'Silos na app de Silos com ID fora da lista canónica: {s}. Renomeie-os na app de Silos ({list}) — não podem ser usados.',
@@ -50,7 +51,7 @@
     productSwitchLine: 'Silo de produto cheio: troca {from} → {to}', switchesTitle: 'Trocas automáticas registadas', je_feed_short: 'Silo sujo {bin}: faltam {short} kg mesmo com a fila de silos', je_feed_silo_invalid: 'Silo {silo} não pode alimentar (não é milho designado ou não existe)',
     je_bin_capacity: 'Produto esperado {need} kg excede o espaço livre dos silos de produto escolhidos ({cap} kg) — junte a próxima bin da fila',
     je_bin_full: 'Silo {bin} cheio — escolha a próxima bin da fila',
-    stockTitle: 'Totais das bins (manhã)', stockNote: 'Registe todas as manhãs o total de cada bin, do milho sujo ao produto acabado. O nível de cada bin durante o dia = leitura + entradas registadas depois (transferências, ordens) − grão tirado pelas ordens. A saída de produto (ensacagem/expedição) não é registada: a leitura seguinte acerta.',
+    stockTitle: 'Totais das bins (manhã)', stockNote: 'Registe todas as manhãs o total de cada bin, do milho sujo ao produto acabado. Durante o dia a app acerta o nível com as entradas e as ordens registadas. A saída de produto (ensacagem/expedição) não é registada: a leitura seguinte corrige.',
     stockNew: 'Registar totais de hoje', stockLast: 'Última leitura', stockNone: 'Ainda sem leitura dos totais.', stockDue: 'Registe os totais das bins de hoje (manhã)',
     stockKind_dirty: 'Milho sujo', stockKind_tempered: 'Milho temperado', stockKind_product: 'Produto acabado', stockKg: 'Total (kg)', stockFree: 'livre',
     stockFull: 'CHEIA', stockUnknown: 'nível desconhecido', stockOver: 'ACIMA DA CAPACIDADE', stockSaved: 'Totais gravados.', stockLeaveBlank: 'Deixe em branco a bin que não foi lida.',
@@ -75,7 +76,7 @@
     js_running: 'Em curso', js_done: 'Concluída', js_cancelled: 'Cancelada',
     shiftLeader: 'Chefe de turno', qcAlerts: 'CQ da linha', noQcAlerts: 'Sem alertas de CQ desde o início da ordem',
     siloRed: 'Retido (Vermelho)', compatible: 'Compatível', fedBy: 'linha', binEmpty: 'Vazio', busy: 'ocupada',
-    feedRate: 'Caudal de grão', feedRateHint: 'Vazio = capacidade da linha ÷ 24 h (C 500 000 kg/dia, D 300 000 kg/dia). Em kg/h.',
+    feedRate: 'Caudal de grão', feedRateHint: 'Vazio = capacidade da linha. Em kg/h.',
     jobProducts: 'Produtos da ordem', jobProductsHelp: 'Uma ordem pode fazer vários produtos ao mesmo tempo (ex.: Fuba 2 + grits cervejeira). Cada produto tem a sua extracção alvo e os seus silos de destino; o grão necessário é calculado pela quantidade e extracção do produto principal (1.º); os restantes produtos têm só quantidade.',
     productN: 'Produto {n}', addProduct: 'Adicionar produto', binTaken: 'O silo {bin} já está atribuído a outro produto desta ordem', binTakenBy: 'para {p}',
     je_product_dup: 'O mesmo produto aparece duas vezes na ordem', je_bin_dup: 'Silo {bin} atribuído a dois produtos', je_extraction_sum: 'Soma das extracções alvo = {sum} % (máximo 100 %)', x_outputs: 'Produtos (extracção, kg, silos)',
@@ -88,7 +89,8 @@
     silosOrder: 'Toque nos silos pela ordem de descarga: esvazia o 1.º, depois o seguinte.',
     confirmSilos: 'Confirmei na app de Silos que nenhum silo de grão seleccionado está retido (armazenagem).',
     grainSpecs: 'Especificações do grão', m0: 'Humidade inicial', m1: 'Humidade alvo do grão temperado',
-    waterHint: 'Água = grão (sujo) × (alvo − inicial) ÷ (100 − alvo). Alvo = humidade do grão após temperagem, não do produto.',
+    waterAdded: 'Água adicionada', waterAddedHint: 'A água realmente adicionada no arranque. Vazio = não registada.',
+    waterHint: 'Alvo = humidade do grão após temperagem, não do produto.',
     pickLineFirst: 'Escolha primeiro a linha.', binSourceNote: 'Silos de produto e linhas: {s}. Confirmar e corrigir em Definições.',
     startJob: 'Iniciar ordem', jobBlocked: 'FALTAM DADOS — corrija antes de iniciar', jobOk: 'Pode iniciar', needLeader: 'Indique o chefe de turno',
     jobStarted: 'Ordem iniciada — linha em produção no CQ', jobClosed: 'Ordem fechada',
@@ -136,7 +138,7 @@
     sjPick: 'Escolha o trabalho', sjOtherText: 'Texto (para «Outro»)', sjAdd: 'Juntar trabalho', sjOtherNeed: 'Escreva o trabalho «Outro»',
     sj_hk0: 'Limpeza — piso 0', sj_hk1: 'Limpeza — piso 1', sj_hk2: 'Limpeza — piso 2', sj_hk3: 'Limpeza — piso 3', sj_hk4: 'Limpeza — piso 4', sj_hk5: 'Limpeza — piso 5', sj_hk6: 'Limpeza — piso 6',
     sj_reproc: 'Reprocessamento', sj_fumig: 'Preparar para fumigação', sj_warehouse: 'Arrumação do armazém', sj_plansifter: 'Manutenção do plansifter', sj_sweepings: 'Recolha de varreduras', sj_other: 'Outro',
-    dipTitle: 'Mergulhos diários — bins de milho sujo B01–B04', dipHelp: 'Espaço vazio D em metros; quantidade = (20 − D) × 6 750 kg. Fica como leitura da manhã das bins.',
+    dipTitle: 'Mergulhos diários — bins de milho sujo B01–B04', dipHelp: 'Espaço vazio D em metros; a app mostra a quantidade. Fica como leitura da manhã das bins.',
     dipDone: 'Mergulho de hoje às {h} por {by}', dipMissing: 'Mergulhos de hoje ainda não registados.', dipSave: 'Gravar mergulhos', dipSaved: 'Mergulhos gravados.',
     // v2.8.4 — Dropbox em português e inglês (Zhax, 13-11-2026: tudo na língua escolhida)
     dx_title: 'Dropbox (saldos das bins e registos diários)', dx_on: 'Ligado neste dispositivo. O bins-status.json e os registos do dia são enviados após cada gravação.',
@@ -173,7 +175,7 @@
     jobStartTime: 'Hora de arranque', badStartTime: 'Hora de arranque inválida (até 24 h atrás, não no futuro)',
     stopLineReport: 'Parar linha e relatório do turno', stopLineNote: 'Fecha a ordem e descarrega o relatório do turno em Excel.',
     // v2.6.0 — avisos em vez de bloqueios, mergulho das bins de milho sujo, saídas das bins de produto
-    jobWarnTitle: 'Avisos (a ordem arranca; ficam registados)', dipD: 'Espaço vazio D (m)', dipHint: '(20 − D) × 6 750 kg', dipBad: 'D entre 0 e 20 m',
+    jobWarnTitle: 'Avisos (a ordem arranca; ficam registados)', dipD: 'Espaço vazio D (m)', dipHint: '—', dipBad: 'D entre 0 e 20 m',
     je_stock_dip_bad: '{bin}: mergulho inválido (D entre 0 e {max} m)', jw_stock_over_cap: '{bin}: {kg} kg acima da capacidade ({cap} kg) — gravado',
     jw_stock_product_mismatch: '{bin}: a app tinha {current}; a leitura passa a definir o conteúdo', f_kg: 'quantidade (kg)',
     binOutBtn: 'Saída', outKg: 'Quantidade (kg)', outDest: 'Destino', dest_bagging: 'Ensaque', dest_bulk: 'Granel', dest_transfer: 'Transferência', dest_other: 'Outro',
@@ -194,6 +196,7 @@
     jobOnLine: 'Ordem: {p} · {kg} kg · água {w} L/h · desde {h}'
   };
   const en = {
+    leaderPin: 'Shift leader PIN', leaderPinBad: 'Wrong shift leader PIN', leaderPinNone: 'warning: this leader has no PIN yet (the supervisor sets it in Settings → Production)', leaderPinNew: 'New PIN — crew {c}', leaderPinIsSet: '(set)', leaderPinNotSet: '(no PIN)', leaderPinFormat: 'The PIN has 4 to 8 digits', leaderPinHelp: 'Each shift leader logs in and out of the shift with their own PIN. Type a PIN only to create or change it; blank = unchanged. The PIN stays on this phone only: set it on each phone.', 
     leaders: 'Shift leaders (per crew)', leadersHelp: 'Stored only on this phone and its backups (not in the app code, which is public). Once filled, "Shift leader" is picked from the list; by default the leader of the selected crew.',
     leadersNotSet: 'Shift leaders not set — Settings → Production.',
     nonCanonical: 'Silos in the Silos app with an ID outside the canonical list: {s}. Rename them in the Silos app ({list}) — they cannot be used.',
@@ -243,7 +246,7 @@
     productSwitchLine: 'Product bin full: switch {from} → {to}', switchesTitle: 'Automatic switches logged', je_feed_short: 'Dirty bin {bin}: {short} kg still short even with the silo queue', je_feed_silo_invalid: 'Silo {silo} cannot feed (not a designated maize silo or does not exist)',
     je_bin_capacity: 'Expected product {need} kg exceeds the free space of the chosen product bins ({cap} kg) — add the next bin in the queue',
     je_bin_full: 'Bin {bin} full — choose the next bin in the queue',
-    stockTitle: 'Bin totals (morning)', stockNote: 'Record every morning the total of each bin, from raw maize to finished product. Level during the day = reading + inflows recorded since (transfers, jobs) − grain drawn by jobs. Product out (bagging/dispatch) is not recorded: the next reading corrects it.',
+    stockTitle: 'Bin totals (morning)', stockNote: 'Record every morning the total of each bin, from raw maize to finished product. During the day the app updates the level with the inflows and jobs recorded. Product out (bagging/dispatch) is not recorded: the next reading corrects it.',
     stockNew: 'Record today\'s totals', stockLast: 'Last reading', stockNone: 'No bin totals yet.', stockDue: 'Record today\'s bin totals (morning)',
     stockKind_dirty: 'Raw maize', stockKind_tempered: 'Tempered maize', stockKind_product: 'Finished product', stockKg: 'Total (kg)', stockFree: 'free',
     stockFull: 'FULL', stockUnknown: 'level unknown', stockOver: 'ABOVE CAPACITY', stockSaved: 'Totals saved.', stockLeaveBlank: 'Leave blank any bin that was not read.',
@@ -268,7 +271,7 @@
     js_running: 'Running', js_done: 'Completed', js_cancelled: 'Cancelled',
     shiftLeader: 'Shift leader', qcAlerts: 'Line QC', noQcAlerts: 'No QC alerts since the job started',
     siloRed: 'Held (Red)', compatible: 'Compatible', fedBy: 'line', binEmpty: 'Empty', busy: 'busy',
-    feedRate: 'Grain feed rate', feedRateHint: 'Blank = line capacity ÷ 24 h (C 500 000 kg/d, D 300 000 kg/d). In kg/h.',
+    feedRate: 'Grain feed rate', feedRateHint: 'Blank = line capacity. In kg/h.',
     jobProducts: 'Job products', jobProductsHelp: 'A job can make several products at the same time (e.g. Fuba 2 + brewing grits). Each product has its own target extraction and destination bins; the grain required is calculated from the quantity and extraction of the main product (1st); other products have quantity only.',
     productN: 'Product {n}', addProduct: 'Add product', binTaken: 'Bin {bin} is already assigned to another product in this job', binTakenBy: 'for {p}',
     je_product_dup: 'The same product appears twice in the job', je_bin_dup: 'Bin {bin} assigned to two products', je_extraction_sum: 'Target extractions add up to {sum} % (maximum 100 %)', x_outputs: 'Products (extraction, kg, bins)',
@@ -281,7 +284,8 @@
     silosOrder: 'Tap silos in discharge order: empties the 1st, then the next.',
     confirmSilos: 'I checked in the Silos app that no selected grain silo is on storage hold.',
     grainSpecs: 'Grain specs', m0: 'Initial moisture', m1: 'Target tempered-grain moisture',
-    waterHint: 'Water = grain (dirty) × (target − initial) ÷ (100 − target). Target = grain moisture after tempering, not product moisture.',
+    waterAdded: 'Water added', waterAddedHint: 'The water actually added at start. Blank = not recorded.',
+    waterHint: 'Target = grain moisture after tempering, not product moisture.',
     pickLineFirst: 'Choose the line first.', binSourceNote: 'Product bins and lines: {s}. Confirm and correct in Settings.',
     startJob: 'Start job', jobBlocked: 'DATA MISSING — fix before starting', jobOk: 'Ready to start', needLeader: 'Enter the shift leader',
     jobStarted: 'Job started — line set to running in QC', jobClosed: 'Job closed',
@@ -329,7 +333,7 @@
     sjPick: 'Pick the job', sjOtherText: 'Text (for "Other")', sjAdd: 'Add job', sjOtherNeed: 'Write the "Other" job',
     sj_hk0: 'Housekeeping — floor 0', sj_hk1: 'Housekeeping — floor 1', sj_hk2: 'Housekeeping — floor 2', sj_hk3: 'Housekeeping — floor 3', sj_hk4: 'Housekeeping — floor 4', sj_hk5: 'Housekeeping — floor 5', sj_hk6: 'Housekeeping — floor 6',
     sj_reproc: 'Re-processing', sj_fumig: 'Prepare for fumigation', sj_warehouse: 'Warehouse arrangement', sj_plansifter: 'Plansifter maintenance', sj_sweepings: 'Sweepings collection', sj_other: 'Other',
-    dipTitle: 'Daily dippings — dirty maize bins B01–B04', dipHelp: 'Empty space D in metres; quantity = (20 − D) × 6 750 kg. Saved as the bins\' morning reading.',
+    dipTitle: 'Daily dippings — dirty maize bins B01–B04', dipHelp: 'Empty space D in metres; the app shows the quantity. Saved as the bins\' morning reading.',
     dipDone: 'Today\'s dipping at {h} by {by}', dipMissing: 'Today\'s dippings not recorded yet.', dipSave: 'Save dippings', dipSaved: 'Dippings saved.',
     // v2.8.4 — Dropbox in Portuguese and English (Zhax, 13 Nov 2026: everything in the chosen language)
     dx_title: 'Dropbox (bin balances and day records)', dx_on: 'Connected on this device. bins-status.json and the day records are sent after every save.',
@@ -366,7 +370,7 @@
     jobStartTime: 'Start time', badStartTime: 'Invalid start time (up to 24 h back, not in the future)',
     stopLineReport: 'Stop line and shift report', stopLineNote: 'Closes the job and downloads the shift report in Excel.',
     // v2.6.0 — warnings instead of blocks, dirty maize bin dips, product bin dispatch
-    jobWarnTitle: 'Warnings (the job starts; they are recorded)', dipD: 'Empty space D (m)', dipHint: '(20 − D) × 6 750 kg', dipBad: 'D between 0 and 20 m',
+    jobWarnTitle: 'Warnings (the job starts; they are recorded)', dipD: 'Empty space D (m)', dipHint: '—', dipBad: 'D between 0 and 20 m',
     je_stock_dip_bad: '{bin}: invalid dip (D between 0 and {max} m)', jw_stock_over_cap: '{bin}: {kg} kg above capacity ({cap} kg) — saved',
     jw_stock_product_mismatch: '{bin}: the app had {current}; the reading now sets the content', f_kg: 'quantity (kg)',
     binOutBtn: 'Dispatch', outKg: 'Quantity (kg)', outDest: 'Destination', dest_bagging: 'Bagging', dest_bulk: 'Bulk', dest_transfer: 'Transfer', dest_other: 'Other',
@@ -388,7 +392,7 @@
   };
   // v2.2.0 — leituras de balança por turno
   Object.assign(pt, {
-    srTitle: 'Leituras de balança (totalizadores)', srHelp: 'Leia os totalizadores no início e no fim do turno escolhido acima: balança de fluxo B1 (grão moído) e cada produto. Quantidade = fim − início.',
+    srTitle: 'Leituras de balança (totalizadores)', srHelp: 'Leia os totalizadores no início e no fim do turno escolhido acima: balança de fluxo B1 (grão moído) e cada produto.',
     srNone: 'Sem leituras neste turno.', srNew: 'Nova leitura', srFix: 'Corrigir', srCorrected: 'correcção', srReason: 'Motivo da correcção',
     srKind: 'Leitura de', srKind_grain: 'Grão moído (B1)', srKind_product: 'Produto', srGrainB1: 'Grão moído (B1)',
     srPoint: 'Momento', srPoint_start: 'Início do turno', srPoint_end: 'Fim do turno', srValue: 'Totalizador (kg)', srQty: 'Quantidade', srExtraction: 'Extracção',
@@ -398,7 +402,7 @@
     sr_replaces_slot: 'a correcção tem de ser da mesma linha, tipo, produto e momento', sr_reason: 'motivo da correcção'
   });
   Object.assign(en, {
-    srTitle: 'Scale readings (totalisers)', srHelp: 'Read the totalisers at the start and end of the shift chosen above: B1 flow scale (grain milled) and each product. Quantity = end − start.',
+    srTitle: 'Scale readings (totalisers)', srHelp: 'Read the totalisers at the start and end of the shift chosen above: B1 flow scale (grain milled) and each product.',
     srNone: 'No readings for this shift.', srNew: 'New reading', srFix: 'Correct', srCorrected: 'correction', srReason: 'Reason for correction',
     srKind: 'Reading of', srKind_grain: 'Grain milled (B1)', srKind_product: 'Product', srGrainB1: 'Grain milled (B1)',
     srPoint: 'Point', srPoint_start: 'Start of shift', srPoint_end: 'End of shift', srValue: 'Totaliser (kg)', srQty: 'Quantity', srExtraction: 'Extraction',
