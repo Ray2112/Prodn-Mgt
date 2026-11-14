@@ -1,4 +1,13 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.8.4
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.9.0
+
+> **v2.9.0 — Registos e relatórios (release 3; Zhax, 14-11-2026).**
+> - **Turno:** trabalhos do turno escolhidos numa lista (limpeza dos pisos 0–6, reprocessamento, preparar para fumigação, arrumação do armazém, manutenção do plansifter, recolha de varreduras, outro); secção própria para os **mergulhos diários das bins B01–B04**; leituras das balanças com vírgula a cada 3 algarismos (1,234,567).
+> - **Registos:** tudo o que foi registado no dia de produção, por categoria e hora (CQ, turno, ordens, grão, leituras das bins, produtos, paragens, manutenção, segurança, actividades, avisos explicados).
+> - **Relatório:** além do CQ, produção por turno (balanças, extracção, % do objectivo), transferências de grão, produtos (saídas e enchimentos), paragens, segurança e actividades; o Excel do dia tem estas folhas e a lista de todos os registos.
+> - **Segurança:** nova ocorrência no Diário de turno (acidente, quase-acidente, perigo, acto inseguro).
+> - **Manutenção:** o separador Intervenções passa para dentro de Paragens; a lista de preventiva e os rolos aparecem em inglês com a app em inglês.
+>
+> *EN:* shift jobs from a list; daily B01–B04 dippings section; scale readings with commas; Records = everything on the production day by category; Report adds production, grain transfers, products, stoppages, safety and activities (also in the Excel); safety occurrences in the shift log; Interventions under Stoppages; preventive list and rolls in English.
 
 > **v2.8.4 — Dropbox na língua escolhida (Zhax, 13-11-2026).** O cartão do Dropbox em Definições, o estado do envio diário e as mensagens de ligação passam a aparecer em português ou em inglês, conforme a língua da app.
 >

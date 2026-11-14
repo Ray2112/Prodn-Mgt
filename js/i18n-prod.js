@@ -123,6 +123,21 @@
     bin: 'Silo', content: 'Conteúdo', since: 'desde', setBinNote: 'Definir conteúdo sem ordem exige PIN (ex.: estado inicial).',
     upNotConnected: 'Este telemóvel não está ligado ao Dropbox: os registos do dia não são enviados. Ligue em Definições.', upFailed: 'Envio dos registos falhou: {e}. Use «Enviar agora» em Definições.',
     upNotSent: 'O dia {d} ainda não foi enviado ao Dropbox. Use «Enviar agora» em Definições.',
+    // v2.9.0 — registos do dia, relatório completo, segurança
+    rc_qc: 'CQ', rc_shift: 'Turno', rc_jobs: 'Ordens', rc_grain: 'Grão', rc_bins: 'Bins (leituras)', rc_products: 'Produtos', rc_stops: 'Paragens', rc_maint: 'Manutenção', rc_safety: 'Segurança', rc_acts: 'Actividades', rc_warn: 'Avisos explicados',
+    bk_login: 'Login de turno ({s}) — {by}', bk_logout: 'Logout de turno ({s}) — {by}', bk_jobStart: 'Ordem iniciada: {l} · {p} · grão {kg}', bk_jobClose: 'Ordem fechada: {l} · {by}',
+    bk_transfer: 'Transferência para {b}: {kg} de {s}', bk_binEmptied: 'Bin {b} marcada vazia', bk_dips: 'Mergulhos', bk_stock: 'Totais da manhã', bk_fill: 'Bin {b} a encher com {p}', bk_set: 'Bin {b}: conteúdo {p}',
+    bk_empty: 'Bin {b} vazia', bk_out: 'Saída de {b}: {kg} ({d}) · {p}', bk_warnClear: 'Aviso explicado por {by}', bk_work: 'Intervenção', bk_pm: 'Preventiva', bk_cons: 'Consumível',
+    rp_prod: 'Produção (balanças, por turno)', rp_jobs: 'Ordens iniciadas: {a} · fechadas: {b}', rp_grain: 'Transferências de grão', rp_grainTot: '{n} transferência(s), {kg} ({g} da Grain-Mgt)',
+    rp_products: 'Produtos (saídas e enchimentos)', rp_fills: 'Bins a encher', rp_stops: 'Paragens', rp_safety: 'Segurança', rp_acts: 'Actividades', rp_reproc: 'Reprocessado: {kg}', rp_all: 'Todos os registos',
+    newSafety: 'Ocorrência de segurança', sfType: 'Tipo', sf_accident: 'Acidente', sf_nearmiss: 'Quase-acidente', sf_hazard: 'Perigo', sf_unsafe: 'Acto inseguro', sfInjured: 'Pessoa ferida (se houver)',
+    f_sType: 'tipo', f_by: 'nome', rcCategory: 'Categoria', rcSource: 'Origem',
+    // v2.9.0 — trabalhos do turno, mergulhos diários (Zhax, 14-11-2026)
+    sjPick: 'Escolha o trabalho', sjOtherText: 'Texto (para «Outro»)', sjAdd: 'Juntar trabalho', sjOtherNeed: 'Escreva o trabalho «Outro»',
+    sj_hk0: 'Limpeza — piso 0', sj_hk1: 'Limpeza — piso 1', sj_hk2: 'Limpeza — piso 2', sj_hk3: 'Limpeza — piso 3', sj_hk4: 'Limpeza — piso 4', sj_hk5: 'Limpeza — piso 5', sj_hk6: 'Limpeza — piso 6',
+    sj_reproc: 'Reprocessamento', sj_fumig: 'Preparar para fumigação', sj_warehouse: 'Arrumação do armazém', sj_plansifter: 'Manutenção do plansifter', sj_sweepings: 'Recolha de varreduras', sj_other: 'Outro',
+    dipTitle: 'Mergulhos diários — bins de milho sujo B01–B04', dipHelp: 'Espaço vazio D em metros; quantidade = (20 − D) × 6 750 kg. Fica como leitura da manhã das bins.',
+    dipDone: 'Mergulho de hoje às {h} por {by}', dipMissing: 'Mergulhos de hoje ainda não registados.', dipSave: 'Gravar mergulhos', dipSaved: 'Mergulhos gravados.',
     // v2.8.4 — Dropbox em português e inglês (Zhax, 13-11-2026: tudo na língua escolhida)
     dx_title: 'Dropbox (saldos das bins e registos diários)', dx_on: 'Ligado neste dispositivo. O bins-status.json e os registos do dia são enviados após cada gravação.',
     dx_off: 'Não ligado. Sem ligação, nada é enviado (os registos continuam guardados neste dispositivo).', dx_connect: 'Ligar ao Dropbox', dx_sendnow: 'Enviar agora', dx_disconnect: 'Desligar',
@@ -301,6 +316,21 @@
     bin: 'Bin', content: 'Content', since: 'since', setBinNote: 'Setting content without a job needs the PIN (e.g. initial state).',
     upNotConnected: 'This phone is not connected to Dropbox: the day records are not sent. Connect in Settings.', upFailed: 'Sending the records failed: {e}. Use "Enviar agora" in Settings.',
     upNotSent: 'Day {d} has not been sent to Dropbox yet. Use "Enviar agora" in Settings.',
+    // v2.9.0 — day records, full report, safety
+    rc_qc: 'QC', rc_shift: 'Shift', rc_jobs: 'Jobs', rc_grain: 'Grain', rc_bins: 'Bins (readings)', rc_products: 'Products', rc_stops: 'Stoppages', rc_maint: 'Maintenance', rc_safety: 'Safety', rc_acts: 'Activities', rc_warn: 'Explained warnings',
+    bk_login: 'Shift login ({s}) — {by}', bk_logout: 'Shift logout ({s}) — {by}', bk_jobStart: 'Job started: {l} · {p} · grain {kg}', bk_jobClose: 'Job closed: {l} · {by}',
+    bk_transfer: 'Transfer to {b}: {kg} from {s}', bk_binEmptied: 'Bin {b} marked empty', bk_dips: 'Dippings', bk_stock: 'Morning totals', bk_fill: 'Bin {b} filling with {p}', bk_set: 'Bin {b}: content {p}',
+    bk_empty: 'Bin {b} empty', bk_out: 'Dispatch from {b}: {kg} ({d}) · {p}', bk_warnClear: 'Warning explained by {by}', bk_work: 'Intervention', bk_pm: 'Preventive', bk_cons: 'Consumable',
+    rp_prod: 'Production (scales, by shift)', rp_jobs: 'Jobs started: {a} · closed: {b}', rp_grain: 'Grain transfers', rp_grainTot: '{n} transfer(s), {kg} ({g} from Grain-Mgt)',
+    rp_products: 'Products (dispatch and filling)', rp_fills: 'Bins filling', rp_stops: 'Stoppages', rp_safety: 'Safety', rp_acts: 'Activities', rp_reproc: 'Re-processed: {kg}', rp_all: 'All records',
+    newSafety: 'Safety occurrence', sfType: 'Type', sf_accident: 'Accident', sf_nearmiss: 'Near miss', sf_hazard: 'Hazard', sf_unsafe: 'Unsafe act', sfInjured: 'Injured person (if any)',
+    f_sType: 'type', f_by: 'name', rcCategory: 'Category', rcSource: 'Source',
+    // v2.9.0 — shift jobs, daily dippings (Zhax, 14 Nov 2026)
+    sjPick: 'Pick the job', sjOtherText: 'Text (for "Other")', sjAdd: 'Add job', sjOtherNeed: 'Write the "Other" job',
+    sj_hk0: 'Housekeeping — floor 0', sj_hk1: 'Housekeeping — floor 1', sj_hk2: 'Housekeeping — floor 2', sj_hk3: 'Housekeeping — floor 3', sj_hk4: 'Housekeeping — floor 4', sj_hk5: 'Housekeeping — floor 5', sj_hk6: 'Housekeeping — floor 6',
+    sj_reproc: 'Re-processing', sj_fumig: 'Prepare for fumigation', sj_warehouse: 'Warehouse arrangement', sj_plansifter: 'Plansifter maintenance', sj_sweepings: 'Sweepings collection', sj_other: 'Other',
+    dipTitle: 'Daily dippings — dirty maize bins B01–B04', dipHelp: 'Empty space D in metres; quantity = (20 − D) × 6 750 kg. Saved as the bins\' morning reading.',
+    dipDone: 'Today\'s dipping at {h} by {by}', dipMissing: 'Today\'s dippings not recorded yet.', dipSave: 'Save dippings', dipSaved: 'Dippings saved.',
     // v2.8.4 — Dropbox in Portuguese and English (Zhax, 13 Nov 2026: everything in the chosen language)
     dx_title: 'Dropbox (bin balances and day records)', dx_on: 'Connected on this device. bins-status.json and the day records are sent after every save.',
     dx_off: 'Not connected. Without a connection nothing is sent (records stay saved on this device).', dx_connect: 'Connect to Dropbox', dx_sendnow: 'Send now', dx_disconnect: 'Disconnect',

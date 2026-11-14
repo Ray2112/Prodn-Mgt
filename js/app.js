@@ -591,16 +591,52 @@
   }
 
   // ----- Registos -----
+  // v2.9.0 (Zhax, 14-11-2026): Registos = tudo o que foi registado no dia de produção, por categoria e hora (js/day-book.js)
+  const bookData = () => ({ samples: S.samples, jobs: S.jobs, shiftLog: S.shiftLog, moves: S.moves, stocks: S.stocks, binEvents: S.binEvents, prodChanges: S.prodChanges, maint: S.maintRecs });
   function viewRecords() {
     const day = S.recDay || L.prodDay(Date.now());
-    const [s, e] = L.prodDayRange(day);
+    const range = L.prodDayRange(day);
     const superseded = new Set(S.samples.filter(x => x.correctsId).map(x => x.correctsId));
-    const list = S.samples.filter(x => x.t >= s && x.t < e && (!S.recLine || x.lineId === S.recLine)).sort((a, b) => b.t - a.t);
+    const all = window.DayBook.items(bookData(), range).filter(x => !(x.cat === 'qc' && S.recLine && x.rec.lineId !== S.recLine));
+    const cat = S.recCat || '';
+    const counts = {}; all.forEach(x => { counts[x.cat] = (counts[x.cat] || 0) + 1; });
+    const list = all.filter(x => !cat || x.cat === cat).slice().reverse();
     return `<section class="card"><h2>${esc(t('nav_records'))}</h2>
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="recDay" value="${esc(day)}"></label>
       <label class="fld">${esc(t('line'))}<select id="recLine"><option value="">${esc(t('all'))}</option>${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${S.recLine === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label></div>
-      <p class="sub">${esc(t('prodDayHint'))}</p></section>
-      <section class="card">${list.length ? list.map(x => recItem(x, superseded.has(x.id))).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</section>`;
+      <p class="sub">${esc(t('prodDayHint'))}</p>
+      <div class="row">${[''].concat(window.DayBook.CATS).filter(c => !c || counts[c]).map(c => `<button class="btn small ${cat === c ? 'primary' : 'ghost'}" data-reccat="${c}">${esc(c ? t('rc_' + c) : t('all'))} ${c ? counts[c] : all.length}</button>`).join(' ')}</div></section>
+      <section class="card">${list.length ? list.map(x => x.cat === 'qc' ? recItem(x.rec, superseded.has(x.rec.id)) : bookItem(x)).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</section>`;
+  }
+  const kgS = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' kg' : '—';
+  function bookText(x) {
+    const r = x.rec;
+    switch (x.kind) {
+      case 'login': return t('bk_login', { s: t('shift_' + r.period), by: r.leader }) + ((r.shiftJobs || []).length || (r.planJobs || []).length ? ' · ' + (r.planJobs || []).map(j => j.product || '').concat((r.shiftJobs || []).map(j => j.code === 'other' ? (j.note || '') : t('sj_' + j.code))).filter(Boolean).join(', ') : '');
+      case 'logout': return t('bk_logout', { s: t('shift_' + r.period), by: r.by }) + (r.shiftKg && typeof r.shiftKg.b1 === 'number' ? ' · B1 ' + kgS(r.shiftKg.b1) : '') + (typeof r.achievedPct === 'number' ? ' · ' + r.achievedPct + ' %' : '');
+      case 'jobStart': return t('bk_jobStart', { l: lineName(r.lineId), p: (r.outputs || []).map(o => prodName(o.productId)).join(' + ') || prodName(r.productId), kg: kgS(r.grainKg) });
+      case 'jobClose': return t('bk_jobClose', { l: lineName(r.lineId), by: r.closedBy || '' }) + (typeof r.actualKg === 'number' ? ' · ' + kgS(r.actualKg) : '');
+      case 'transfer': return t('bk_transfer', { b: r.binId, kg: kgS(r.kg), s: (r.parts || []).map(p => p.silo).join(', ') }) + (r.source === 'grain-mgt' ? ' · Grain-Mgt' : '');
+      case 'binEmptied': return t('bk_binEmptied', { b: r.binId });
+      case 'stock': return (r.scope === 'dips' ? t('bk_dips') : t('bk_stock')) + ': ' + Object.keys(r.levels || {}).map(b => b + ' ' + kgS(r.levels[b].kg)).join(' · ') + ' · ' + (r.by || '');
+      case 'binFILL': return t('bk_fill', { b: r.binId, p: prodName(r.productId) });
+      case 'binSET': return t('bk_set', { b: r.binId, p: prodName(r.productId) });
+      case 'binEMPTY': return t('bk_empty', { b: r.binId });
+      case 'binOUT': return t('bk_out', { b: r.binId, kg: kgS(r.kg), d: t('dest_' + (r.dest || 'other')), p: prodName(r.productId) });
+      case 'issue': return (r.code || t('noStopCode')) + (typeof r.downtimeMin === 'number' ? ' · ' + r.downtimeMin + ' min' : '') + ' · ' + (r.description || '');
+      case 'activity': return t('at_' + r.type) + (r.floor ? ' · ' + r.floor : '') + (typeof r.qtyKg === 'number' ? ' · ' + kgS(r.qtyKg) : '') + (r.description ? ' · ' + r.description : '');
+      case 'safety': return t('sf_' + r.sType) + ': ' + r.description + (r.injured ? ' · ' + t('sfInjured') + ': ' + r.injured : '') + (r.action ? ' · ' + r.action : '');
+      case 'warnClear': return t('bk_warnClear', { by: r.by }) + ': ' + (r.reason || '');
+      case 'm_stop': return (r.code || '') + ' · ' + (r.durationMin || '') + ' min · ' + (r.description || '') + (r.action ? ' · ' + r.action : '');
+      case 'm_work': return t('bk_work') + ': ' + (r.equipment || '') + ' · ' + (r.description || '');
+      case 'm_pmUpdate': return t('bk_pm') + ': ' + (r.status || '') + (r.note ? ' · ' + r.note : '');
+      case 'm_consumable': return t('bk_cons') + ': ' + (r.item || '') + ' ' + (r.qty || '') + ' ' + (r.unit || '');
+      default: return r.notes || r.text || r.technicians || x.kind;
+    }
+  }
+  function bookItem(x) {
+    return `<div class="rowitem"><div class="row between"><span><b>${esc(fmtTime(x.t))}</b> · ${esc(bookText(x))}</span><span class="chip d-record">${esc(t('rc_' + x.cat))}</span></div>
+      <small>${esc(x.rec.crew ? t('crew') + ' ' + x.rec.crew : '')}${x.rec.by ? ' · ' + esc(x.rec.by) : x.rec.operator ? ' · ' + esc(x.rec.operator) : ''}</small></div>`;
   }
   function recItem(x, sup) {
     const prod = product(x.productId);
@@ -622,18 +658,39 @@
     const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000);
     const r = L.dayReport(day, S.samples, S.holds, S.cfg);
     const gen = S.reports.filter(x => x.day === day);
+    const bk = window.DayBook.summary(bookData(), [r.start, r.end]);   // v2.9.0: produção, grão, produtos, paragens, segurança, actividades
     return `<section class="card"><h2>${esc(t('dailyReport'))}</h2>
       <label class="fld">${esc(t('prodDay'))}<input type="date" id="repDay" value="${esc(day)}"></label>
       <p class="sub">${esc(t('periodFromTo', { a: fmtDT(r.start), b: fmtDT(r.end) }))}</p>
       <div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
       <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>
       ${r.end > Date.now() ? `<p class="banner b-warn">${esc(t('dayNotFinished'))}</p>` : ''}
-      <button class="btn primary big" id="genXlsx" ${r.totals.n ? '' : 'disabled'}>${esc(t('genExcel'))}</button>
+      <button class="btn primary big" id="genXlsx" ${r.totals.n || bk.items.length ? '' : 'disabled'}>${esc(t('genExcel'))}</button>
       <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a>
       ${gen.length ? `<p class="sub">${esc(t('generatedAt', { h: fmtDT(gen[gen.length - 1].t) }))}</p>` : ''}</section>
       <section class="card"><h3>${esc(t('summary'))}</h3><div class="tablewrap"><table><thead><tr><th>${esc(t('line'))}</th><th>${esc(t('product'))}</th><th>${esc(t('shift'))}</th><th>${esc(t('crew'))}</th><th>n</th><th>✓</th><th>!</th><th>✗</th><th>${esc(t('p_moisture'))} ${esc(t('avg'))}</th><th>${esc(t('p_fat'))} ${esc(t('avg'))}</th><th>${esc(t('hoursChecked'))}</th></tr></thead><tbody>
       ${r.summary.map(g => `<tr><td>${esc(lineName(g.lineId))}</td><td>${esc(prodName(g.productId))}</td><td>${esc(t('shift_' + g.period))}</td><td>${esc(g.crews)}</td><td>${g.n}</td><td>${g.accept}</td><td>${g.warn}</td><td>${g.reject}</td><td>${esc(fmtNum(g.moisture.avg))}</td><td>${esc(fmtNum(g.fat.avg))}</td><td>${g.hoursWithMoisture}/12</td></tr>`).join('') || `<tr><td colspan="11">${esc(t('noRecords'))}</td></tr>`}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>
+      ${bookReport(bk)}`;
+  }
+  // v2.9.0: secções do relatório além do CQ (Zhax, 14-11-2026)
+  function bookReport(bk) {
+    const tbl = (head, rows) => rows.length ? `<div class="tablewrap"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c == null ? '—' : String(c))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="sub">—</p>`;
+    const kv = o => Object.keys(o).map(k => [k, o[k]]);
+    return `<section class="card"><h3>${esc(t('rp_prod'))}</h3>${tbl([t('shift'), 'B1', 'Fuba 1', 'Fuba 2', t('scale_germ'), t('scale_zf'), t('srExtraction'), t('targetAchieved')],
+        bk.prod.map(p => [t('shift_' + p.period), kgS(p.b1), kgS(p.flour1), kgS(p.flour2), kgS(p.germ), kgS(p.zf), p.extraction == null ? '—' : p.extraction + ' %', p.pct == null ? '—' : p.pct + ' %']))}
+        <p class="sub">${esc(t('rp_jobs', { a: bk.jobs.started.length, b: bk.jobs.closed.length }))}</p></section>
+      <section class="card"><h3>${esc(t('rp_grain'))}</h3><p class="sub">${esc(t('rp_grainTot', { n: bk.grain.n, kg: kgS(bk.grain.kg), g: bk.grain.fromGrainMgt }))}</p>
+        ${tbl([t('dirtyBin'), 'kg'], kv(bk.grain.byBin).map(([b, v]) => [b, kgS(v)]))}${tbl([t('silo'), 'kg'], kv(bk.grain.bySilo).map(([b, v]) => [b, kgS(v)]))}</section>
+      <section class="card"><h3>${esc(t('rp_products'))}</h3>${tbl([t('outDest'), 'kg'], kv(bk.products.byDest).map(([d, v]) => [t('dest_' + d), kgS(v)]))}
+        ${tbl([t('product'), 'kg'], kv(bk.products.outByProd).map(([p, v]) => [p === '?' ? '—' : prodName(p), kgS(v)]))}
+        <p class="sub">${esc(t('rp_fills'))}: ${esc(bk.products.fills.map(f => f.bin + ' ' + prodName(f.productId)).join(', ') || '—')}</p></section>
+      <section class="card"><h3>${esc(t('rp_stops'))} · ${bk.stops.min} min</h3>${tbl(['Tier', 'min'], kv(bk.stops.byTier).map(([k, v]) => [k, v]))}
+        ${tbl([t('downtimeCode'), 'min'], bk.stops.list.map(x => [x.code || '—', x.min == null ? '—' : x.min]))}</section>
+      <section class="card"><h3>${esc(t('rp_safety'))} · ${bk.safety.list.length}</h3>${tbl([t('sfType'), t('description'), t('sfInjured'), t('actionTaken')],
+        bk.safety.list.map(x => [t('sf_' + x.sType), x.description, x.injured || '—', x.action || '—']))}</section>
+      <section class="card"><h3>${esc(t('rp_acts'))}</h3>${tbl([t('activityType'), 'n'], kv(bk.acts.byType).map(([k, v]) => [t('at_' + k), v]))}
+        <p class="sub">${esc(t('rp_reproc', { kg: kgS(bk.acts.reprocKg) }))}</p></section>`;
   }
   function reportText(r) {
     return [t('waReportTitle', { d: r.day }), t('samples') + ': ' + r.totals.n + ' · ' + t('dec_accept') + ' ' + r.totals.accept + ' · ' + t('dec_warn') + ' ' + r.totals.warn + ' · ' + t('dec_reject') + ' ' + r.totals.reject,
@@ -673,7 +730,17 @@
     const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000);
     const r = L.dayReport(day, S.samples, S.holds, S.cfg);
     const wb = buildWorkbook(r);
-    window.XLSX.writeFile(wb, day + '_CQ-Moagem-' + S.cfg.millType + '_Relatorio-Diario.xlsx');
+    // v2.9.0: livro do dia — produção, grão, produtos, paragens, segurança, actividades e todos os registos
+    const bk = window.DayBook.summary(bookData(), [r.start, r.end]), XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31));
+    add(t('rp_prod'), [[t('shift'), 'B1 (kg)', 'Fuba 1 (kg)', 'Fuba 2 (kg)', t('scale_germ') + ' (kg)', t('scale_zf') + ' (kg)', t('scale_clean') + ' (kg)', t('scale_screenings') + ' (kg)', t('srExtraction') + ' (%)', t('targetT') + ' (kg)', t('targetAchieved') + ' (%)'],
+      ...bk.prod.map(p => [t('shift_' + p.period), p.b1, p.flour1, p.flour2, p.germ, p.zf, p.clean, p.screenings, p.extraction, p.target, p.pct])]);
+    add(t('rp_grain'), [[t('dateTime'), t('dirtyBin'), t('silo'), 'kg', t('rcSource')], ...bk.items.filter(x => x.kind === 'transfer').map(x => [fmtDT(x.t), x.rec.binId, (x.rec.parts || []).map(p => p.silo).join(', '), x.rec.kg, x.rec.source === 'grain-mgt' ? 'Grain-Mgt' : 'Prodn-Mgt'])]);
+    add(t('rp_products'), [[t('dateTime'), t('bin'), t('product'), t('type'), 'kg', t('outDest')], ...bk.items.filter(x => x.cat === 'products').map(x => [fmtDT(x.t), x.rec.binId, prodName(x.rec.productId), x.rec.type, x.rec.kg == null ? '' : x.rec.kg, x.rec.dest ? t('dest_' + x.rec.dest) : ''])]);
+    add(t('rp_stops'), [[t('downtimeCode'), 'Tier', 'min', t('rcSource')], ...bk.stops.list.map(x => [x.code || '', x.tier || '', x.min == null ? '' : x.min, x.src])]);
+    add(t('rp_safety'), [[t('dateTime'), t('sfType'), t('description'), t('sfInjured'), t('actionTaken'), t('reportedBy')], ...bk.safety.list.map(x => [fmtDT(x.t), t('sf_' + x.sType), x.description, x.injured || '', x.action || '', x.by])]);
+    add(t('rp_acts'), [[t('dateTime'), t('activityType'), t('floor'), 'kg', t('description'), t('doneBy')], ...bk.acts.list.map(a => [fmtDT(a.t), t('at_' + a.type), a.floor || '', a.qtyKg == null ? '' : a.qtyKg, a.description || '', a.by])]);
+    add(t('rp_all'), [[t('dateTime'), t('rcCategory'), t('description')], ...bk.items.map(x => [fmtDT(x.t), t('rc_' + x.cat), x.cat === 'qc' ? prodName(x.rec.productId) + ' · ' + decLabel(x.rec.decision) : bookText(x)])]);
+    window.XLSX.writeFile(wb, day + (S.lang === 'en' ? '_Mill-' + S.cfg.millType + '_Daily-Report.xlsx' : '_Moagem-' + S.cfg.millType + '_Relatorio-Diario.xlsx'));   // v2.9.0: nome na língua da app
     await DB.add('reports', { day, t: Date.now() }); await reloadData(); render();
   }
 
@@ -819,6 +886,8 @@
   document.addEventListener('click', async e => {
     const pel = e.target.closest(PU.CLICK_SEL);
     if (pel) return PU.onClick(pel);
+    const rc = e.target.closest('[data-reccat]');
+    if (rc) { S.recCat = rc.dataset.reccat || ''; render(); return; }
     const el = e.target.closest('[data-nav],[data-newsample],[data-wopen],[data-wsave],[data-phys],[data-haction],[data-detail],[data-correct],[data-repday],#saveSample,#waParse,#waImport,#closeModal,#genXlsx,#savePin,#openLimits,#saveLimits,#saveLines,#askNotif,#testAlert,#exportBk,#exportLim');
     if (!el) return;
     if (el.dataset.nav) { S.view = el.dataset.nav; S.modal = null; if (S.view === 'prodset') S.prodDraft = null; if (S.view === 'sample' && !S.form) newForm(); render(); window.scrollTo(0, 0); return; }
