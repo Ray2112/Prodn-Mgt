@@ -1,6 +1,6 @@
 {
-  "name": "Prodn-Mgt",
-  "short_name": "Prodn-Mgt",
+  "name": "FMO - Moagem de Milho",
+  "short_name": "FMO - Moagem de Milho",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

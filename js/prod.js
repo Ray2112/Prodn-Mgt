@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.11.0';
+  const VERSION = '2.13.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -632,12 +632,60 @@
     r.errors.forEach(e => (SOFT.indexOf(e.code) >= 0 ? soft : hard).push(e));
     return Object.assign({}, r, { errors: hard, warnings: soft.map(e => Object.assign({ soft: true }, e)).concat(r.warnings || []) });
   }
+  // ---------- retenções de bins (v2.13.0, Zhax 14-11-2026) ----------
+  // "Only holds will be on D/M bins & Fuba & grits bins (out of spec but hold is confirmed by QC supervisor)": só as bins de milho
+  // sujo (B01–B04) e as bins de produto podem ficar retidas, e só com a confirmação do supervisor de CQ (nome + PIN). Excepção
+  // confirmada ao "avisar, nunca bloquear" (D34): uma bin retida não se usa — não alimenta ordens, não recebe produto, não sai produto —
+  // até o supervisor de CQ a libertar. Registos em prodChanges: kind 'binHold' / 'binRelease' {binId, binKind, reason, by, role: 'qc'}.
+  const HOLD_KINDS = ['binHold', 'binRelease'];
+  const holdableBins = cfgP => (cfgP.dirtyBins || []).map(b => ({ id: b.id, kind: 'dirty', capKg: isNum(b.capKg) ? b.capKg : null }))
+    .concat((cfgP.bins || []).map(b => ({ id: b.id, kind: 'product', capKg: isNum(b.capKg) ? b.capKg : null })));
+  // {binId: registo 'binHold'} das bins retidas agora (o último registo de cada bin manda)
+  function binHolds(changes) {
+    const last = {};
+    (changes || []).filter(c => c && HOLD_KINDS.indexOf(c.kind) >= 0 && !c.voidedBy).sort((a, b) => (a.t || 0) - (b.t || 0)).forEach(c => { last[c.binId] = c; });
+    const out = {};
+    Object.keys(last).forEach(id => { if (last[id].kind === 'binHold') out[id] = last[id]; });
+    return out;
+  }
+  // f: {binId, reason, by}; release = true para libertar
+  function validateHold(f, cfgP, holds, release) {
+    const E = [], b = holdableBins(cfgP).find(x => x.id === f.binId);
+    if (!b) E.push('holdBin');
+    else if (!release && (holds || {})[b.id]) E.push('holdAlready');
+    else if (release && !(holds || {})[b.id]) E.push('holdNone');
+    if (!String(f.reason || '').trim()) E.push('holdReason');
+    if (!String(f.by || '').trim()) E.push('holdBy');
+    return E;
+  }
+  // v2.13.0: quantidade nas bins de produto no arranque e no fecho da ordem (obrigatória; 0 = vazia). raw: {bin: texto}
+  function readBinKg(bins, raw) {
+    const values = {}, bad = [];
+    (bins || []).forEach(id => {
+      const v = num(String((raw || {})[id] == null ? '' : (raw || {})[id]).trim(), 'kg');
+      if (v === null || isNaN(v) || v < 0) bad.push(id); else values[id] = r3(v);
+    });
+    return { values, bad };
+  }
+  // Total por produto nas bins de produto: kg (nível actual), capacidade das bins com nível conhecido, % de carga. level(id) = binLevel
+  function productTotals(cfgP, binEvents, level) {
+    const by = {};
+    (cfgP.bins || []).forEach(b => {
+      const st = binState(b.id, binEvents), lv = level(b.id);
+      if (!st.productId) return;
+      const p = by[st.productId] = by[st.productId] || { productId: st.productId, bins: [], kg: 0, capKg: 0, unknown: 0 };
+      p.bins.push(b.id);
+      if (lv && isNum(lv.kg)) { p.kg = r3(p.kg + lv.kg); if (isNum(b.capKg)) p.capKg = r3(p.capKg + b.capKg); } else p.unknown++;
+    });
+    return Object.keys(by).map(k => Object.assign(by[k], { pct: by[k].capKg ? Math.round(by[k].kg / by[k].capKg * 1000) / 10 : null }));
+  }
   // Saída de produto de uma bin durante o dia (v2.6.0). f: {binId, kg (texto), dest, by, note}
   const OUT_DESTS = ['bagging', 'bulk', 'transfer', 'other'];
-  function validateDispatch(f, cfgP, binEvents) {
+  function validateDispatch(f, cfgP, binEvents, holds) {
     const E = [];
     const b = (cfgP.bins || []).find(x => x.id === f.binId);
     if (!f.binId) E.push({ code: 'out_no_bin' }); else if (!b) E.push({ code: 'out_bin_unknown', bin: f.binId });
+    if (b && (holds || {})[b.id]) E.push({ code: 'bin_hold', bin: b.id });   // v2.13.0: bin retida pelo CQ
     const kg = num(f.kg, 'kg');
     if (kg === null) E.push({ code: 'need', field: 'kg' }); else if (isNaN(kg) || kg <= 0) E.push({ code: 'bad', field: 'kg' });
     if (OUT_DESTS.indexOf(f.dest) < 0) E.push({ code: 'out_dest' });
@@ -697,6 +745,7 @@
     }
     if (srcs.length) {
       if (new Set(srcs).size !== srcs.length) E.push({ code: 'source_dup' });
+      srcs.forEach(id => { if ((ctx.holds || {})[id]) E.push({ code: 'bin_hold', bin: id }); });   // v2.13.0: bin de milho sujo retida pelo CQ
       const slots = [];
       srcs.forEach(id => {
         const b = (cfgP.dirtyBins || []).find(x => x.id === id);
@@ -784,6 +833,7 @@
       let capKnown = 0, unknownLevel = false, missingCap = false;
       const poolP = [];                                       // fila de silos de produto (ordem escolhida), capacidade vazia
       o.bins.forEach(id => {
+        if ((ctx.holds || {})[id]) { E.push({ code: 'bin_hold', bin: id }); return; }   // v2.13.0: bin de produto retida pelo CQ
         if (binOwner[id] !== undefined) { E.push({ code: 'bin_dup', bin: id }); return; }
         binOwner[id] = o.productId;
         const b = cfgP.bins.find(x => x.id === id);
@@ -1146,7 +1196,7 @@
     return out;
   }
 
-  const api = { scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };

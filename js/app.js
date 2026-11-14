@@ -133,6 +133,7 @@
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
     const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings', daily: true });
     const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings', daily: true });
+    const lo = PU.logoutIssue(); if (lo) out.push({ level: 'bad', text: '👷 ' + lo, nav: 'prod', ptab: 'shift', noClear: true });   // v2.13.0: até ao logout
     const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift', daily: true });
     if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins', daily: true });
     const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
@@ -144,13 +145,20 @@
       .forEach(j => out.push({ key: 'job:' + j.uid, level: 'warn', text: '▶ ' + lineName(j.lineId) + ': ' + j.startWarnings.map(w => w.text).join('; '), nav: 'prod' }));
     S.holds.filter(h => h.status !== 'closed' && !cl.has('hold:' + h.id))
       .forEach(h => out.push({ key: 'hold:' + h.id, level: 'bad', text: '⛔ ' + lineName(h.lineId) + ' · ' + holdProds(h) + ' — ' + t('oldHoldOpen', { h: fmtDT(h.openedAt) }) }));
+    // v2.13.0: bins retidas pelo CQ — ficam até o supervisor de CQ as libertar (não se limpam aqui)
+    PU.holdIssues().forEach(x => out.push({ level: 'bad', text: '⛔ ' + x, nav: 'prod', ptab: 'bins', noClear: true }));
+    // amostra rejeitada com uma ordem a encher bins nessa linha: o supervisor de CQ decide se retém essas bins
+    L.openQcWarnings(S.samples, cl, from).filter(s => s.decision === 'reject').forEach(s => {
+      const j = (S.jobs || []).find(x => x.lineId === s.lineId && x.startedAt <= s.t && (!x.closedAt || x.closedAt >= s.t));
+      if (j && (j.bins || []).length) out.push({ key: 'holdsug:' + s.id, level: 'bad', text: '🧪 ' + t('holdSuggest', { b: j.bins.join(', '), p: prodName(s.productId), h: fmtDT(s.t) }), nav: 'prod', ptab: 'bins' });
+    });
     MU.warnings().forEach(w => out.push({ level: 'bad', text: '🔧 ' + MU.warnText(w), nav: 'maint' }));
     FU.warnings().forEach(w => out.push({ level: w.level === 'bad' ? 'bad' : 'warn', text: '✔ ' + FU.warnText(w), nav: 'fssc' }));
     const rp = reportPendingDay(); if (rp) out.push({ level: 'info', text: t('reportReady', { d: rp }), repday: rp });
     // v2.9.1 (Zhax, 14-11-2026): todos os avisos têm chave, para poderem ser limpos. Os do dia (login, leitura da manhã, envio)
     // voltam no dia seguinte se continuarem; os outros só voltam se o texto mudar (ex.: mais tarefas em atraso).
     const day = L.prodDay(nowMs);
-    out.forEach(i => { if (!i.key && i.level !== 'info') i.key = 'gen:' + (i.daily ? day + ':' : '') + i.text.replace(/^\S+\s/, ''); });
+    out.forEach(i => { if (!i.key && i.level !== 'info' && !i.noClear) i.key = 'gen:' + (i.daily ? day + ':' : '') + i.text.replace(/^\S+\s/, ''); });
     return out.filter(i => !i.key || !cl.has(i.key));
   }
   const ISS_CLS = { bad: 'b-reject', warn: 'b-warn', info: 'b-info' };
@@ -630,7 +638,7 @@
       case 'logout': return t('bk_logout', { s: t('shift_' + r.period), by: r.by }) + (r.shiftKg && typeof r.shiftKg.b1 === 'number' ? ' · B1 ' + kgS(r.shiftKg.b1) : '') + (typeof r.achievedPct === 'number' ? ' · ' + r.achievedPct + ' %' : '');
       case 'jobStart': return t('bk_jobStart', { l: lineName(r.lineId), p: (r.outputs || []).map(o => prodName(o.productId)).join(' + ') || prodName(r.productId), kg: kgS(r.grainKg) });
       case 'jobClose': return t('bk_jobClose', { l: lineName(r.lineId), by: r.closedBy || '' }) + (typeof r.actualKg === 'number' ? ' · ' + kgS(r.actualKg) : '');
-      case 'transfer': return t('bk_transfer', { b: r.binId, kg: kgS(r.kg), s: (r.parts || []).map(p => p.silo).join(', ') }) + (r.source === 'grain-mgt' ? ' · Grain-Mgt' : '');
+      case 'transfer': return t('bk_transfer', { b: r.binId, kg: kgS(r.kg), s: (r.parts || []).map(p => p.silo).join(', ') }) + (r.source === 'grain-mgt' ? ' · ' + (S.lang === 'en' ? 'Grain Silos' : 'Silo Cereais') : '');
       case 'binEmptied': return t('bk_binEmptied', { b: r.binId });
       case 'stock': return (r.scope === 'dips' ? t('bk_dips') : t('bk_stock')) + ': ' + Object.keys(r.levels || {}).map(b => b + ' ' + kgS(r.levels[b].kg)).join(' · ') + ' · ' + (r.by || '');
       case 'binFILL': return t('bk_fill', { b: r.binId, p: prodName(r.productId) });
@@ -749,7 +757,7 @@
     const bk = window.DayBook.summary(bookData(), [r.start, r.end]), XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31));
     add(t('rp_prod'), [[t('shift'), 'B1 (kg)', 'Fuba 1 (kg)', 'Fuba 2 (kg)', t('scale_germ') + ' (kg)', t('scale_zf') + ' (kg)', t('scale_clean') + ' (kg)', t('scale_screenings') + ' (kg)', t('srExtraction') + ' (%)', t('targetT') + ' (kg)', t('targetAchieved') + ' (%)'],
       ...bk.prod.filter(p => !S.repShift || p.period === S.repShift).map(p => [t('shift_' + p.period), p.b1, p.flour1, p.flour2, p.germ, p.zf, p.clean, p.screenings, p.extraction, p.target, p.pct])]);
-    add(t('rp_grain'), [[t('dateTime'), t('dirtyBin'), t('silo'), 'kg', t('rcSource')], ...bk.items.filter(x => x.kind === 'transfer').map(x => [fmtDT(x.t), x.rec.binId, (x.rec.parts || []).map(p => p.silo).join(', '), x.rec.kg, x.rec.source === 'grain-mgt' ? 'Grain-Mgt' : 'Prodn-Mgt'])]);
+    add(t('rp_grain'), [[t('dateTime'), t('dirtyBin'), t('silo'), 'kg', t('rcSource')], ...bk.items.filter(x => x.kind === 'transfer').map(x => [fmtDT(x.t), x.rec.binId, (x.rec.parts || []).map(p => p.silo).join(', '), x.rec.kg, x.rec.source === 'grain-mgt' ? (S.lang === 'en' ? 'Grain Silos' : 'Silo Cereais') : (S.lang === 'en' ? 'Maize Mill' : 'Moagem de Milho')])]);
     add(t('rp_products'), [[t('dateTime'), t('bin'), t('product'), t('type'), 'kg', t('outDest')], ...bk.items.filter(x => x.cat === 'products').map(x => [fmtDT(x.t), x.rec.binId, prodName(x.rec.productId), x.rec.type, x.rec.kg == null ? '' : x.rec.kg, x.rec.dest ? t('dest_' + x.rec.dest) : ''])]);
     add(t('rp_stops'), [[t('downtimeCode'), 'Tier', 'min', t('rcSource')], ...bk.stops.list.map(x => [x.code || '', x.tier || '', x.min == null ? '' : x.min, x.src])]);
     add(t('rp_safety'), [[t('dateTime'), t('sfType'), t('description'), t('sfInjured'), t('actionTaken'), t('reportedBy')], ...bk.safety.list.map(x => [fmtDT(x.t), t('sf_' + x.sType), x.description, x.injured || '', x.action || '', x.by])]);

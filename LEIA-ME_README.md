@@ -1,4 +1,16 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.11.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.13.0
+
+> **v2.13.0 — Release 5 (Zhax, 14-11-2026).**
+> - **Novo nome:** FMO - Moagem de Milho (em inglês, FMO - Maize Mill). No ícone do telemóvel fica o nome em português.
+> - **Logout do turno não desaparece:** um turno com login e sem logout abre no separador Turno e fica um alerta em todos os ecrãs até ao logout (não se limpa com «Limpar todos os avisos»).
+> - **Retenções só nas bins de milho sujo (B01–B04) e nas bins de produto (fuba, grits)**, quando o produto está fora de especificação e só com a confirmação do supervisor de CQ (nome e PIN). Uma bin retida não se usa — não alimenta ordens, não recebe produto, não sai produto — até ser libertada pelo supervisor de CQ. Amostra rejeitada com uma ordem a encher bins: aviso para o supervisor de CQ decidir.
+> - **Silos de produto:** quantidade em cada bin pedida no arranque e no fecho da ordem (0 = vazia; fica como leitura da bin); total por produto com a % de carga; a leitura diária continua em «Totais das bins».
+>
+> *EN:* new name FMO - Maize Mill (Portuguese name under the phone icon); a shift with a login and no logout stays open in the Shift tab with an alert until logout; QC holds only on raw maize bins B01–B04 and product bins, confirmed by the QC supervisor (name + PIN), and a held bin cannot be used until released; product-bin kg asked at job start and close, total by product with load %.
+
+> **v2.12.0 — Preventiva — registar feita (Zhax, 14-11-2026).** Na lista de preventiva, cada tarefa tem «✓ Registar feita»: dia em que foi feita (hoje ou antes), quem fez, nota. «✓ Registar várias como feitas» deixa marcar várias tarefas (ou todas as do filtro) com o mesmo dia e nome. A tarefa deixa de estar em atraso e a próxima data conta a partir do dia em que foi feita. Uma tarefa com trabalho planeado fecha esse trabalho como feito. Tarefa sem registo de execução conta como atraso (também no relatório).
+>
+> *EN:* preventive list: "✓ Record done" on each task (date done, today or earlier, who did it, note) and "✓ Record several as done" (tick several tasks, or all in the filter, with one date and name); the task stops being overdue and the next date counts from the day it was done; a task with a planned job closes that job as done; no record of execution counts as overdue (also in the report).
 
 > **v2.11.0 — Formação em FSSC (Zhax, 14-11-2026).** Novo separador **Formação** em FSSC: formações previstas (data, hora, tema, formador, para quem, n.º previsto), próximas formações, previstas ainda sem presenças (com aviso) e formações feitas com a lista de presentes e a % de presença. O resumo do mês entra no relatório de gestão (Balanced Scorecard → Aprendizagem e crescimento → Formação e competências). Os registos vão no ficheiro do dia (FSSC), como os outros.
 >
