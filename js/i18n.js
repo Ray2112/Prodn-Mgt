@@ -26,6 +26,7 @@ window.I18N = {
     operator: 'Operador / analista', otherTests: 'Outros ensaios (só registo, salvo limites definidos)', notes: 'Observações', save: 'Gravar',
     invalid: 'inválido', enterValues: 'Introduza pelo menos um resultado', holdWillOpen: 'a linha ficará RETIDA',
     // v2.6.0 — avisos em vez de retenções (Zhax, 12-11-2026)
+    clearAllBtn: 'Limpar todos os avisos ({n})', clearAllNote: 'Fecha os {n} avisos de uma vez, com a mesma explicação (função, nome, motivo e PIN). Um aviso volta se a situação mudar; os do dia (login, leitura da manhã, envio) voltam no dia seguinte se continuarem.', clearedAllN: '{n} aviso(s) limpos de uma vez',
     warnWillShow: 'fica um aviso para corrigir ou explicar (a produção não pára)', issuesTitle: 'Avisos', seeAllN: 'Ver os {n} avisos', noIssues: 'Sem avisos.',
     noJobLine: 'Sem ordem em curso nesta linha. A ordem inicia-se em Produção.', goProd: 'Produção', oldHoldOpen: 'retenção antiga aberta desde {h}',
     warnHelp: 'Um aviso fecha-se com uma correcção (nova amostra, correcção do registo) ou com a explicação do Chief Miller, do supervisor de CQ ou do Production Manager, com PIN.',
@@ -105,6 +106,7 @@ window.I18N = {
     operator: 'Operator / analyst', otherTests: 'Other tests (record only unless limits are set)', notes: 'Notes', save: 'Save',
     invalid: 'invalid', enterValues: 'Enter at least one result', holdWillOpen: 'the line will go ON HOLD',
     // v2.6.0 — warnings instead of holds (Zhax, 12 Nov 2026)
+    clearAllBtn: 'Clear all warnings ({n})', clearAllNote: 'Closes all {n} warnings at once with the same explanation (role, name, reason and PIN). A warning comes back if the situation changes; daily ones (login, morning reading, sending) come back the next day if still true.', clearedAllN: '{n} warning(s) cleared at once',
     warnWillShow: 'a warning stays until it is corrected or explained (production does not stop)', issuesTitle: 'Warnings', seeAllN: 'See all {n} warnings', noIssues: 'No warnings.',
     noJobLine: 'No job running on this line. Jobs are started in Production.', goProd: 'Production', oldHoldOpen: 'old hold open since {h}',
     warnHelp: 'A warning is closed by a correction (new sample, corrected record) or by an explanation from the Chief Miller, the QC supervisor or the Production Manager, with the PIN.',
