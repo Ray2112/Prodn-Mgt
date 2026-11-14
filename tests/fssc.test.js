@@ -127,3 +127,22 @@ t('reclamações: cliente interno (FMO, FRA) ou externo; motivo de cereal/cor/gr
 });
 
 console.log('fssc: ' + n + ' testes OK');
+
+// v2.11.0: formação (Zhax, 14-11-2026)
+{
+  const F = require('../js/fssc.js');
+  const E = [{ uid: 't1', kind: 'training', date: '2026-11-10', topic: 'GMP', expected: 10, t: 1 },
+    { uid: 't2', kind: 'training', date: '2026-11-20', topic: 'Alergénios', t: 2 },
+    { uid: 't3', kind: 'training', date: '2026-11-05', topic: 'HACCP', expected: 4, t: 3 },
+    { uid: 'a1', kind: 'trainingAtt', trainingUid: 't3', heldOn: '2026-11-05', attendees: ['Ana', 'Rui', 'Zé'], t: 4 }];
+  const L = F.trainings(E, '2026-11-14');
+  assert.deepStrictEqual(L.map(x => x.training.uid + ':' + x.state), ['t3:held', 't1:overdue', 't2:upcoming']);
+  assert.strictEqual(L[0].attendancePct, 75);
+  const M = F.trainingMonth(L, '2026-11');
+  assert.deepStrictEqual([M.planned, M.held, M.people, M.attendancePct], [3, 1, 3, 75]);
+  assert.deepStrictEqual(F.namesOf('Ana\nRui, Rui ; Zé  Silva'), ['Ana', 'Rui', 'Zé Silva']);
+  assert.deepStrictEqual(F.validateTraining({ date: '2026-11-20', topic: '', expected: 'x', by: '' }), ['trTopic', 'trExpected', 'by']);
+  assert.deepStrictEqual(F.validateAttendance({ heldOn: '2026-11-20', attendees: ' ', by: 'Z' }), ['trAttendees']);
+  assert.ok(F.warnings(E, [], 'mill', '2026-11-14').some(w => w.type === 'training_overdue' && w.topic === 'GMP'));
+  console.log('fssc training: OK');
+}
