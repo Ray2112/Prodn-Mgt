@@ -71,6 +71,7 @@ window.ProdUI = function (C) {
     combineMoves();
     S.readings = await DB.all('shiftReadings');
     S.stocks = await DB.all('binStock');   // totais das bins de manhã (v2.4.0)
+    try { S.maintRecs = await DB.all('maint'); } catch (e) { S.maintRecs = []; }   // v2.9.0: para Registos e Relatório
     refreshBinsStatus();
   }
   // Estado das bins para a Mill-App (bins-status). Guarda a última cópia no dispositivo (localStorage);
@@ -333,7 +334,7 @@ window.ProdUI = function (C) {
   const planTarget = day => { const r = planRows(day).filter(x => isNum(x.targetKg)); return r.length ? r.reduce((s, x) => s + x.targetKg, 0) : null; };
   function scaleInputs(prefix, vals) {
     return `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>kg</th></tr>${P.SCALES.map(k =>
-      `<tr><td>${esc(t('scale_' + k))} <small>(${esc(P.SCALE_SCADA[k])})</small></td><td><input inputmode="decimal" id="${prefix}_${k}" value="${esc(vals && isNum(vals[k]) ? String(vals[k]) : '')}"></td></tr>`).join('')}</table></div>`;
+      `<tr><td>${esc(t('scale_' + k))} <small>(${esc(P.SCALE_SCADA[k])})</small></td><td><input inputmode="numeric" data-scale="1" id="${prefix}_${k}" value="${esc(vals && isNum(vals[k]) ? P.fmtScale(vals[k]) : '')}" placeholder="1,234,567"></td></tr>`).join('')}</table></div>`;
   }
   const scaleVals = prefix => { const o = {}; P.SCALES.forEach(k => { const el = $('#' + prefix + '_' + k); o[k] = el ? el.value : ''; }); return o; };
   function planHtml(day, picks) {
@@ -342,18 +343,53 @@ window.ProdUI = function (C) {
     return rows.map((r, i) => `<label class="chk"><input type="checkbox" class="lg_plan" data-i="${i}" ${!picks || picks.indexOf(i) >= 0 ? 'checked' : ''}>
       ${esc(r.product || t('planNoProduct'))} · ${esc(t('targetT'))} ${isNum(r.targetKg) ? fmtKg(r.targetKg) + ' kg' : '—'}</label>`).join('');
   }
+  // v2.9.0: trabalhos do turno escolhidos numa lista (Limpeza piso 0–6, reprocessamento, preparar fumigação, arrumação do armazém,
+  // manutenção do plansifter, recolha de varreduras, outro). Gravados como código, mostrados na língua de quem lê.
+  const jobText = j => j.code === 'other' ? t('sj_other') + (j.note ? ': ' + j.note : '') : t('sj_' + j.code);
+  const jobChips = () => (S.lgJobs || []).map((j, i) => `<span class="chip d-record">${esc(jobText(j))} <button class="btn ghost small" data-pact="lgjobrm" data-i="${i}">✕</button></span>`).join(' ');
+  function addLgJob() {
+    const code = ($('#lg_jobsel') || {}).value, note = (($('#lg_jobtxt') || {}).value || '').trim();
+    if (!code) return C.toast(t('sjPick'));
+    if (code === 'other' && !note) return C.toast(t('sjOtherNeed'));
+    S.lgJobs = (S.lgJobs || []).concat([{ code, note: code === 'other' ? note : '' }]);
+    $('#lg_jobs').innerHTML = jobChips(); $('#lg_jobsel').value = ''; $('#lg_jobtxt').value = '';
+  }
+  // v2.9.0: mergulhos diários das bins de milho sujo B01–B04 (secção própria no separador Turno); gravados como leitura da manhã
+  function dipCard() {
+    const day = L.prodDay(now());
+    const todays = (S.stocks || []).filter(s => s.prodDay === day && P.DIP.bins.some(b => s.levels && s.levels[b] && s.levels[b].method === 'dip')).sort((a, b) => b.t - a.t)[0];
+    return `<section class="card"><h3>${esc(t('dipTitle'))}</h3><p class="sub">${esc(t('dipHelp'))}</p>
+      ${todays ? `<p class="sub">${esc(t('dipDone', { h: C.fmtDT(todays.t), by: todays.by }))}: ${P.DIP.bins.map(b => todays.levels[b] ? esc(b) + ' ' + fmtKg(todays.levels[b].kg) + ' kg' : '').filter(Boolean).join(' · ')}</p>` : `<div class="banner b-warn">${esc(t('dipMissing'))}</div>`}
+      <div class="tablewrap"><table class="tbl"><tr><th></th><th>${esc(t('dipD'))}</th><th>kg</th></tr>${P.DIP.bins.map(b => `<tr><td><b>${esc(b)}</b></td><td><input inputmode="decimal" id="dip_${b}" data-dip="${b}"></td><td id="dipv_${b}">${esc(t('dipHint'))}</td></tr>`).join('')}</table></div>
+      <label class="fld req">${esc(t('name'))}<input id="dip_by" value="${esc(S.operator)}"></label>
+      <button class="btn primary" data-pact="savedips">${esc(t('dipSave'))}</button></section>`;
+  }
+  async function saveDips() {
+    const levels = {}; P.DIP.bins.forEach(b => { const v = ($('#dip_' + b) || {}).value || ''; if (v.trim()) levels[b] = { dipM: v }; });
+    const by = (($('#dip_by') || {}).value || '').trim();
+    const r = P.validateBinStock({ levels, by }, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
+    if (r.errors.length) return C.toast(r.errors.map(e => t('je_' + e.code, { bin: e.bin, max: e.max || '' })).join(' · '));
+    const tms = now();
+    try { await DB.add('binStock', Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, scope: 'dips', warnings: r.warnings.map(w => w.code + ':' + w.bin) })); }
+    catch (e) { return C.toast(t('saveFailed')); }
+    S.operator = by; await DB.setConfig('operator', S.operator);
+    await reload(); C.toast(t('dipSaved')); keepScroll();
+  }
   function viewShift() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
     const li = shiftRec('login', day, per), lo = shiftRec('logout', day, per);
     const plan = C.plan();
-    const head = `<section class="card"><h3>${esc(t('shiftTitle'))}</h3>
+    const head0 = `<section class="card"><h3>${esc(t('shiftTitle'))}</h3>
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="shDay" value="${esc(day)}"></label>
       <label class="fld">${esc(t('shift'))}<select id="shPeriod"><option value="D" ${per === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${per === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       <p class="sub">${esc(plan ? t('planFrom', { g: C.fmtDT(Date.parse(plan.generatedAt)) }) : t('planMissing'))}</p></section>`;
+    const head = head0 + dipCard();
     if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3><p class="sub">${esc(t('loginHelp'))}</p>
       <label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
       <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
-      <label class="fld">${esc(t('jobsExtra'))}<input id="lg_extra"></label>
+      <div class="grid2"><label class="fld">${esc(t('sjPick'))}<select id="lg_jobsel"><option value="">—</option>${P.SHIFT_JOBS.map(k => `<option value="${k}">${esc(t('sj_' + k))}</option>`).join('')}</select></label>
+        <label class="fld">${esc(t('sjOtherText'))}<input id="lg_jobtxt"></label></div>
+      <button class="btn small" data-pact="lgjobadd">＋ ${esc(t('sjAdd'))}</button><div id="lg_jobs">${jobChips()}</div>
       <label class="fld req">${esc(t('stateNow'))}<select id="lg_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
       <h4>${esc(t('scalesStart'))}</h4><p class="sub">${esc(t('scalesHelp'))}</p>${scaleInputs('lgs')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lg_comments"></textarea></label>
@@ -361,7 +397,7 @@ window.ProdUI = function (C) {
     const loginCard = `<section class="card"><h3>${esc(t('loginTitle'))} · ${esc(C.fmtDT(li.t))}</h3>
       <div class="kv"><span>${esc(t('shiftLeader'))}</span><b>${esc(li.leader)} · ${esc(t('crew'))} ${esc(li.crew || '—')}</b></div>
       <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + li.state))}</b></div>
-      <div class="kv"><span>${esc(t('jobsToDo'))}</span><b>${esc((li.planJobs || []).map(j => (j.product || t('planNoProduct')) + (isNum(j.targetKg) ? ' · ' + fmtKg(j.targetKg) + ' kg' : '')).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') || '—')}</b></div>
+      <div class="kv"><span>${esc(t('jobsToDo'))}</span><b>${esc((li.planJobs || []).map(j => (j.product || t('planNoProduct')) + (isNum(j.targetKg) ? ' · ' + fmtKg(j.targetKg) + ' kg' : '')).concat((li.shiftJobs || []).map(jobText)).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') || '—')}</b></div>
       ${li.comments ? `<p><small>${esc(li.comments)}</small></p>` : ''}</section>`;
     const range = shiftRange(day, per);
     const sm = P.shiftSummary(day, per, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
@@ -378,7 +414,7 @@ window.ProdUI = function (C) {
       <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + lo.state))}</b></div>
       <div class="kv"><span>${esc(t('targetAchieved'))}</span><b>${isNum(lo.achievedPct) ? esc(String(lo.achievedPct).replace('.', ',')) + ' %' : '—'} <small>(${esc(t('dayB1'))} ${isNum(lo.dayB1Kg) ? fmtKg(lo.dayB1Kg) + ' kg' : '—'} / ${esc(t('targetT'))} ${isNum(lo.targetKg) ? fmtKg(lo.targetKg) + ' kg' : '—'})</small></b></div>
       <div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>${esc(t('srPoint_start'))}</th><th>${esc(t('srPoint_end'))}</th><th>${esc(t('srQty'))} (kg)</th></tr>${P.SCALES.map(k =>
-        `<tr><td>${esc(t('scale_' + k))}</td><td>${fmtKg((li.scalesStart || {})[k])}</td><td>${fmtKg((lo.scalesEnd || {})[k])}</td><td class="${(lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum((lo.shiftKg || {})[k]) ? fmtKg(lo.shiftKg[k]) : '—'}</td></tr>`).join('')}</table></div>
+        `<tr><td>${esc(t('scale_' + k))}</td><td>${P.fmtScale((li.scalesStart || {})[k]) || '—'}</td><td>${P.fmtScale((lo.scalesEnd || {})[k]) || '—'}</td><td class="${(lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum((lo.shiftKg || {})[k]) ? P.fmtScale(lo.shiftKg[k]) : '—'}</td></tr>`).join('')}</table></div>
       ${lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
       <button class="btn" data-pact="shiftxlsx">${esc(t('genExcel'))}</button></section>`;
   }
@@ -390,10 +426,10 @@ window.ProdUI = function (C) {
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: L.crewOfTime(start + 60000),
-      leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), jobsExtra: $('#lg_extra').value.trim(),
+      leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
       planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim() });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
-    S.operator = rec.by; await DB.setConfig('operator', S.operator);
+    S.operator = rec.by; await DB.setConfig('operator', S.operator); S.lgJobs = [];
     await reload(); C.toast(t('loginSaved')); keepScroll();
   }
   async function shiftLogout() {
@@ -952,7 +988,7 @@ window.ProdUI = function (C) {
       <div class="kpis k4"><div><b>${sm.jobs.length}</b><span>${esc(t('ptab_jobs'))}</span></div><div class="${sm.openIssues ? 'd-warn' : ''}"><b>${sm.issues.length}</b><span>${esc(t('issues'))}</span></div>
         <div><b>${sm.downtimeMin}</b><span>${esc(t('downtimeMin'))}</span></div><div><b>${sm.acts.length}</b><span>${esc(t('activities'))}</span></div></div>
       ${Object.keys(sm.byTier3).length ? `<p class="sub">${esc(t('byTier3'))}: ${Object.keys(sm.byTier3).map(k => esc(tierLabel(k)) + ' ' + sm.byTier3[k] + ' min').join(' · ')}<br>${esc(t('byOee'))}: ${Object.keys(sm.byOee).map(k => esc(oeeLabel(k)) + ' ' + sm.byOee[k] + ' min').join(' · ')}</p>` : ''}
-      ${f ? '' : `<div class="row"><button class="btn primary" data-pact="newissue">＋ ${esc(t('newIssue'))}</button><button class="btn" data-pact="newact">＋ ${esc(t('newActivity'))}</button></div>`}
+      ${f ? '' : `<div class="row"><button class="btn primary" data-pact="newissue">＋ ${esc(t('newIssue'))}</button><button class="btn" data-pact="newact">＋ ${esc(t('newActivity'))}</button><button class="btn" data-pact="newsafety">＋ ${esc(t('newSafety'))}</button></div>`}
       <div class="row"><button class="btn ghost small" data-pact="shiftxlsx">${esc(t('genExcel'))}</button>
         <a class="btn ghost small" target="_blank" rel="noopener" href="${esc(C.waLink(shiftText(ls, sm)))}">${esc(t('sendSummaryWa'))}</a></div></section>
       ${readingsCard(ls)}
@@ -1027,6 +1063,14 @@ window.ProdUI = function (C) {
     const f = S.logForm;
     const head = `<label class="fld">${esc(t('time'))}<input type="datetime-local" data-lf="time" value="${esc(f.time)}"></label>
       <label class="fld">${esc(t('line'))}<select data-lf="lineId">${lineOpts(f.lineId)}</select></label>`;
+    // v2.9.0: ocorrência de segurança (acidente, quase-acidente, perigo, acto inseguro)
+    if (f.kind === 'safety') return `<section class="card"><h3>${esc(t('newSafety'))}</h3><div class="grid2">${head}
+        <label class="fld req">${esc(t('sfType'))}<select data-lf="sType"><option value="">—</option>${window.DayBook.SAFETY_TYPES.map(k => `<option value="${k}" ${f.sType === k ? 'selected' : ''}>${esc(t('sf_' + k))}</option>`).join('')}</select></label>
+        <label class="fld">${esc(t('sfInjured'))}<input data-lf="injured" value="${esc(f.injured)}"></label></div>
+        <label class="fld req">${esc(t('description'))}<textarea rows="2" data-lf="description">${esc(f.description)}</textarea></label>
+        <label class="fld">${esc(t('actionTaken'))}<textarea rows="2" data-lf="action">${esc(f.action)}</textarea></label>
+        <label class="fld req">${esc(t('reportedBy'))}<input data-lf="by" value="${esc(f.by)}"></label>
+        <button class="btn primary big" data-pact="savelog">${esc(t('save'))}</button><button class="btn ghost" data-pact="cancellog">${esc(t('cancel'))}</button></section>`;
     if (f.kind === 'issue') return `<section class="card"><h3>${esc(t('newIssue'))}</h3><div class="grid2">${head}
         <label class="fld">${esc(t('downtimeCode'))}<select data-lf="code"><option value="">— ${esc(t('noStopCode'))}</option>${GROUPS.map(([g, k]) => `<optgroup label="${esc(t(k))}">${codes().filter(c => c.code[0] === g && c.active !== false).map(c => `<option value="${esc(c.code)}" ${f.code === c.code ? 'selected' : ''}>${esc(c.code + ' ' + cName(c))}</option>`).join('')}</optgroup>`).join('')}
         ${codes().some(c => c.active !== false && GROUPS.every(([g]) => c.code[0] !== g)) ? `<optgroup label="${esc(t('cg_X'))}">${codes().filter(c => c.active !== false && GROUPS.every(([g]) => c.code[0] !== g)).map(c => `<option value="${esc(c.code)}" ${f.code === c.code ? 'selected' : ''}>${esc(c.code + ' ' + cName(c))}</option>`).join('')}</optgroup>` : ''}</select></label>
@@ -1049,7 +1093,7 @@ window.ProdUI = function (C) {
   }
   function newLogForm(kind) {
     S.logForm = { kind, time: C.localInput(now()), lineId: '', code: '', equipment: '', description: '', downtimeMin: '', action: '',
-      type: '', floor: '', qtyKg: '', productId: '', by: S.operator };
+      type: '', floor: '', qtyKg: '', productId: '', sType: '', injured: '', by: S.operator };
   }
   async function saveLog() {
     const f = S.logForm;
@@ -1059,7 +1103,11 @@ window.ProdUI = function (C) {
     if (tms < now() - 24 * 3600000) return C.toast(t('tooOld'));
     if (!String(f.by || '').trim()) return C.toast(t('needName'));
     let rec;
-    if (f.kind === 'issue') {
+    if (f.kind === 'safety') {
+      const e = window.DayBook.validateSafety(f);
+      if (e.length) return C.toast(t('fillFields') + ': ' + e.map(x => t('f_' + x)).join(', '));
+      rec = Object.assign(base(tms), { kind: 'safety', t: tms, lineId: f.lineId, sType: f.sType, injured: String(f.injured || '').trim(), description: f.description.trim(), action: String(f.action || '').trim(), by: f.by.trim() });
+    } else if (f.kind === 'issue') {
       const e = P.validateIssue(f, codes());
       if (e.length) return C.toast(t('fillFields') + ': ' + e.map(x => t('f_' + x)).join(', '));
       const dt = P.num(f.downtimeMin);
@@ -1159,7 +1207,7 @@ window.ProdUI = function (C) {
     const li = shiftRec('login', ls.day, ls.period), lo = shiftRec('logout', ls.day, ls.period);
     add(t('shiftTitle'), [[t('waShiftTitle', { d: ls.day, s: t('shift_' + ls.period) })], [],
       [t('loginTitle'), li ? C.fmtDT(li.t) : t('notDone')], [t('shiftLeader'), li ? li.leader : ''], [t('crew'), li ? li.crew : ''], [t('stateNow') + ' (' + t('loginTitle') + ')', li ? t('state_' + li.state) : ''],
-      [t('jobsToDo'), li ? (li.planJobs || []).map(j => (j.product || '') + (isNum(j.targetKg) ? ' ' + j.targetKg + ' kg' : '')).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') : ''],
+      [t('jobsToDo'), li ? (li.planJobs || []).map(j => (j.product || '') + (isNum(j.targetKg) ? ' ' + j.targetKg + ' kg' : '')).concat((li.shiftJobs || []).map(jobText)).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') : ''],
       [t('comments') + ' (' + t('loginTitle') + ')', li ? li.comments || '' : ''], [],
       [t('scale'), 'SCADA', t('srPoint_start') + ' (kg)', t('srPoint_end') + ' (kg)', t('srQty') + ' (kg)'],
       ...P.SCALES.map(k => [t('scale_' + k), P.SCALE_SCADA[k], li && isNum((li.scalesStart || {})[k]) ? li.scalesStart[k] : '', lo && isNum((lo.scalesEnd || {})[k]) ? lo.scalesEnd[k] : '', lo && isNum((lo.shiftKg || {})[k]) ? lo.shiftKg[k] : '']), [],
@@ -1462,6 +1510,7 @@ window.ProdUI = function (C) {
       case 'cancelclose': S.closeJob = null; keepScroll(); return;
       case 'newissue': newLogForm('issue'); keepScroll(); return;
       case 'newact': newLogForm('activity'); keepScroll(); return;
+      case 'newsafety': newLogForm('safety'); keepScroll(); return;
       case 'cancellog': S.logForm = null; keepScroll(); return;
       case 'savelog': return saveLog();
       case 'closeissue': return logAction('close');
@@ -1469,6 +1518,9 @@ window.ProdUI = function (C) {
       case 'cancella': S.logAct = null; keepScroll(); return;
       case 'shiftxlsx': return shiftExcel();
       case 'shiftlogin': return shiftLogin();
+      case 'lgjobadd': return addLgJob();
+      case 'lgjobrm': { (S.lgJobs || []).splice(Number(el.dataset.i), 1); const c = $('#lg_jobs'); if (c) c.innerHTML = jobChips(); return; }
+      case 'savedips': return saveDips();
       case 'shiftlogout': return shiftLogout();
       case 'savestop': return saveStop();
       case 'srdsignin': return siloSignIn();
@@ -1497,6 +1549,7 @@ window.ProdUI = function (C) {
   }
   function onInput(el) {
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
+    if (el.dataset.dip) { const o = $('#dipv_' + el.dataset.dip); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); return true; }
     if (el.dataset.jbl && S.jobForm) {
       const [id, k] = el.dataset.jbl.split('|');
       S.jobForm.blend[id] = Object.assign({}, S.jobForm.blend[id], { [k]: el.value });
@@ -1523,6 +1576,7 @@ window.ProdUI = function (C) {
     C.render();
   }
   function onChange(el) {
+    if (el.dataset.scale) { const v = P.scaleNum(el.value); if (isNum(v) && v >= 0) el.value = P.fmtScale(v); return true; }   // v2.9.0: 1,234,567
     if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.id === 'shDay' || el.id === 'shPeriod') { const s = shiftSel(); if (el.id === 'shDay') { if (el.value) s.day = el.value; } else s.period = el.value === 'N' ? 'N' : 'D'; keepScroll(); return true; }

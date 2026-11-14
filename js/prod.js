@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.8.4';
+  const VERSION = '2.9.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -1016,12 +1016,21 @@
     return { errors: e, downtimeMin: e.indexOf('start') < 0 && e.indexOf('end') < 0 ? Math.round((b - a) / 60000) : null };
   }
   // Leituras das balanças (texto → kg); em branco fica null (nunca 0); inválido → erro
+  // v2.9.0 (Zhax, 14-11-2026): leituras das balanças com vírgula a cada 3 algarismos (1,234,567); também aceita 1.234.567 e 1 234 567
+  function scaleNum(raw) {
+    const s = String(raw).trim();
+    if (/^\d{1,3}(,\d{3})+$/.test(s)) return Number(s.replace(/,/g, ''));
+    return num(s, 'kg');
+  }
+  const fmtScale = v => isNum(v) ? Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+  // Trabalhos do turno (lista fixa, Zhax 14-11-2026); 'other' leva texto
+  const SHIFT_JOBS = ['hk0', 'hk1', 'hk2', 'hk3', 'hk4', 'hk5', 'hk6', 'reproc', 'fumig', 'warehouse', 'plansifter', 'sweepings', 'other'];
   function readScales(o) {
     const out = {}, bad = [];
     SCALES.forEach(k => {
       const raw = o && o[k] !== undefined && o[k] !== null ? String(o[k]).trim() : '';
       if (raw === '') { out[k] = null; return; }
-      const v = num(raw, 'kg');
+      const v = scaleNum(raw);
       if (v === null || isNaN(v) || v < 0) bad.push(k); else out[k] = r3(v);
     });
     return { values: out, bad };
@@ -1137,7 +1146,7 @@
     return out;
   }
 
-  const api = { CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };
