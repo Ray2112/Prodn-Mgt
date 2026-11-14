@@ -126,14 +126,15 @@
   // Cada aviso com chave pode ser fechado por uma explicação (Chief Miller, supervisor de CQ ou Production Manager, com PIN),
   // gravada em prodChanges {kind: 'warnClear'} — vai nos ficheiros diários. Os restantes fecham-se onde nascem (link).
   const CLEAR_ROLES = ['chief', 'qc', 'pm'];
-  const clears = () => new Set((S.prodChanges || []).filter(c => c.kind === 'warnClear').map(c => c.key));
+  // v2.9.1: uma explicação pode fechar vários avisos de uma vez (keys = lista, «Limpar todos os avisos»)
+  const clears = () => new Set([].concat(...(S.prodChanges || []).filter(c => c.kind === 'warnClear').map(c => Array.isArray(c.keys) ? c.keys : [c.key])));
   function issues() {
     const out = [], cl = clears(), nowMs = Date.now();
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
-    const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings' });
-    const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings' });
-    const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift' });
-    if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins' });
+    const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings', daily: true });
+    const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings', daily: true });
+    const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift', daily: true });
+    if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins', daily: true });
     const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
     L.openQcWarnings(S.samples, cl, from).forEach(s => out.push({ key: 'qc:' + s.id, level: s.decision === 'reject' ? 'bad' : 'warn',
       text: '🧪 ' + lineName(s.lineId) + ' · ' + prodName(s.productId) + ' · ' + fmtDT(s.t) + ': ' + s.failures.map(f => (f.param in { odour: 1, colour: 1, mould: 1, insects: 1, foreign: 1 } ? t('ph_' + f.param) : paramLabel(f.param, product(s.productId))) + ' ' + (f.value === 'abn' ? t('abnormal') : fmtNum(f.value))).join(', ') + ' → ' + decLabel(s.decision), detail: s.id }));
@@ -146,7 +147,11 @@
     MU.warnings().forEach(w => out.push({ level: 'bad', text: '🔧 ' + MU.warnText(w), nav: 'maint' }));
     FU.warnings().forEach(w => out.push({ level: w.level === 'bad' ? 'bad' : 'warn', text: '✔ ' + FU.warnText(w), nav: 'fssc' }));
     const rp = reportPendingDay(); if (rp) out.push({ level: 'info', text: t('reportReady', { d: rp }), repday: rp });
-    return out;
+    // v2.9.1 (Zhax, 14-11-2026): todos os avisos têm chave, para poderem ser limpos. Os do dia (login, leitura da manhã, envio)
+    // voltam no dia seguinte se continuarem; os outros só voltam se o texto mudar (ex.: mais tarefas em atraso).
+    const day = L.prodDay(nowMs);
+    out.forEach(i => { if (!i.key && i.level !== 'info') i.key = 'gen:' + (i.daily ? day + ':' : '') + i.text.replace(/^\S+\s/, ''); });
+    return out.filter(i => !i.key || !cl.has(i.key));
   }
   const ISS_CLS = { bad: 'b-reject', warn: 'b-warn', info: 'b-info' };
   function issueRow(i) {
@@ -530,10 +535,18 @@
   // ----- Retenções -----
   function viewHolds() {
     const iss = issues();
-    const keyed = iss.filter(i => i.key), other = iss.filter(i => !i.key);
+    const keyed = iss.filter(i => i.key && !/^gen:/.test(i.key)), other = iss.filter(i => !i.key || /^gen:/.test(i.key));
     const done = (S.prodChanges || []).filter(c => c.kind === 'warnClear').sort((a, b) => b.t - a.t).slice(0, 20);
     const closed = S.holds.filter(h => h.status === 'closed').sort((a, b) => b.closedAt - a.closedAt).slice(0, 20);
-    return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2><p class="sub">${esc(t('warnHelp'))}</p>
+    const all = iss.filter(i => i.key);
+    const clearAll = !all.length ? '' : S.clearKey === '*' ? `<div class="holdform"><p class="sub">${esc(t('clearAllNote', { n: all.length }))}</p>
+        <label class="fld req">${esc(t('clearRole'))}<select id="wc_role">${CLEAR_ROLES.map(r => `<option value="${r}">${esc(t('role_' + r))}</option>`).join('')}</select></label>
+        <label class="fld req">${esc(t('name'))}<input id="wc_by" value="${esc(S.operator)}"></label>
+        <label class="fld req">${esc(t('clearReason'))}<textarea rows="2" id="wc_reason"></textarea></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="wc_pin"></label>
+        <button class="btn primary" data-wsave="*">${esc(t('clearAllBtn', { n: all.length }))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
+      : `<button class="btn" data-wopen="*">${esc(t('clearAllBtn', { n: all.length }))}</button>`;
+    return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2><p class="sub">${esc(t('warnHelp'))}</p>${clearAll}
         ${keyed.length ? keyed.map(warnCard).join('') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>
       ${other.length ? `<section class="card"><h3>${esc(t('otherIssues'))}</h3>${other.map(issueRow).join('')}</section>` : ''}
       <section class="card"><h3>${esc(t('clearedTitle'))}</h3>${done.map(c => `<div class="rowitem"><small>${esc(fmtDT(c.t))} · ${esc(t('role_' + c.role))} ${esc(c.by)}: ${esc(c.reason)}</small><br><small class="sub">${esc(c.text || c.key)}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
@@ -552,14 +565,15 @@
       : `<div class="row">${i.newsample ? `<button class="btn small" data-newsample="${esc(i.newsample)}">${esc(t('newSample'))}</button>` : ''}${i.detail ? `<button class="btn small" data-correct="${esc(i.detail)}">${esc(t('correct'))}</button>` : ''}<button class="btn ghost small" data-wopen="${k}">${esc(t('explainBtn'))}</button></div>`}</div>`;
   }
   async function clearWarning(key) {
-    const i = issues().find(x => x.key === key);
-    if (!i) { S.clearKey = null; return render(); }
+    const list = issues().filter(x => x.key && (key === '*' || x.key === key));
+    const i = key === '*' ? { text: t('clearedAllN', { n: list.length }) } : list[0];
+    if (!i || !list.length) { S.clearKey = null; return render(); }
     const role = $('#wc_role').value, by = $('#wc_by').value.trim(), reason = $('#wc_reason').value.trim();
     if (!by || !reason) return toast(t('needClear'));
     const r = await checkPin($('#wc_pin').value);
     if (!r.ok) return toast(pinMsg(r));
     const tms = Date.now();
-    try { await DB.add('prodChanges', Object.assign(PU.newRec(tms), { kind: 'warnClear', key, role, by, reason, text: i.text, t: tms })); }
+    try { await DB.add('prodChanges', Object.assign(PU.newRec(tms), { kind: 'warnClear', key, keys: list.map(x => x.key), role, by, reason, text: i.text, t: tms })); }
     catch (e) { return toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
     S.clearKey = null; await PU.reload(); toast(t('clearSaved')); render();

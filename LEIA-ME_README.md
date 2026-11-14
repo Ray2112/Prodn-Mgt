@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.9.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.9.1
+
+> **v2.9.1 — Limpar todos os avisos (Zhax, 14-11-2026).** No separador Avisos, o botão «Limpar todos os avisos (n)» fecha todos os avisos de uma vez, com uma só explicação (função, nome, motivo e PIN), gravada como um registo. Um aviso volta se a situação mudar (ex.: mais tarefas em atraso); os do dia (login do turno, leitura da manhã, envio) voltam no dia seguinte se continuarem.
+>
+> *EN:* Warnings tab: "Clear all warnings (n)" closes every warning at once with one explanation (role, name, reason, PIN), saved as one record; a warning comes back if the situation changes, daily ones (shift login, morning reading, sending) come back the next day if still true.
 
 > **v2.9.0 — Registos e relatórios (release 3; Zhax, 14-11-2026).**
 > - **Turno:** trabalhos do turno escolhidos numa lista (limpeza dos pisos 0–6, reprocessamento, preparar para fumigação, arrumação do armazém, manutenção do plansifter, recolha de varreduras, outro); secção própria para os **mergulhos diários das bins B01–B04**; leituras das balanças com vírgula a cada 3 algarismos (1,234,567).
