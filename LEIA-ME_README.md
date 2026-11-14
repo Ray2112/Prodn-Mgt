@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.11.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.12.0
+
+> **v2.12.0 — Preventiva — registar feita (Zhax, 14-11-2026).** Na lista de preventiva, cada tarefa tem «✓ Registar feita»: dia em que foi feita (hoje ou antes), quem fez, nota. «✓ Registar várias como feitas» deixa marcar várias tarefas (ou todas as do filtro) com o mesmo dia e nome. A tarefa deixa de estar em atraso e a próxima data conta a partir do dia em que foi feita. Uma tarefa com trabalho planeado fecha esse trabalho como feito. Tarefa sem registo de execução conta como atraso (também no relatório).
+>
+> *EN:* preventive list: "✓ Record done" on each task (date done, today or earlier, who did it, note) and "✓ Record several as done" (tick several tasks, or all in the filter, with one date and name); the task stops being overdue and the next date counts from the day it was done; a task with a planned job closes that job as done; no record of execution counts as overdue (also in the report).
 
 > **v2.11.0 — Formação em FSSC (Zhax, 14-11-2026).** Novo separador **Formação** em FSSC: formações previstas (data, hora, tema, formador, para quem, n.º previsto), próximas formações, previstas ainda sem presenças (com aviso) e formações feitas com a lista de presentes e a % de presença. O resumo do mês entra no relatório de gestão (Balanced Scorecard → Aprendizagem e crescimento → Formação e competências). Os registos vão no ficheiro do dia (FSSC), como os outros.
 >
