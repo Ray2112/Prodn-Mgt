@@ -1,4 +1,8 @@
-# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.10.0
+# Prodn-Mgt — Moagem: Controlo de Qualidade (auto-controlo) + Produção · v2.11.0
+
+> **v2.11.0 — Formação em FSSC (Zhax, 14-11-2026).** Novo separador **Formação** em FSSC: formações previstas (data, hora, tema, formador, para quem, n.º previsto), próximas formações, previstas ainda sem presenças (com aviso) e formações feitas com a lista de presentes e a % de presença. O resumo do mês entra no relatório de gestão (Balanced Scorecard → Aprendizagem e crescimento → Formação e competências). Os registos vão no ficheiro do dia (FSSC), como os outros.
+>
+> *EN:* new **Training** tab in FSSC: planned trainings (date, time, topic, trainer, audience, expected number), upcoming, planned with no attendance yet (warning), and trainings held with the attendees and attendance %; the month summary feeds the management report BSC (Learning and growth → Training and skills).
 
 > **v2.10.0 — Release 4 (Zhax, 14-11-2026).**
 > - **PIN de cada chefe de turno:** o supervisor define-o em Definições → Produção (por turma A–D). O login e o logout do turno pedem o PIN do chefe; PIN errado não grava. Chefe ainda sem PIN: grava com aviso. O PIN fica só no telemóvel (defina-o em cada um); nos registos fica só a nota de que foi mudado.
