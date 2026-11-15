@@ -1,4 +1,8 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.13.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.13.1
+
+> **v2.13.1 — Logótipo Carrinho no cabeçalho (Zhax, 15-11-2026).**
+>
+> *EN:* Carrinho logo in the header.
 
 > **v2.13.0 — Release 5 (Zhax, 14-11-2026).**
 > - **Novo nome:** FMO - Moagem de Milho (em inglês, FMO - Maize Mill). No ícone do telemóvel fica o nome em português.

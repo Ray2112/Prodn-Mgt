@@ -237,7 +237,7 @@
     const openN = issues().filter(i => i.level !== 'info').length;
     $('#app').innerHTML = `
       <header class="top">
-        <div class="brand"><b>${esc(t('appTitle'))}</b><span class="mill">${esc(t('mill_' + S.cfg.millType))}</span></div>
+        <div class="brand"><span class="row" style="gap:10px;align-items:center"><img class="logo" src="img/carrinho-logo.png" alt="Carrinho Indústria"><b>${esc(t('appTitle'))}</b></span><span class="mill">${esc(t('mill_' + S.cfg.millType))}</span></div>
         <div class="shiftbar">
           <label>${esc(t('crew'))}
             <b>${esc(L.crewOfTime(Date.now()))}</b>
