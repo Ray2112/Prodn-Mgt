@@ -89,3 +89,6 @@ table.blend input{width:100%;min-width:0;font-size:16px;padding:7px 6px;border:1
 /* v2.4.0: nível das bins */
 .lvbar{height:8px;background:#eef1ec;border-radius:5px;overflow:hidden;margin:4px 0}.lvbar div{height:100%}
 .tbl.stock{width:100%;table-layout:fixed}.tbl.stock th:first-child{width:24%}.tbl.stock td input,.tbl.stock td select{width:100%;min-width:0;box-sizing:border-box;font-size:16px;padding:7px 6px;border:1px solid #c9d2c8;border-radius:8px;background:#fff}
+
+/* 2.13.1 / 0.17.1 (Zhax, 15-11-2026): logótipo Carrinho no cabeçalho, num painel branco (o ficheiro tem fundo branco) */
+.logo{height:30px;width:auto;background:#fff;border-radius:6px;padding:3px 6px;display:block;flex:none}
