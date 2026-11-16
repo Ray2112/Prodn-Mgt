@@ -328,9 +328,10 @@ window.ProdUI = function (C) {
 
   // ---------- vista principal ----------
   function view() {
+    if (S.prodTab === 'log') S.prodTab = 'shift';   // v2.15.0: o Diário de turno passou para o separador Turno
     const tab = S.prodTab || 'shift';
-    const tabs = ['shift', 'jobs', 'stops', 'grain', 'log', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
-    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'log' ? viewLog() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
+    const tabs = ['shift', 'jobs', 'stops', 'grain', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
+    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
     const banner = S.ctx && S.ctx.testMode ? `<section class="card"><b>${esc(t('ctxTestBanner'))}</b></section>` : '';
     return `${banner}<section class="card"><h2>${esc(t('nav_prod'))}</h2><div class="row">${tabs}</div></section>${body}`;
   }
@@ -377,10 +378,10 @@ window.ProdUI = function (C) {
   function dipCard() {
     const day = L.prodDay(now());
     const todays = (S.stocks || []).filter(s => s.prodDay === day && P.DIP.bins.some(b => s.levels && s.levels[b] && s.levels[b].method === 'dip')).sort((a, b) => b.t - a.t)[0];
-    return `<section class="card"><h3>${esc(t('dipTitle'))}</h3><p class="sub">${esc(t('dipHelp'))}</p>
+    return `<section class="card"><h3>${esc(t('dipTitle'))}</h3>
       ${todays ? `<p class="sub">${esc(t('dipDone', { h: C.fmtDT(todays.t), by: todays.by }))}: ${P.DIP.bins.map(b => todays.levels[b] ? esc(b) + ' ' + fmtKg(todays.levels[b].kg) + ' kg' : '').filter(Boolean).join(' · ')}</p>` : `<div class="banner b-warn">${esc(t('dipMissing'))}</div>`}
       <div class="tablewrap"><table class="tbl"><tr><th></th><th>${esc(t('dipD'))}</th><th>kg</th></tr>${P.DIP.bins.map(b => `<tr><td><b>${esc(b)}</b></td><td><input inputmode="decimal" id="dip_${b}" data-dip="${b}"></td><td id="dipv_${b}">${esc(t('dipHint'))}</td></tr>`).join('')}</table></div>
-      <label class="fld req">${esc(t('name'))}<input id="dip_by" value="${esc(S.operator)}"></label>
+      ${shiftLeader() ? `<input type="hidden" id="dip_by" value="${esc(shiftLeader())}">` : `<label class="fld req">${esc(t('name'))}<input id="dip_by" value="${esc(S.operator)}"></label>`}
       <button class="btn primary" data-pact="savedips">${esc(t('dipSave'))}</button></section>`;
   }
   async function saveDips() {
@@ -394,17 +395,18 @@ window.ProdUI = function (C) {
     S.operator = by; await DB.setConfig('operator', S.operator);
     await reload(); C.toast(t('dipSaved')); keepScroll();
   }
-  function viewShift() {
+  function viewShift() { return viewShiftTop() + procCard() + viewLog(); }
+  function viewShiftTop() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
     const li = shiftRec('login', day, per), lo = shiftRec('logout', day, per);
     const plan = C.plan();
     const head0 = `<section class="card"><h3>${esc(t('shiftTitle'))}</h3>
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="shDay" value="${esc(day)}"></label>
       <label class="fld">${esc(t('shift'))}<select id="shPeriod"><option value="D" ${per === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${per === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
-      <p class="sub">${esc(plan ? t('planFrom', { g: C.fmtDT(Date.parse(plan.generatedAt)) }) : t('planMissing'))}</p></section>`;
+      ${plan ? '' : `<p class="sub">${esc(t('planMissing'))}</p>`}</section>`;
     const op = openShift(), opSel = op && op.prodDay === day && op.period === per;
     const head = (op ? `<div class="banner b-reject">⚠ ${esc(t('logoutMissing', { s: t('shift_' + op.period), d: C.fmtDT(op.t).slice(0, 10), l: op.leader || '' }))}${opSel ? '' : ` <button class="btn small" data-shsel="${esc(op.prodDay)}|${esc(op.period)}">${esc(t('logoutGo'))}</button>`}</div>` : '') + head0 + dipCard();
-    if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3><p class="sub">${esc(t('loginHelp'))}</p>
+    if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3>
       <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
         <label class="fld req">${esc(t('leaderPin'))}<input type="password" inputmode="numeric" id="lg_pin" autocomplete="off"></label></div>
       <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
@@ -412,7 +414,7 @@ window.ProdUI = function (C) {
         <label class="fld">${esc(t('sjOtherText'))}<input id="lg_jobtxt"></label></div>
       <button class="btn small" data-pact="lgjobadd">＋ ${esc(t('sjAdd'))}</button><div id="lg_jobs">${jobChips()}</div>
       <label class="fld req">${esc(t('stateNow'))}<select id="lg_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
-      <h4>${esc(t('scalesStart'))}</h4><p class="sub">${esc(t('scalesHelp'))}</p>${scaleInputs('lgs')}
+      <h4>${esc(t('scalesStart'))}</h4>${scaleInputs('lgs')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lg_comments"></textarea></label>
       <button class="btn primary big" data-pact="shiftlogin">${esc(t('loginBtn'))}</button></section>`;
     const loginCard = `<section class="card"><h3>${esc(t('loginTitle'))} · ${esc(C.fmtDT(li.t))}</h3>
@@ -426,7 +428,8 @@ window.ProdUI = function (C) {
       <div class="kpis k4"><div><b>${sm.jobs.length}</b><span>${esc(t('ptab_jobs'))}</span></div><div><b>${sm.issues.length}</b><span>${esc(t('ptab_stops'))}</span></div>
         <div><b>${sm.downtimeMin}</b><span>${esc(t('downtimeMin'))}</span></div><div><b>${sm.acts.length}</b><span>${esc(t('activities'))}</span></div></div>
       <label class="fld req">${esc(t('stateNow'))}<select id="lo_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
-      <label class="fld req">${esc(t('activitiesDone'))}<textarea rows="3" id="lo_acts">${esc(sm.acts.map(a => t('at_' + (ACT.has(a.type) ? a.type : 'other')) + (a.description ? ': ' + a.description : '')).join('\n'))}</textarea></label>
+      ${loginItems(li).length ? `<div class="sub req">${esc(t('activitiesDone'))}</div><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('jobsToDo'))}</th><th>${esc(t('pctDone'))}</th></tr>${loginItems(li).map((x, i) =>
+        `<tr><td>${esc(x.label)}</td><td><input inputmode="decimal" class="lo_pct" data-i="${i}" placeholder="0–100" style="max-width:90px"> %</td></tr>`).join('')}</table></div>` : ''}
       <h4>${esc(t('scalesEnd'))}</h4>${scaleInputs('los')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lo_comments"></textarea></label>
       <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lo_by"', li.leader || S.operator)}</label>
@@ -437,7 +440,8 @@ window.ProdUI = function (C) {
       <div class="kv"><span>${esc(t('targetAchieved'))}</span><b>${isNum(lo.achievedPct) ? esc(String(lo.achievedPct).replace('.', ',')) + ' %' : '—'} <small>(${esc(t('dayB1'))} ${isNum(lo.dayB1Kg) ? fmtKg(lo.dayB1Kg) + ' kg' : '—'} / ${esc(t('targetT'))} ${isNum(lo.targetKg) ? fmtKg(lo.targetKg) + ' kg' : '—'})</small></b></div>
       <div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>${esc(t('srPoint_start'))}</th><th>${esc(t('srPoint_end'))}</th><th>${esc(t('srQty'))} (kg)</th></tr>${P.SCALES.map(k =>
         `<tr><td>${esc(t('scale_' + k))}</td><td>${P.fmtScale((li.scalesStart || {})[k]) || '—'}</td><td>${P.fmtScale((lo.scalesEnd || {})[k]) || '—'}</td><td class="${(lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum((lo.shiftKg || {})[k]) ? P.fmtScale(lo.shiftKg[k]) : '—'}</td></tr>`).join('')}</table></div>
-      ${lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
+      ${(lo.activitiesPct || []).length ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${lo.activitiesPct.map(x => esc(itemLabel(x)) + ': ' + esc(String(x.pct).replace('.', ',')) + ' %').join('<br>')}</small></p>`
+        : lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
       <button class="btn" data-pact="shiftxlsx">${esc(t('genExcel'))}</button></section>`;
   }
   async function shiftLogin() {
@@ -445,24 +449,29 @@ window.ProdUI = function (C) {
     if (!leader.trim()) return C.toast(t('needLeader'));
     const pinR = await leaderPinCheck(leaderCrewOf(leader.trim()), ($('#lg_pin') || {}).value);
     if (pinR === 'bad') return C.toast(t('leaderPinBad'));
+    if (pinR !== 'ok') return C.toast(t('leaderPinNeed'));   // v2.15.0 (Zhax): sem PIN do chefe de turno não grava
     const sc = P.readScales(scaleVals('lgs'));
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: L.crewOfTime(start + 60000),
       leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
-      planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim(), leaderPin: pinR === 'ok' ? 'ok' : 'notSet' });
+      planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim(), leaderPin: 'ok' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = rec.by; await DB.setConfig('operator', S.operator); S.lgJobs = [];
-    await reload(); C.toast(pinR === 'ok' ? t('loginSaved') : t('loginSaved') + ' · ' + t('leaderPinNone')); keepScroll();
+    await reload(); C.toast(t('loginSaved')); keepScroll();
   }
   async function shiftLogout() {
     const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
     if (!li) return;
-    const by = $('#lo_by').value.trim(), acts = $('#lo_acts').value.trim();
-    if (!by || !acts) return C.toast(t('needTextName'));
+    const by = $('#lo_by').value.trim();
+    if (!by) return C.toast(t('needLeader'));
+    const items = loginItems(li), pcts = items.map((x, i) => P.readPct((document.querySelector('.lo_pct[data-i="' + i + '"]') || {}).value));
+    if (pcts.some(p => p === null)) return C.toast(t('pctNeed'));
     const pinR = await leaderPinCheck(leaderCrewOf(by), ($('#lo_pin') || {}).value);
     if (pinR === 'bad') return C.toast(t('leaderPinBad'));
+    if (pinR !== 'ok') return C.toast(t('leaderPinNeed'));
+    const activitiesPct = items.map((x, i) => Object.assign({}, x.rec, { pct: pcts[i] }));
     const sc = P.readScales(scaleVals('los'));
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
     const q = P.shiftScaleKg(li.scalesStart, sc.values);
@@ -472,12 +481,67 @@ window.ProdUI = function (C) {
     const dayB1 = isNum(q.kg.b1) ? Math.round(parts.reduce((s, x) => s + x, 0) * 1000) / 1000 : null, target = planTarget(sel.day);
     const tms = now();
     const rec = Object.assign(base(tms), { kind: 'logout', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew,
-      state: $('#lo_state').value === 'off' ? 'off' : 'on', activitiesDone: acts, scalesEnd: sc.values, shiftKg: q.kg, negative: q.negative,
-      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, loginUid: li.uid, leaderPin: pinR === 'ok' ? 'ok' : 'notSet' });
+      state: $('#lo_state').value === 'off' ? 'off' : 'on', activitiesPct, activitiesDone: activitiesPct.map(x => itemLabel(x) + ': ' + x.pct + ' %').join('\n'), scalesEnd: sc.values, shiftKg: q.kg, negative: q.negative,
+      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, loginUid: li.uid, leaderPin: 'ok' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
-    await reload(); C.toast(pinR === 'ok' ? t('logoutSaved') : t('logoutSaved') + ' · ' + t('leaderPinNone')); keepScroll();
+    await reload(); C.toast(t('logoutSaved')); keepScroll();
   }
+  // v2.15.0: trabalhos marcados no login (ordens do plano + trabalhos do turno), para o % feito no logout
+  function loginItems(li) {
+    return (li.planJobs || []).map((j, i) => ({ rec: { src: 'plan', i, product: j.product || '', targetKg: isNum(j.targetKg) ? j.targetKg : null } }))
+      .concat((li.shiftJobs || []).map((j, i) => ({ rec: { src: 'job', i, code: j.code, note: j.note || '' } })))
+      .concat(li.jobsExtra ? [{ rec: { src: 'text', note: li.jobsExtra } }] : [])
+      .map(x => Object.assign(x, { label: itemLabel(x.rec) }));
+  }
+  function itemLabel(x) {
+    if (x.src === 'plan') return (x.product || t('planNoProduct')) + (isNum(x.targetKg) ? ' · ' + fmtKg(x.targetKg) + ' kg' : '');
+    if (x.src === 'job') return jobText({ code: x.code, note: x.note });
+    return x.note || '';
+  }
+  // Nome de quem regista: o chefe de turno do login (turno escolhido, senão o turno actual)
+  function shiftLeader() {
+    const sel = shiftSel(), sh = L.shiftOf(now());
+    const li = shiftRec('login', sel.day, sel.period) || shiftRec('login', sh.day, sh.period);
+    return li ? li.leader : '';
+  }
+  const byFld = (lab, f) => shiftLeader() ? '' : `<label class="fld req">${esc(t(lab))}<input data-lf="by" value="${esc(f.by)}"></label>`;
+
+  // ---------- manutenção de processo (v2.15.0, Zhax 16-11-2026) ----------
+  const procTaskLabel = k => String(k || '').charAt(0) === '@' ? t('pt_' + k.slice(1)) : String(k || '');
+  function procCard() {
+    const cfg = P.procMaintCfg(S.cfgP), f = S.procForm || {}, g = f.group && cfg[f.group];
+    const lastTbl = grp => {
+      const last = P.procLast(S.shiftLog, grp), secs = cfg[grp].sections.length ? cfg[grp].sections : Object.keys(last);
+      if (!secs.length) return '';
+      return `<h4>${esc(t('pg_' + grp))}</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('procSection'))}</th><th>${esc(t('procLast'))}</th><th>${esc(t('procTask'))}</th><th>${esc(t('comments'))}</th></tr>${secs.map(s => { const x = last[s]; return `<tr><td>${esc(s || '—')}</td><td>${x ? esc(C.fmtDT(x.t)) : '—'}</td><td>${x ? esc(procTaskLabel(x.task)) : ''}</td><td>${x ? esc(x.comment || '') : ''}</td></tr>`; }).join('')}</table></div>`;
+    };
+    const sel = shiftSel(), mine = P.effectiveLog(S.shiftLog).filter(x => x.kind === 'procMaint' && x.prodDay === sel.day && x.period === sel.period).sort((a, b) => a.t - b.t);
+    return `<section class="card"><h3>${esc(t('procTitle'))}</h3>
+      <div class="grid2"><label class="fld req">${esc(t('procGroup'))}<select id="pm_group"><option value="">—</option>${P.PROC_GROUPS.map(k => `<option value="${k}" ${f.group === k ? 'selected' : ''}>${esc(t('pg_' + k))}</option>`).join('')}</select></label>
+      ${g ? (g.sections.length ? `<label class="fld req">${esc(t('procSection'))}<select id="pm_section"><option value="">—</option>${g.sections.map(s => `<option ${f.section === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>`
+        : `<label class="fld">${esc(t('procSection'))}<input id="pm_section" value="${esc(f.section || '')}"></label>`) : ''}
+      ${g && g.tasks.length > 1 ? `<label class="fld req">${esc(t('procTask'))}<select id="pm_task"><option value="">—</option>${g.tasks.map(k => `<option value="${esc(k)}" ${f.task === k ? 'selected' : ''}>${esc(procTaskLabel(k))}</option>`).join('')}</select></label>` : ''}</div>
+      ${g ? `<label class="fld">${esc(t('comments'))}<textarea rows="2" id="pm_comment">${esc(f.comment || '')}</textarea></label>
+      ${shiftLeader() ? '' : `<label class="fld req">${esc(t('doneBy'))}<input id="pm_by" value="${esc(S.operator || '')}"></label>`}
+      <button class="btn primary" data-pact="saveproc">${esc(t('save'))}</button>` : ''}
+      ${mine.length ? `<h4>${esc(t('procThisShift'))}</h4>${mine.map(x => `<div class="rowitem"><b>${esc(C.fmtTime(x.t))}</b> · ${esc(t('pg_' + x.group))}${x.section ? ' · ' + esc(x.section) : ''} · ${esc(procTaskLabel(x.task))}${x.comment ? '<div>' + esc(x.comment) + '</div>' : ''}<small>${esc(x.by)}</small>
+        <div class="row"><button class="btn ghost small" data-logact="void" data-uid="${esc(x.uid)}">${esc(t('voidEntry'))}</button></div>${S.logAct && S.logAct.uid === x.uid ? `<div class="holdform"><label class="fld req">${esc(t('voidReason'))}<textarea rows="2" id="la_text"></textarea></label>
+        <label class="fld req">${esc(t('name'))}<input id="la_by" value="${esc(shiftLeader() || S.operator)}"></label><button class="btn primary small" data-pact="voidlog">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancella">${esc(t('cancel'))}</button></div>` : ''}</div>`).join('')}` : ''}
+      <details><summary>${esc(t('procLog'))}</summary>${P.PROC_GROUPS.map(lastTbl).join('') || '<p class="sub">—</p>'}</details></section>`;
+  }
+  async function saveProc() {
+    const cfg = P.procMaintCfg(S.cfgP), f = S.procForm || {}, g = cfg[f.group];
+    const o = { group: f.group, section: (($('#pm_section') || {}).value || '').trim(), task: g && g.tasks.length === 1 ? g.tasks[0] : (($('#pm_task') || {}).value || ''), comment: (($('#pm_comment') || {}).value || '').trim() };
+    const e = P.validateProcMaint(o, cfg);
+    if (e.length) return C.toast(t('fillFields') + ': ' + e.map(x => t('f_' + x)).join(', '));
+    const by = shiftLeader() || (($('#pm_by') || {}).value || '').trim();
+    if (!by) return C.toast(t('needName'));
+    const tms = now();
+    try { await DB.add('shiftLog', Object.assign(base(tms), { kind: 'procMaint', t: tms }, o, { by })); } catch (err) { return C.toast(t('saveFailed')); }
+    S.procForm = { group: f.group }; await reload(); C.toast(t('saved')); keepScroll();
+  }
+
   // Aviso na página inicial: turno actual sem login
   function shiftIssue() {
     const sh = L.shiftOf(now());
@@ -538,7 +602,7 @@ window.ProdUI = function (C) {
       ${sn ? `<p class="sub">${esc(sn.source === 'grain-mgt-auto' ? t('snapAuto', { e: C.fmtDT(exp), f: C.fmtDT(S.autoSilo.fetchedAt) }) : t('snapFrom', { e: C.fmtDT(exp), i: C.fmtDT(sn.importedAt) }))}</p>
         ${sn.source !== 'grain-mgt-auto' && exp < sh.start ? `<div class="banner b-warn">${esc(t('snapOld'))}</div>` : ''}
         ${P.nonCanonical(sn, S.cfgP.grainSilos).length ? `<div class="banner b-reject">${esc(t('nonCanonical', { s: P.nonCanonical(sn, S.cfgP.grainSilos).join(', '), list: siloRange() }))}</div>` : ''}` : `<div class="banner b-warn">${esc(t('snapNone'))}</div>`}
-      <p class="sub">${esc(t('snapHow'))}</p>
+      
       <label class="btn ghost">${esc(t('importSilos'))}<input type="file" id="importSilos" accept="application/json" hidden></label></section>`;
   }
   const siloRange = () => { const g = S.cfgP.grainSilos || []; return g.length > 2 ? g[0] + '–' + g[g.length - 1] : g.join(', '); };
@@ -550,12 +614,12 @@ window.ProdUI = function (C) {
   function viewGrain() {
     const recent = (S.moves || []).slice().sort((a, b) => b.t - a.t).slice(0, 10);
     return snapCard() +
-      (feedAuto() ? `<section class="card"><p class="sub">${esc(t('srdFeedNote'))}</p></section>` : S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
+      (feedAuto() ? `<section class="card"></section>` : S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
       `<section class="card"><h3>${esc(t('dirtyBins'))}</h3>${(S.cfgP.dirtyBins || []).map(dirtyCard).join('')}</section>
       <section class="card"><h3>${esc(t('temperedBins'))}</h3>${(S.cfgP.temperedBins || []).map(b => `<div class="kv"><span><b>${esc(b.id)}</b> · ${esc(t('fedBy'))} ${esc(b.lines.join('/'))}</span><b>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : esc(t('capNotSet'))}</b></div>`).join('')}
-        <p class="sub">${esc(t('temperedNote'))}</p></section>
+        </section>
       <section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
-      <section class="card"><p class="sub">${esc(t('masterNote', { s: S.cfgP.masterSource || '' }))}</p></section>`;
+      <section class="card"></section>`;
   }
   function dirtyCard(b) {
     const st = dirtyState(b.id);
@@ -596,7 +660,7 @@ window.ProdUI = function (C) {
     return `<section class="card"><h2>${esc(t('newTransfer'))}</h2>
       <div class="grid2"><label class="fld req">${esc(t('dirtyBin'))}<select data-trf="binId"><option value="">—</option>${(S.cfgP.dirtyBins || []).map(b => { const st = dirtyState(b.id); return `<option value="${esc(b.id)}" ${f.binId === b.id ? 'selected' : ''}>${esc(b.id)} · ${fmtKg(st.kg)} / ${isNum(b.capKg) ? fmtKg(b.capKg) : '?'} kg</option>`; }).join('')}</select></label>
         <label class="fld req">${esc(t('qtyKg'))}<input inputmode="decimal" data-tri="kg" value="${esc(f.kg)}"></label></div>
-      <p class="sub">${esc(t('silosOrder'))}</p><div class="picks">${siloRows}</div>
+      <div class="picks">${siloRows}</div>
       <label class="chk"><input type="checkbox" data-trf="silosConfirmed" ${f.silosConfirmed ? 'checked' : ''}> ${esc(t('confirmSilos'))}</label>
       <label class="fld req">${esc(t('name'))}<input data-tri="by" value="${esc(f.by)}"></label>
       <div id="trCheck">${trCheckHtml()}</div>
@@ -683,7 +747,7 @@ window.ProdUI = function (C) {
         ${binKgInputs(j.bins || [], S.closeBinKg || {}, 'cbk', t('binKgEnd'))}
         <label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="cj_by"', defLeader())}</label>
         <label class="fld">${esc(t('notes'))}<textarea id="cj_note" rows="2"></textarea></label>
-        ${S.closeStop ? `<p class="sub">${esc(t('stopLineNote'))}</p>` : ''}<button class="btn primary" data-pact="closejob">${esc(S.closeStop ? t('stopLineReport') : t('closeJob'))}</button> <button class="btn ghost" data-pact="cancelclose">${esc(t('cancel'))}</button>
+        ${S.closeStop ? `` : ''}<button class="btn primary" data-pact="closejob">${esc(S.closeStop ? t('stopLineReport') : t('closeJob'))}</button> <button class="btn ghost" data-pact="cancelclose">${esc(t('cancel'))}</button>
       </div>` : ''}
     </div>`;
   }
@@ -800,14 +864,14 @@ window.ProdUI = function (C) {
         <label class="fld req">${esc(t('line'))}<select data-jf="lineId"><option value="">—</option>${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${f.lineId === l.id ? 'selected' : ''}>${esc(l.name)}${runningJob(l.id) ? ' (' + esc(t('busy')) + ')' : ''}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('feedRate'))} (kg/h)<input inputmode="decimal" data-jfi="feedKgh" value="${esc(f.feedKgh)}" placeholder="${esc(tphDef ? C.fmtNum(Math.round(tphDef * 100) / 100) : '')}"></label>
       </div>
-      <p class="sub">${esc(t('feedRateHint'))}</p>
+      
     </section>
-    <section class="card"><h3>${esc(t('jobProducts'))}</h3><p class="sub">${esc(t('jobProductsHelp'))}</p>
+    <section class="card"><h3>${esc(t('jobProducts'))}</h3>
       ${f.outputs.map((o, i) => outputBlock(f, o, i, lineBins)).join('')}
       <button class="btn small" data-pact="addoutput">＋ ${esc(t('addProduct'))}</button>
-      <p class="sub">${esc(t('extractionHelp'))}</p>
-      <p class="sub">${esc(t('binSourceNote', { s: S.cfgP.binSource || '' }))}</p></section>
-    <section class="card"><h3>${esc(t('jobRecipe'))}</h3><p class="sub">${esc(t('jobRecipeHelp'))}</p>
+      
+      </section>
+    <section class="card"><h3>${esc(t('jobRecipe'))}</h3>
       <div class="sub req">${esc(t('recipeColours'))}</div><div class="picks">${P.COLOURS.map(c => `<button class="pick ${recipe.colours.indexOf(c) >= 0 ? 'on' : ''}" data-jrc="${esc(c)}"><b>${esc(c)}</b></button>`).join('')}</div>
       <div class="sub req">${esc(t('recipeGrades'))}</div><div class="picks">${P.SILO_GRADES.map(g => `<button class="pick ${recipe.grades.indexOf(g) >= 0 ? 'on' : ''}" data-jrg="${esc(g)}"><b>${esc(t('g_' + g))}</b></button>`).join('')}</div>
       </section>
@@ -822,10 +886,10 @@ window.ProdUI = function (C) {
         <label class="fld req">${esc(t('impurities'))} (%)<input inputmode="decimal" data-jfi="impurities" value="${esc(f.impurities)}"></label>`}
         <label class="fld req">${esc(t('m1'))} (%)<input inputmode="decimal" data-jfi="m1" value="${esc(f.m1)}"></label>
       </div>
-      ${f.mode === 'blend' ? `<p class="sub">${esc(t('blendMoistNote'))}</p>` : ''}
-      <p class="sub">${esc(t('waterHint'))}</p>
+      ${f.mode === 'blend' ? `` : ''}
+      
       <label class="fld">${esc(t('waterAdded'))} (L)<input inputmode="decimal" data-jfi="waterAddedL" value="${esc(f.waterAddedL || '')}"></label>
-      <p class="sub">${esc(t('waterAddedHint'))}</p></section>
+      </section>
     <section class="card">
       <label class="fld req">${esc(t('jobStartTime'))}<input type="datetime-local" id="jf_start" value="${esc(f.startTime || '')}"></label>
       <label class="fld req">${esc(t('shiftLeader'))}${leaderField('data-jfl="leader"', f.leader)}</label>
@@ -837,7 +901,7 @@ window.ProdUI = function (C) {
   }
   // v2.13.0: quantidade nas bins de produto (arranque e fecho da ordem); obrigatória, 0 = vazia
   const jobFormBins = f => Array.from(new Set((f.outputs || []).reduce((a, o) => a.concat(o.bins || []), [])));
-  const binKgInputs = (bins, vals, attr, title) => !bins.length ? '' : `<h4>${esc(title)}</h4><p class="sub">${esc(t('binKgHelp'))}</p><div class="grid2">${bins.map(id => {
+  const binKgInputs = (bins, vals, attr, title) => !bins.length ? '' : `<h4>${esc(title)}</h4><div class="grid2">${bins.map(id => {
       const lv = levelOf(id), cap = (S.cfgP.bins.find(b => b.id === id) || {}).capKg;
       return `<label class="fld req">${esc(id)} (kg)${isNum(cap) ? ' <small>≤ ' + fmtKg(cap) + ' kg</small>' : ''}<input inputmode="decimal" data-${attr}="${esc(id)}" value="${esc(vals[id] || '')}" placeholder="${lv && isNum(lv.kg) ? esc(String(lv.kg)) : ''}"></label>`; }).join('')}</div>`;
   const binKgRec = (values, job, method, tms) => Object.assign(base(tms), { t: tms, prodDay: L.prodDay(tms), by: job.leader || S.operator, method, jobUid: job.uid,
@@ -860,7 +924,7 @@ window.ProdUI = function (C) {
       }).join('');
       return `<div class="sub"><b>${esc(id)}</b> · ${esc(t('feedQueueFor'))}</div><div class="picks">${chips || `<small>${esc(t('noFeedSilos'))}</small>`}</div>`;
     }).join('');
-    return `<div class="sub req">${esc(t('feedQueueTitle'))}</div><p class="sub">${esc(t('feedQueueHelp'))}</p>${snapshot() ? rows : `<p class="sub">${esc(t('snapNone'))}</p>`}`;
+    return `<div class="sub req">${esc(t('feedQueueTitle'))}</div>${snapshot() ? rows : `<p class="sub">${esc(t('snapNone'))}</p>`}`;
   }
   // silos de produto vazios e livres para esta ordem (opções quando a capacidade não chega)
   function productBinOptions(f) {
@@ -1004,7 +1068,7 @@ window.ProdUI = function (C) {
     }
     const stop = S.closeStop; S.closeJob = null; S.closeStop = false; await reload(); C.toast(t('jobClosed'));
     // v2.7.0: "Parar linha" fecha a ordem e exporta o relatório do turno (Excel)
-    if (stop) { S.logShift = { day: L.shiftOf(nj.closedAt).day, period: L.shiftOf(nj.closedAt).period }; try { shiftExcel(); } catch (e) { console.warn('shift xlsx', e); } S.prodTab = 'shift'; }
+    if (stop) { S.shiftSel = { day: L.shiftOf(nj.closedAt).day, period: L.shiftOf(nj.closedAt).period }; try { shiftExcel(); } catch (e) { console.warn('shift xlsx', e); } S.prodTab = 'shift'; }
     keepScroll();
   }
   async function importSilos(file) {
@@ -1018,10 +1082,7 @@ window.ProdUI = function (C) {
   }
 
   // ---------- diário de turno ----------
-  function logShift() {
-    if (!S.logShift) { const sh = L.shiftOf(now()); S.logShift = { day: sh.day, period: sh.period }; }
-    return S.logShift;
-  }
+  const logShift = () => shiftSel();   // v2.15.0: o diário usa o turno escolhido no separador Turno
   function shiftRange(day, period) {
     const [s] = L.prodDayRange(day);
     return period === 'D' ? [s, s + 12 * 3600000] : [s + 12 * 3600000, s + 24 * 3600000];
@@ -1032,8 +1093,6 @@ window.ProdUI = function (C) {
     const sm = P.shiftSummary(ls.day, ls.period, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
     const f = S.logForm;
     return `<section class="card"><h3>${esc(t('shiftLog'))}</h3>
-      <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="logDay" value="${esc(ls.day)}"></label>
-      <label class="fld">${esc(t('shift'))}<select id="logPeriod"><option value="D" ${ls.period === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${ls.period === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       <div class="kpis k4"><div><b>${sm.jobs.length}</b><span>${esc(t('ptab_jobs'))}</span></div><div class="${sm.openIssues ? 'd-warn' : ''}"><b>${sm.issues.length}</b><span>${esc(t('issues'))}</span></div>
         <div><b>${sm.downtimeMin}</b><span>${esc(t('downtimeMin'))}</span></div><div><b>${sm.acts.length}</b><span>${esc(t('activities'))}</span></div></div>
       ${Object.keys(sm.byTier3).length ? `<p class="sub">${esc(t('byTier3'))}: ${Object.keys(sm.byTier3).map(k => esc(tierLabel(k)) + ' ' + sm.byTier3[k] + ' min').join(' · ')}<br>${esc(t('byOee'))}: ${Object.keys(sm.byOee).map(k => esc(oeeLabel(k)) + ' ' + sm.byOee[k] + ' min').join(' · ')}</p>` : ''}
@@ -1067,7 +1126,7 @@ window.ProdUI = function (C) {
     const list = eff.map(r => `<div class="rowitem"><div class="row between"><span><b>${esc(C.lineName(r.lineId))}</b> · ${esc(r.srKind === 'grain' ? t('srGrainB1') : C.prodName(r.productId))} · ${esc(t('srPoint_' + (r.point === 'end' ? 'end' : 'start')))}: <b>${fmtKg(r.valueKg)} kg</b></span>
         <button class="btn ghost small" data-pact="srfix" data-uid="${esc(r.uid)}">${esc(t('srFix'))}</button></div>
         <small>${esc(C.fmtDT(r.t))} · ${esc(r.by)}${r.replaces ? ' · ' + esc(t('srCorrected')) + ': ' + esc(r.reason || '') : ''}</small></div>`).join('');
-    return `<section class="card"><h3>${esc(t('srTitle'))}</h3><p class="sub">${esc(t('srHelp'))}</p>
+    return `<section class="card"><h3>${esc(t('srTitle'))}</h3>
       ${lines || `<p class="sub">${esc(t('srNone'))}</p>`}
       ${S.srForm ? srFormView() : `<button class="btn primary" data-pact="newsr">＋ ${esc(t('srNew'))}</button>`}
       ${list}</section>`;
@@ -1118,7 +1177,7 @@ window.ProdUI = function (C) {
         <label class="fld">${esc(t('sfInjured'))}<input data-lf="injured" value="${esc(f.injured)}"></label></div>
         <label class="fld req">${esc(t('description'))}<textarea rows="2" data-lf="description">${esc(f.description)}</textarea></label>
         <label class="fld">${esc(t('actionTaken'))}<textarea rows="2" data-lf="action">${esc(f.action)}</textarea></label>
-        <label class="fld req">${esc(t('reportedBy'))}<input data-lf="by" value="${esc(f.by)}"></label>
+        ${byFld('reportedBy', f)}
         <button class="btn primary big" data-pact="savelog">${esc(t('save'))}</button><button class="btn ghost" data-pact="cancellog">${esc(t('cancel'))}</button></section>`;
     if (f.kind === 'issue') return `<section class="card"><h3>${esc(t('newIssue'))}</h3><div class="grid2">${head}
         <label class="fld">${esc(t('downtimeCode'))}<select data-lf="code"><option value="">— ${esc(t('noStopCode'))}</option>${GROUPS.map(([g, k]) => `<optgroup label="${esc(t(k))}">${codes().filter(c => c.code[0] === g && c.active !== false).map(c => `<option value="${esc(c.code)}" ${f.code === c.code ? 'selected' : ''}>${esc(c.code + ' ' + cName(c))}</option>`).join('')}</optgroup>`).join('')}
@@ -1127,8 +1186,7 @@ window.ProdUI = function (C) {
         <label class="fld req">${esc(t('issueDesc'))}<textarea rows="2" data-lf="description">${esc(f.description)}</textarea></label>
         <label class="fld">${esc(t('downtimeMin'))}<input inputmode="numeric" data-lf="downtimeMin" value="${esc(f.downtimeMin)}"></label>
         <label class="fld">${esc(t('actionTaken'))}<textarea rows="2" data-lf="action">${esc(f.action)}</textarea></label>
-        <label class="fld req">${esc(t('reportedBy'))}<input data-lf="by" value="${esc(f.by)}"></label>
-        <p class="sub">${esc(t('kbLater'))}</p>
+        ${byFld('reportedBy', f)}
         <button class="btn primary big" data-pact="savelog">${esc(t('save'))}</button><button class="btn ghost" data-pact="cancellog">${esc(t('cancel'))}</button></section>`;
     return `<section class="card"><h3>${esc(t('newActivity'))}</h3><div class="grid2">${head}
         <label class="fld req">${esc(t('activityType'))}<select data-lf="type"><option value="">—</option>${P.ACT_TYPES.map(c => `<option value="${c}" ${f.type === c ? 'selected' : ''}>${esc(t('at_' + c))}</option>`).join('')}</select></label>
@@ -1140,12 +1198,12 @@ window.ProdUI = function (C) {
           <label class="fld">${esc(t('product'))}<select data-lf="productId"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}" ${f.productId === p.id ? 'selected' : ''}>${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
       </div>
       <label class="fld ${f.type && f.type !== 'housekeeping' && f.type !== 'reprocessing' ? 'req' : ''}">${esc(t('description'))}<textarea rows="2" data-lf="description">${esc(f.description)}</textarea></label>
-      <label class="fld req">${esc(t('doneBy'))}<input data-lf="by" value="${esc(f.by)}"></label>
+      ${byFld('doneBy', f)}
       <button class="btn primary big" data-pact="savelog">${esc(t('save'))}</button><button class="btn ghost" data-pact="cancellog">${esc(t('cancel'))}</button></section>`;
   }
   function newLogForm(kind) {
     S.logForm = { kind, time: C.localInput(now()), lineId: '', code: '', equipment: '', description: '', downtimeMin: '', action: '',
-      type: '', floor: '', qtyKg: '', bags: '', startTime: '', endTime: '', productId: '', sType: '', injured: '', by: S.operator };
+      type: '', floor: '', qtyKg: '', bags: '', startTime: '', endTime: '', productId: '', sType: '', injured: '', by: shiftLeader() || S.operator };
   }
   async function saveLog() {
     const f = S.logForm;
@@ -1177,7 +1235,7 @@ window.ProdUI = function (C) {
     }
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = rec.by; await DB.setConfig('operator', S.operator);
-    S.logForm = null; S.logShift = { day: rec.prodDay, period: rec.period };
+    S.logForm = null;
     await reload(); C.toast(t('saved')); keepScroll();
   }
   function issueItem(i) {
@@ -1300,7 +1358,7 @@ window.ProdUI = function (C) {
           : (f ? '' : `<button class="btn small ${h ? '' : 'ghost'}" data-hold="${esc(b.id)}" data-release="${h ? 1 : ''}">${esc(t(h ? 'holdReleaseBtn' : 'holdBtn'))}</button>`)}</div>`;
     };
     const n = Object.keys(H).length;
-    return `<section class="card"><h3>${esc(t('holdsTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3><p class="sub">${esc(t('holdsNote'))}</p>${B.map(row).join('')}</section>`;
+    return `<section class="card"><h3>${esc(t('holdsTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3>${B.map(row).join('')}</section>`;
   }
   async function holdSave() {
     const f = S.holdForm, reason = ($('#hd_reason') || {}).value || '', by = ($('#hd_by') || {}).value || '';
@@ -1317,7 +1375,7 @@ window.ProdUI = function (C) {
   function holdIssues() { const H = holds(); return Object.keys(H).map(id => t('holdIssue', { b: id, r: H[id].reason })); }
   function viewBins() {
     const a = S.binAct;
-    return holdsCard() + totalsCard() + stockCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3><p class="sub">${esc(t('binSourceNote', { s: S.cfgP.binSource || '' }))}</p>
+    return holdsCard() + totalsCard() + stockCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3>
       ${S.cfgP.bins.map(b => {
         const st = P.binState(b.id, S.binEvents);
         const job = st.jobUid ? S.jobs.find(j => j.uid === st.jobUid) : null;
@@ -1331,7 +1389,7 @@ window.ProdUI = function (C) {
               <label class="fld">${esc(t('notes'))}<input id="ba_note"></label>` : ''}
             ${mine === 'set' ? `<label class="fld req">${esc(t('product'))}<select id="ba_prod"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}">${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
             <label class="fld req">${esc(t('name'))}<input id="ba_by" value="${esc(S.operator)}"></label>
-            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="ba_pin"></label><p class="sub">${esc(t('setBinNote'))}</p>` : mine === 'out' ? `<p class="sub">${esc(t('outNote'))}</p>` : `<p class="sub">${esc(t('emptyBinNote'))}</p>`}
+            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="ba_pin"></label>` : mine === 'out' ? `` : `<p class="sub">${esc(t('emptyBinNote'))}</p>`}
             <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : mine === 'out' ? 'outbin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
           : `<div class="row">${st.productId ? `<button class="btn small" data-binact="out" data-bin="${esc(b.id)}">${esc(t('binOutBtn'))}</button>` : ''}${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button></div>`}</div>`;
       }).join('')}</section>`;
@@ -1351,10 +1409,10 @@ window.ProdUI = function (C) {
   function stockCard() {
     const f = S.stockForm, B = P.stockBins(S.cfgP);
     const last = (S.stocks || []).slice().sort((x, y) => y.t - x.t)[0];
-    let h = `<section class="card"><h3>${esc(t('stockTitle'))}</h3><p class="sub">${esc(t('stockNote'))}</p>
+    let h = `<section class="card"><h3>${esc(t('stockTitle'))}</h3>
       <p class="sub">${last ? esc(t('stockLast')) + ': <b>' + esc(C.fmtDT(last.t)) + '</b> · ' + esc(last.by) : esc(t('stockNone'))}</p>`;
     if (!f) return h + `<button class="btn primary" data-pact="stocknew">${esc(t('stockNew'))}</button></section>`;
-    h += `<p class="sub">${esc(t('stockLeaveBlank'))}</p>`;
+    h += ``;
     P.STOCK_KINDS.forEach(k => {
       h += `<h4>${esc(t('stockKind_' + k))}</h4><table class="tbl stock"><tr><th></th><th>${esc(t('stockKg'))}</th>${k === 'product' ? `<th>${esc(t('product'))}</th>` : ''}</tr>` +
         B.filter(b => b.kind === k).map(b => { const x = f.levels[b.id] || {};
@@ -1425,7 +1483,7 @@ window.ProdUI = function (C) {
   // ---------- definições de produção ----------
   function settingsCard() {
     const c = S.cfgP;
-    const ctxCard = `<section class="card"><h3>${esc(t('ctxTitle'))}</h3><p class="sub">${esc(t('ctxNote'))}</p>
+    const ctxCard = `<section class="card"><h3>${esc(t('ctxTitle'))}</h3>
       <label class="fld">${esc(t('ctxOperator'))}<input data-ctx="operatorId" value="${esc((S.ctx && S.ctx.operatorId) || '')}" maxlength="40"></label>
       <label class="chk"><input type="checkbox" data-ctx="testMode" ${S.ctx && S.ctx.testMode ? 'checked' : ''}> ${esc(t('ctxTest'))}</label></section>`;
     return ctxCard + `<section class="card"><h3>${esc(t('prodSettings'))}</h3>
@@ -1446,21 +1504,25 @@ window.ProdUI = function (C) {
   function viewProdSet() {
     if (!S.prodDraft) S.prodDraft = JSON.parse(JSON.stringify(S.cfgP));
     const d = S.prodDraft;
-    return `<section class="card"><h2>${esc(t('prodSettings'))}</h2><p class="sub">${esc(t('prodSettingsNote'))}</p>
+    return `<section class="card"><h2>${esc(t('prodSettings'))}</h2>
       <div class="grid2">${lineIds().map(id => `<label class="fld">${esc(t('lineCap', { l: C.lineName(id) }))}<input inputmode="decimal" data-ps="tpd|${esc(id)}" value="${esc(C.fmtNum(d.lineKgDay[id]))}"></label>`).join('')}
       ${lineIds().map(id => `<label class="fld">${esc(t('dampenerMaxLine', { l: C.lineName(id) }))}<input inputmode="decimal" data-ps="dampl|${esc(id)}" value="${esc(C.fmtNum(P.dampenerMax(d, id)))}"></label>`).join('')}</div></section>
-      <section class="card"><h3>${esc(t('masterData'))}</h3><p class="sub">${esc(t('masterHelp'))}</p>
+      <section class="card"><h3>${esc(t('masterData'))}</h3>
         <label class="fld">${esc(t('grainSilosList'))}<textarea rows="2" data-ps="grainSilos">${esc((d.grainSilos || []).join(', '))}</textarea></label>
-        <p class="sub">${esc(t('binsHelp'))}</p>
+        
         <label class="fld">${esc(t('dirtyBins'))}<textarea rows="2" data-ps="dirtyBins">${esc(P.binsText(d.dirtyBins || []))}</textarea></label>
         <label class="fld">${esc(t('temperedBins'))}<textarea rows="2" data-ps="temperedBins">${esc(P.binsText(d.temperedBins || []))}</textarea></label>
         <label class="fld">${esc(t('ptab_bins'))}<textarea rows="4" data-ps="bins">${esc(P.binsText(d.bins))}</textarea></label>
-        <h3>${esc(t('leaders'))}</h3><p class="sub">${esc(t('leadersHelp'))}</p>
+        <h3>${esc(t('leaders'))}</h3>
         <div class="grid2">${['A', 'B', 'C', 'D'].map(k => `<label class="fld">${esc(t('crew'))} ${k}<input data-ps="leader|${k}" value="${esc((d.leaders || {})[k] || '')}" maxlength="60"></label>
           <label class="fld">${esc(t('leaderPinNew', { c: k }))} <small>${esc((S.leaderPins || {})[k] ? t('leaderPinIsSet') : t('leaderPinNotSet'))}</small><input type="password" inputmode="numeric" autocomplete="off" data-lpin="${k}"></label>`).join('')}</div>
-        <p class="sub">${esc(t('leaderPinHelp'))}</p>
-        <h3>${esc(t('floors'))}</h3><p class="sub">${esc(t('floorsHelp'))}</p>
-        <label class="fld"><input data-ps="floors" value="${esc((d.floors || []).join(', '))}"></label></section>
+        
+        <h3>${esc(t('floors'))}</h3>
+        <label class="fld"><input data-ps="floors" value="${esc((d.floors || []).join(', '))}"></label>
+        <h3>${esc(t('procTitle'))}</h3>
+        ${P.PROC_GROUPS.map(g => { const c = P.procMaintCfg(d)[g]; return `<h4>${esc(t('pg_' + g))}</h4>
+          <label class="fld">${esc(t('procSections'))}<textarea rows="2" data-ps="procSec|${g}">${esc(c.sections.join(', '))}</textarea></label>
+          <label class="fld">${esc(t('procTasks'))}<textarea rows="2" data-ps="procTask|${g}">${esc(c.tasks.map(procTaskLabel).join(', '))}</textarea></label>`; }).join('')}</section>
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="psBy"></label>
         <label class="fld req">${esc(t('reason'))}<input id="psReason"></label>
         <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="psPin"></label>
@@ -1480,6 +1542,17 @@ window.ProdUI = function (C) {
       if (k === 'dirtyBins' || k === 'temperedBins') { const r = P.parseBins(el.value, lineIds()); if (r.errors.length || !r.bins.length) bad.push(t(k) + ': ' + (r.errors.join(' | ') || '—')); else n[k] = r.bins; }
       if (k === 'grainSilos') { const r = P.parseSiloList(el.value); if (r.errors.length || !r.silos.length) bad.push(t('grainSilosList') + ': ' + (r.errors.join(' | ') || '—')); else n.grainSilos = r.silos; }
       if (k === 'leader') { n.leaders = Object.assign({}, n.leaders); n.leaders[a] = el.value.trim().replace(/\s+/g, ' '); }
+      if (k === 'procSec' || k === 'procTask') {
+        n.procMaint = Object.assign({}, P.procMaintCfg(n), n.procMaint);
+        const g = Object.assign({}, P.procMaintCfg(n)[a]);
+        if (k === 'procSec') g.sections = P.expandSections(el.value);
+        else {
+          // nome igual ao de uma tarefa da app → guarda o código (mostra-se na língua de quem lê); outro → texto como escrito
+          g.tasks = el.value.split(/[,\n;]/).map(x => x.trim()).filter(Boolean).map(x => { const c = P.PROC_TASK_CODES.find(k2 => t('pt_' + k2).toLowerCase() === x.toLowerCase()); return c ? '@' + c : x; }).filter((x, i, arr) => arr.indexOf(x) === i);
+          if (!g.tasks.length) bad.push(t('pg_' + a) + ': ' + t('procTasks'));
+        }
+        n.procMaint[a] = g;
+      }
       if (k === 'floors') n.floors = el.value.split(',').map(x => x.trim()).filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i);
     });
     if (bad.length) return C.toast(t('limitErrors') + ': ' + bad.join('; '));
@@ -1508,8 +1581,8 @@ window.ProdUI = function (C) {
   // ---------- códigos de paragem: editor (autorização) ----------
   function viewCodes() {
     const opt = (list, v, lab) => `<option value="">—</option>` + list.map(x => `<option value="${esc(x)}" ${v === x ? 'selected' : ''}>${esc(lab ? lab(x) : x)}</option>`).join('');
-    return `<section class="card"><h2>${esc(t('codesTitle'))}</h2><p class="sub">${esc(t('codesHelp'))}</p>
-      <p class="sub">${esc(t('oeeProposal'))}</p>${(S.cfgP.codesDropped || []).length ? `<p class="sub"><b>${esc(t('codesDroppedNote', { c: S.cfgP.codesDropped.join(', ') }))}</b></p>` : ''}</section>
+    return `<section class="card"><h2>${esc(t('codesTitle'))}</h2>
+      ${(S.cfgP.codesDropped || []).length ? `<p class="sub"><b>${esc(t('codesDroppedNote', { c: S.cfgP.codesDropped.join(', ') }))}</b></p>` : ''}</section>
       ${codes().map((c, i) => `<details class="card code-ed ${c.active === false ? 'inactive' : ''}"><summary><b>${esc(c.code)}</b> ${esc(cName(c))} <small>· ${esc(tierLabel(c.tier3))} · ${esc(oeeLabel(c.oee))}${c.active === false ? ' · ' + esc(t('inactive')) : ''}</small></summary>
         <div class="grid2">
           <label class="fld">${esc(t('codeName'))} (EN)<input data-cd="${i}|name" value="${esc(c.name)}"></label>
@@ -1520,7 +1593,7 @@ window.ProdUI = function (C) {
         </div></details>`).join('')}
       <section class="card"><h3>${esc(t('newCode'))}</h3><div class="grid2">
         <label class="fld">${esc(t('downtimeCode'))}<input id="nc_code" placeholder="P25"></label>
-        <label class="fld">${esc(t('codeName'))} (EN)<input id="nc_name"></label></div><p class="sub">${esc(t('newCodeHelp'))}</p></section>
+        <label class="fld">${esc(t('codeName'))} (EN)<input id="nc_name"></label></div></section>
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="cdBy"></label>
         <label class="fld req">${esc(t('reason'))}<input id="cdReason"></label>
         <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="cdPin"></label>
@@ -1619,6 +1692,7 @@ window.ProdUI = function (C) {
       case 'shiftxlsx': return shiftExcel();
       case 'shiftlogin': return shiftLogin();
       case 'lgjobadd': return addLgJob();
+      case 'saveproc': return saveProc();
       case 'lgjobrm': { (S.lgJobs || []).splice(Number(el.dataset.i), 1); const c = $('#lg_jobs'); if (c) c.innerHTML = jobChips(); return; }
       case 'savedips': return saveDips();
       case 'shiftlogout': return shiftLogout();
@@ -1683,6 +1757,8 @@ window.ProdUI = function (C) {
     if (el.dataset.scale) { const v = P.scaleNum(el.value); if (isNum(v) && v >= 0) el.value = P.fmtScale(v); return true; }   // v2.9.0: 1,234,567
     if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
+    if (el.id === 'pm_group') { S.procForm = { group: el.value }; keepScroll(); return true; }
+    if (el.id === 'pm_section' || el.id === 'pm_task') { S.procForm = Object.assign(S.procForm || {}, el.id === 'pm_task' ? { task: el.value } : { section: el.value }); return true; }
     if (el.id === 'shDay' || el.id === 'shPeriod') { const s = shiftSel(); if (el.id === 'shDay') { if (el.value) s.day = el.value; } else s.period = el.value === 'N' ? 'N' : 'D'; keepScroll(); return true; }
     if (el.dataset.jo && S.jobForm) { const [i, k] = el.dataset.jo.split('|'); if (S.jobForm.outputs[+i]) S.jobForm.outputs[+i][k] = el.value; keepScroll(); return true; }
     if (el.dataset.ctx) { saveCtx(el.dataset.ctx, el.type === 'checkbox' ? el.checked : el.value.trim().slice(0, 40)); return true; }
@@ -1702,8 +1778,6 @@ window.ProdUI = function (C) {
     if (el.dataset.lf && S.logForm && el.tagName === 'SELECT') { S.logForm[el.dataset.lf] = el.value; keepScroll(); return true; }
     if (el.dataset.sr && S.srForm && el.tagName === 'SELECT') { S.srForm[el.dataset.sr] = el.value; keepScroll(); return true; }
     if (el.dataset.stk && S.stockForm) { stockField(el); return true; }
-    if (el.id === 'logDay') { S.logShift = Object.assign(logShift(), { day: el.value || logShift().day }); C.render(); return true; }
-    if (el.id === 'logPeriod') { S.logShift = Object.assign(logShift(), { period: el.value === 'N' ? 'N' : 'D' }); C.render(); return true; }
     if (el.id === 'importSilos') { importSilos(el.files[0]); el.value = ''; return true; }
     return false;
   }

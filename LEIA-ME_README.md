@@ -1,5 +1,7 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.14.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.15.0
 
+> **v2.15.0 — Turno, manutenção e relatórios (Zhax, 16-11-2026).** O Diário de turno passou para o separador Turno (ocorrências, actividades, segurança). Login e logout só gravam com o PIN do chefe de turno. No logout indica-se o % feito de cada trabalho marcado no login. Nova secção Manutenção de processo (plansifter por secção, filtros, separadores, condutas de exaustão), editável em Definições → Produção. Os nomes vêm do login. Manutenção: o turno regista as tarefas (avarias com descrição; preventiva abre o separador Preventiva), sem nomes de técnicos; novo Catálogo de consumíveis (dimensões, descrição). Relatório: escolha do tipo (diário, CQ, produção, manutenção, FSSC do mês); «Enviar Excel» abre o menu de partilha e grava uma cópia em /Apps/Mill-CD/reports/. Retirados os textos de explicação dos ecrãs.
+>
 > **v2.14.0 — Reprocessamento em sacos por hora (Zhax, 16-11-2026).** A actividade «Reprocessamento» do Diário de turno pede o número de sacos e a hora de início e de fim (kg passa a opcional). O registo mostra a taxa: sacos por hora de reprocessamento ÷ 4, em % (ex.: 30 sacos das 22:00 às 06:00 = 93,8 %). Entra na pontuação do turno no relatório da equipa.
 >
 > *EN:* the "Reprocessing" activity asks for bags and start / end time (kg optional); the record shows bags per hour ÷ 4 as % (30 bags 22:00–06:00 = 93.8 %); used in the team report shift score.

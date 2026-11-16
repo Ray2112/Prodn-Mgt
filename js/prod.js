@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.14.0';
+  const VERSION = '2.15.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -973,6 +973,8 @@
     keys(a.recipes, b.recipes).forEach(k => cmp('recipe.' + k, (a.recipes || {})[k], (b.recipes || {})[k]));
     cmp('bins', binsText(a.bins || []), binsText(b.bins || []));
     cmp('floors', a.floors || [], b.floors || []);
+    const pa = procMaintCfg(a), pb = procMaintCfg(b);
+    PROC_GROUPS.forEach(g => { cmp('procMaint.' + g + '.sections', pa[g].sections, pb[g].sections); cmp('procMaint.' + g + '.tasks', pa[g].tasks, pb[g].tasks); });
     ['A', 'B', 'C', 'D'].forEach(k => cmp('leader.' + k, ((a.leaders || {})[k]) || '', ((b.leaders || {})[k]) || ''));
     cmp('grainSilos', (a.grainSilos || []).join(','), (b.grainSilos || []).join(','));
     cmp('dirtyBins', binsText(a.dirtyBins || []), binsText(b.dirtyBins || []));
@@ -1093,6 +1095,45 @@
   }
   const fmtScale = v => isNum(v) ? Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
   // Trabalhos do turno (lista fixa, Zhax 14-11-2026); 'other' leva texto
+  // v2.15.0 (Zhax, 16-11-2026): manutenção de processo pela equipa de produção, no separador Turno.
+  // Grupos fixos; secções e tarefas editáveis em Definições → Produção. Tarefa '@código' = texto da app (traduzido); outra = texto escrito.
+  // 'X*n' na lista de secções = n secções X-1 … X-n (1C*4 → 1C-1 … 1C-4).
+  const PROC_GROUPS = ['plansifter', 'filter', 'separator', 'exhaust'];
+  const PROC_TASK_CODES = ['service', 'cleanSleeves', 'changeSleeves', 'cleanScreens', 'repairScreens', 'cleanTrunking'];
+  function expandSections(text) {
+    const out = [];
+    String(text || '').split(/[,\n;]/).map(x => x.trim()).filter(Boolean).forEach(x => {
+      const m = x.match(/^(.+?)\s*[*×x]\s*(\d{1,2})$/);
+      if (m && Number(m[2]) > 1) for (let i = 1; i <= Number(m[2]); i++) out.push(m[1].trim() + '-' + i);
+      else out.push(m ? m[1].trim() : x);
+    });
+    return out.filter((x, i, a) => a.indexOf(x) === i);
+  }
+  const PROC_MAINT_DEFAULT = {
+    plansifter: { sections: expandSections('1C*4, 2C, B1*3, B2*2, B3, B4, G1*2, G2, G3, Div.1, Div.2&3, R1*2, R2*2, R3, R4, R5, R6/R7'), tasks: ['@service'] },
+    filter: { sections: [], tasks: ['@cleanSleeves', '@changeSleeves'] },
+    separator: { sections: [], tasks: ['@cleanScreens', '@repairScreens'] },
+    exhaust: { sections: [], tasks: ['@cleanTrunking'] }
+  };
+  const procMaintCfg = cfgP => { const c = (cfgP && cfgP.procMaint) || {}; const o = {}; PROC_GROUPS.forEach(g => { o[g] = c[g] && Array.isArray(c[g].sections) && Array.isArray(c[g].tasks) && c[g].tasks.length ? c[g] : PROC_MAINT_DEFAULT[g]; }); return o; };
+  function validateProcMaint(o, cfg) {
+    const e = [], g = cfg && cfg[o.group];
+    if (!g) e.push('procGroup');
+    else {
+      if (g.sections.length && g.sections.indexOf(o.section) < 0) e.push('procSection');
+      if (g.tasks.indexOf(o.task) < 0) e.push('procTask');
+    }
+    return e;
+  }
+  // Último registo de cada secção de um grupo (registos 'procMaint' em vigor)
+  function procLast(log, group) {
+    const m = {};
+    effectiveLog(log).filter(x => x.kind === 'procMaint' && x.group === group).sort((a, b) => a.t - b.t).forEach(x => { m[x.section || ''] = x; });
+    return m;
+  }
+  // Logout (v2.15.0): % feito de cada trabalho marcado no login; 0–100, obrigatório
+  function readPct(v) { const n = num(v); return n === null || isNaN(n) || n < 0 || n > 100 ? null : Math.round(n * 10) / 10; }
+
   const SHIFT_JOBS = ['hk0', 'hk1', 'hk2', 'hk3', 'hk4', 'hk5', 'hk6', 'reproc', 'fumig', 'warehouse', 'plansifter', 'sweepings', 'other'];
   function readScales(o) {
     const out = {}, bad = [];
@@ -1215,7 +1256,7 @@
     return out;
   }
 
-  const api = { HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

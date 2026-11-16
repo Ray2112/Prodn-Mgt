@@ -6,7 +6,9 @@
     const o = opts || {};
     if (!o.accessToken) throw new Error('accessToken em falta');
     if (typeof o.path !== 'string' || o.path.charAt(0) !== '/') throw new Error('caminho inválido (deve começar por /)');
-    if (typeof o.content !== 'string') throw new Error('conteúdo tem de ser texto');
+    // v2.15.0: também binário (Excel dos relatórios): ArrayBuffer ou Uint8Array
+    const bin = typeof ArrayBuffer !== 'undefined' && (o.content instanceof ArrayBuffer || ArrayBuffer.isView(o.content));
+    if (typeof o.content !== 'string' && !bin) throw new Error('conteúdo tem de ser texto ou binário');
     const arg = { path: o.path, mode: 'overwrite', mute: true, strict_conflict: false };
     return {
       url: 'https://content.dropboxapi.com/2/files/upload',
