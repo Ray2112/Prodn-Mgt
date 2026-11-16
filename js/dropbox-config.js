@@ -7,7 +7,8 @@
     freshnessHours: 2,                   // P1 aprovado
     recordsDir: '/records',              // v2.1.0: ficheiros diários (registos reais), em /Apps/Mill-CD/records/
     recordsTestDir: '/records-test',     // v2.1.0: registos em modo de teste, separados dos reais
-    recordsDebounceMs: 5000,             // espera após a última gravação antes de enviar
+    recordsDebounceMs: 5000,
+    reportsDir: '/reports',              // v2.15.0: relatórios Excel enviados do separador Relatório (/Apps/Mill-CD/reports/)             // espera após a última gravação antes de enviar
     // v2.8.0: leitura do stock dos silos da Grain-Mgt (app Mill-App-Read, Full Dropbox, só leitura; a mesma da Grain-Mgt)
     siloReadAppKey: 'sb1ldzr5quuacxw',
     silosStatusPath: '/Apps/Mill-App-Sync/silos-status.json'

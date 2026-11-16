@@ -384,8 +384,7 @@
       <div class="physrow"><span>${esc(t('ph_odour'))}</span>
         <div class="seg"><button data-phys="odour" data-pv="ok" class="${S.form.physical.odour === 'ok' ? 'on ok' : ''}">${esc(t('normal'))}</button><button data-phys="odour" data-pv="abn" class="${S.form.physical.odour === 'abn' ? 'on abn' : ''}">${esc(t('abnormal'))}</button></div></div>
       <div class="physrow"><span>${esc(t('ph_colour'))}</span>
-        <div class="seg">${L.COLOUR_SCALE.map(n => `<button data-phys="colour" data-pv="${n}" class="${S.form.physical.colour === n ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-      <small class="sub">${esc(t('colourScaleHint'))}</small></div>`;
+        <div class="seg">${L.COLOUR_SCALE.map(n => `<button data-phys="colour" data-pv="${n}" class="${S.form.physical.colour === n ? 'on' : ''}">${n}</button>`).join('')}</div></div></div>`;
   }
   function liveDecision(ev) {
     if (!ev) return '';
@@ -486,7 +485,7 @@
       const vals = r.ev ? Object.keys(r.ev.values).map(p => `${esc(paramLabel(p, product(r.productId)))} ${esc(fmtNum(r.ev.values[p]))}${r.ev.results[p] ? ` <span class="chip ${decCls(r.ev.results[p].decision)}">${esc(decLabel(r.ev.results[p].decision))}</span>` : ''}`).join(' · ') : '';
       return `<div class="rowitem"><div class="row between"><span><b>${when}</b> · ${esc(prodName(r.productId))}${r.ev ? ` · <span class="chip ${decCls(r.ev.decision)}">${esc(decLabel(r.ev.decision))}</span>` : ''}</span>${status}</div><small>${vals}</small></div>`;
     };
-    return `<section class="card"><h2>${esc(t('waTitle'))}</h2><p class="sub">${esc(t('waHelp'))}</p>
+    return `<section class="card"><h2>${esc(t('waTitle'))}</h2>
       <div class="grid2">
         <label class="fld">${esc(t('line'))}<select id="waLine">${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${l.id === w.lineId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('prodDay'))}<input type="date" id="waDay" value="${esc(w.day)}"></label>
@@ -555,7 +554,7 @@
         <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="wc_pin"></label>
         <button class="btn primary" data-wsave="*">${esc(t('clearAllBtn', { n: all.length }))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
       : `<button class="btn" data-wopen="*">${esc(t('clearAllBtn', { n: all.length }))}</button>`;
-    return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2><p class="sub">${esc(t('warnHelp'))}</p>${clearAll}
+    return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2>${clearAll}
         ${keyed.length ? keyed.map(warnCard).join('') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>
       ${other.length ? `<section class="card"><h3>${esc(t('otherIssues'))}</h3>${other.map(issueRow).join('')}</section>` : ''}
       <section class="card"><h3>${esc(t('clearedTitle'))}</h3>${done.map(c => `<div class="rowitem"><small>${esc(fmtDT(c.t))} · ${esc(t('role_' + c.role))} ${esc(c.by)}: ${esc(c.reason)}</small><br><small class="sub">${esc(c.text || c.key)}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
@@ -627,7 +626,7 @@
     return `<section class="card"><h2>${esc(t('nav_records'))}</h2>
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="recDay" value="${esc(day)}"></label>
       <label class="fld">${esc(t('line'))}<select id="recLine"><option value="">${esc(t('all'))}</option>${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${S.recLine === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label></div>
-      <p class="sub">${esc(t('prodDayHint'))}</p>
+      
       <div class="row">${[''].concat(window.DayBook.CATS).filter(c => !c || counts[c]).map(c => `<button class="btn small ${cat === c ? 'primary' : 'ghost'}" data-reccat="${c}">${esc(c ? t('rc_' + c) : t('all'))} ${c ? counts[c] : all.length}</button>`).join(' ')}</div></section>
       <section class="card">${list.length ? list.map(x => x.cat === 'qc' ? recItem(x.rec, superseded.has(x.rec.id)) : bookItem(x)).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</section>`;
   }
@@ -689,9 +688,10 @@
       <div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
       <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>
       ${r.end > Date.now() ? `<p class="banner b-warn">${esc(t('dayNotFinished'))}</p>` : ''}
-      <button class="btn primary big" id="genXlsx" ${r.totals.n || bk.items.length ? '' : 'disabled'}>${esc(t('genExcel'))}</button>
-      <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a>
-      ${gen.length ? `<p class="sub">${esc(t('generatedAt', { h: fmtDT(gen[gen.length - 1].t) }))}</p>` : ''}</section>
+      <label class="fld">${esc(t('repType'))}<select id="repType">${REP_TYPES.map(k => `<option value="${k}" ${repType() === k ? 'selected' : ''}>${esc(t('rt_' + k))}</option>`).join('')}</select></label>
+      <button class="btn primary big" id="sendXlsx">${esc(t('sendExcel'))}</button>
+      <button class="btn" id="genXlsx">${esc(t('genExcel'))}</button>
+      <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a></section>
       <section class="card"><h3>${esc(t('summary'))}</h3><div class="tablewrap"><table><thead><tr><th>${esc(t('line'))}</th><th>${esc(t('product'))}</th><th>${esc(t('shift'))}</th><th>${esc(t('crew'))}</th><th>n</th><th>✓</th><th>!</th><th>✗</th><th>${esc(t('p_moisture'))} ${esc(t('avg'))}</th><th>${esc(t('p_fat'))} ${esc(t('avg'))}</th><th>${esc(t('hoursChecked'))}</th></tr></thead><tbody>
       ${r.summary.map(g => `<tr><td>${esc(lineName(g.lineId))}</td><td>${esc(prodName(g.productId))}</td><td>${esc(t('shift_' + g.period))}</td><td>${esc(g.crews)}</td><td>${g.n}</td><td>${g.accept}</td><td>${g.warn}</td><td>${g.reject}</td><td>${esc(fmtNum(g.moisture.avg))}</td><td>${esc(fmtNum(g.fat.avg))}</td><td>${g.hoursWithMoisture}/12</td></tr>`).join('') || `<tr><td colspan="11">${esc(t('noRecords'))}</td></tr>`}
       </tbody></table></div></section>
@@ -750,11 +750,79 @@
       ...ch.map(c => [fmtDT(c.t), c.by, prodName(c.productId), anyLabel(c.param, product(c.productId)), c.field, c.old === null ? '' : c.old, c.new === null ? '' : c.new, c.reason])]);
     return wb;
   }
-  async function genExcel() {
-    const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000);
+  // v2.15.0 (Zhax, 16-11-2026): escolher o relatório; enviar = menu de partilha do telemóvel + cópia no Dropbox
+  const REP_TYPES = ['daily', 'qc', 'prod', 'maint', 'fssc'];
+  const repType = () => REP_TYPES.indexOf(S.repType) >= 0 ? S.repType : 'daily';
+  function maintSheets(wb, day, per) {
+    const XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31)), mt = MU.t;
+    const E = window.Maint.effective(MU.entries()).filter(e => e.prodDay === day && (!per || e.period === per)).sort((a, b) => a.t - b.t);
+    const of = k => E.filter(e => e.kind === k), when = e => fmtDT(e.t), sh = e => t('shift_' + e.period);
+    add(mt('tasks'), [[t('dateTime'), t('shift'), mt('tasks'), mt('notes'), mt('by')], ...of('shift').map(e => [when(e), sh(e), (e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || e.technicians || '', e.notes || '', e.by])]);
+    add(mt('t_stops'), [[t('dateTime'), t('shift'), mt('category'), mt('code'), t('line'), mt('equipment'), 'min', t('description'), mt('stopAction'), mt('by')],
+      ...of('stop').map(e => [when(e), sh(e), mt('c_' + e.category), e.code || '', e.lineId || '', e.equipment || '', e.durationMin == null ? '' : e.durationMin, e.description || '', e.action || '', e.by])]);
+    add(mt('t_work'), [[t('dateTime'), t('shift'), mt('workType'), t('line'), mt('equipment'), 'min', t('description'), mt('parts'), mt('doneBy'), mt('by')],
+      ...of('work').map(e => [when(e), sh(e), mt('w_' + e.workType), e.lineId || '', e.equipment || '', e.durationMin == null ? '' : e.durationMin, e.description || '', (e.parts || []).map(p => p.item + ' ' + p.qty + ' ' + mt('u_' + p.unit)).join('; '), e.doneBy || '', e.by])]);
+    add(mt('t_pm'), [[t('dateTime'), t('shift'), mt('equipment'), mt('task'), t('status'), mt('note'), mt('by')],
+      ...E.filter(e => e.kind === 'pmJob' || e.kind === 'pmUpdate').map(e => [when(e), sh(e), e.equipment || '', e.task || '', e.kind === 'pmJob' ? mt('ps_planned') : (e.status || ''), e.note || '', e.by])]);
+    add(mt('t_cons'), [[t('dateTime'), t('shift'), mt('item'), mt('dims'), mt('qty'), mt('unit'), t('line'), mt('purpose'), mt('by')],
+      ...of('consumable').map(e => [when(e), sh(e), e.item, e.dims || '', e.qty, mt('u_' + e.unit), e.lineId || '', e.purpose || '', e.by])]);
+    add(mt('t_notes'), [[t('dateTime'), t('shift'), t('description'), mt('by')], ...of('note').map(e => [when(e), sh(e), e.text || '', e.by])]);
+  }
+  async function fsscSheets(wb, day) {
+    const XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31));
+    const F = window.Fssc, REQS = (window.FsscReqs || {}).REQS || [], E = (await DB.all('fssc')) || [], month = day.slice(0, 7), today = L.prodDay(Date.now());
+    const G = F.grades(E, month), sc = F.score(REQS, 'mill', G), ms = F.monthState(E, month), en = S.lang === 'en';
+    add(t('rt_fssc'), [[t('rt_fssc') + ' — ' + month], [t('fs_score'), sc.score == null ? '' : sc.score + ' %'], [t('fs_graded'), sc.graded + '/' + sc.applicable],
+      [t('fs_closed'), ms.closed ? t('yes') : t('no')], ...['C', 'MI', 'MA', 'CR', 'NA'].map(k => [t('fs_g_' + k), sc.counts[k]])]);
+    add(t('fs_reqs'), [[t('fs_ref'), t('fs_req'), t('fs_grade'), t('fs_evidence'), t('fs_action'), t('fs_due')], ...F.applicable(REQS, 'mill').map(r => { const g = G[r.id]; return [r.ref, en ? r.en : r.pt, g ? t('fs_g_' + g.grade) : '', g ? g.evidence || '' : '', g ? g.action || '' : '', g ? g.due || '' : '']; })]);
+    add(t('fs_actions'), [[t('fs_month'), t('fs_ref'), t('fs_grade'), t('fs_action'), t('fs_due'), t('status')], ...F.actions(E, today).map(a => [a.grade.month, a.grade.reqId, t('fs_g_' + a.grade.grade), a.grade.action || '', a.grade.due || '', a.done ? t('fs_done') : a.overdue ? t('fs_late') : t('fs_open')])]);
+    add(t('fs_complaints'), [['ID', t('fs_received'), t('product'), t('description'), t('status')], ...F.complaints(E, today).filter(c => String(c.complaint.received || '').slice(0, 7) === month || c.open).map(c => [c.id, c.complaint.received || '', c.complaint.product || '', c.complaint.description || '', c.open ? t('fs_open') : t('fs_done')])]);
+    const tr = F.trainings(E, today).filter(x => String(x.training.date || '').slice(0, 7) === month);
+    add(t('fs_training'), [[t('date'), t('fs_topic'), t('status'), t('fs_present'), '%'], ...tr.map(x => [x.training.date, x.training.topic || '', t('fs_tr_' + x.state), x.present == null ? '' : x.present, x.attendancePct == null ? '' : x.attendancePct])]);
+  }
+  async function repFile() {
+    const day = S.repDay || L.prodDay(Date.now() - 24 * 3600000), ty = repType();
     const r = L.shiftReport(L.dayReport(day, S.samples, S.holds, S.cfg), S.repShift);
-    const wb = buildWorkbook(r);
-    // v2.9.0: livro do dia — produção, grão, produtos, paragens, segurança, actividades e todos os registos
+    const XL = window.XLSX;
+    let wb;
+    if (ty === 'qc' || ty === 'daily') wb = buildWorkbook(r); else wb = XL.utils.book_new();
+    if (ty === 'daily' || ty === 'prod') prodSheets(wb, r, day);
+    if (ty === 'maint') maintSheets(wb, day, S.repShift);
+    if (ty === 'fssc') await fsscSheets(wb, day);
+    const sh = S.repShift && ty !== 'fssc' ? '_' + (S.lang === 'en' ? (S.repShift === 'D' ? 'Day' : 'Night') : (S.repShift === 'D' ? 'Dia' : 'Noite')) : '';
+    const name = (ty === 'fssc' ? day.slice(0, 7) : day) + sh + '_' + t('rf_' + ty).replace(/\s+/g, '-') + '_' + (S.lang === 'en' ? 'Mill-' : 'Moagem-') + S.cfg.millType + '.xlsx';
+    return { wb, name, day };
+  }
+  async function genExcel() {
+    const { wb, name, day } = await repFile();
+    window.XLSX.writeFile(wb, name);
+    await DB.add('reports', { day, t: Date.now() }); await reloadData(); render();
+  }
+  async function sendExcel() {
+    const { wb, name, day } = await repFile();
+    const buf = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    // cópia no Dropbox (se ligado em Definições)
+    const up = (async () => {
+      try {
+        const c = window.DropboxConfig, tok = c && window.DropboxUpload ? await PU.dropboxToken() : null;
+        if (!tok) return 'off';
+        const req = window.DropboxUpload.buildUploadRequest({ accessToken: tok, path: (c.reportsDir || '/reports') + '/' + name, content: buf });
+        const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+        return res.ok ? 'ok' : 'fail';
+      } catch (e) { console.warn('report upload', e); return 'fail'; }
+    })();
+    let shared = false;
+    try {
+      const file = new File([buf], name, { type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); shared = true; }
+    } catch (e) { if (e && e.name === 'AbortError') shared = true; else console.warn('share', e); }
+    if (!shared) window.XLSX.writeFile(wb, name);
+    const u = await up;
+    toast(t(u === 'ok' ? 'repDbOk' : u === 'off' ? 'repDbOff' : 'repDbFail'));
+    await DB.add('reports', { day, t: Date.now() }); await reloadData(); render();
+  }
+  function prodSheets(wb, r, day) {
     const bk = window.DayBook.summary(bookData(), [r.start, r.end]), XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31));
     add(t('rp_prod'), [[t('shift'), 'B1 (kg)', 'Fuba 1 (kg)', 'Fuba 2 (kg)', t('scale_germ') + ' (kg)', t('scale_zf') + ' (kg)', t('scale_clean') + ' (kg)', t('scale_screenings') + ' (kg)', t('srExtraction') + ' (%)', t('targetT') + ' (kg)', t('targetAchieved') + ' (%)'],
       ...bk.prod.filter(p => !S.repShift || p.period === S.repShift).map(p => [t('shift_' + p.period), p.b1, p.flour1, p.flour2, p.germ, p.zf, p.clean, p.screenings, p.extraction, p.target, p.pct])]);
@@ -764,9 +832,6 @@
     add(t('rp_safety'), [[t('dateTime'), t('sfType'), t('description'), t('sfInjured'), t('actionTaken'), t('reportedBy')], ...bk.safety.list.map(x => [fmtDT(x.t), t('sf_' + x.sType), x.description, x.injured || '', x.action || '', x.by])]);
     add(t('rp_acts'), [[t('dateTime'), t('activityType'), t('floor'), 'kg', t('description'), t('doneBy')], ...bk.acts.list.map(a => [fmtDT(a.t), t('at_' + a.type), a.floor || '', a.qtyKg == null ? '' : a.qtyKg, a.description || '', a.by])]);
     add(t('rp_all'), [[t('dateTime'), t('rcCategory'), t('description')], ...bk.items.map(x => [fmtDT(x.t), t('rc_' + x.cat), x.cat === 'qc' ? prodName(x.rec.productId) + ' · ' + decLabel(x.rec.decision) : bookText(x)])]);
-    const sh = S.repShift ? '_' + (S.lang === 'en' ? (S.repShift === 'D' ? 'Day' : 'Night') : (S.repShift === 'D' ? 'Dia' : 'Noite')) : '';
-    window.XLSX.writeFile(wb, day + sh + (S.lang === 'en' ? '_Mill-' + S.cfg.millType + (sh ? '_Shift-Report.xlsx' : '_Daily-Report.xlsx') : '_Moagem-' + S.cfg.millType + (sh ? '_Relatorio-Turno.xlsx' : '_Relatorio-Diario.xlsx')));   // v2.9.0: nome na língua da app
-    await DB.add('reports', { day, t: Date.now() }); await reloadData(); render();
   }
 
   // ----- Definições -----
@@ -775,17 +840,17 @@
       <label class="fld">${esc(t('language'))}<select id="langSel"><option value="pt" ${S.lang === 'pt' ? 'selected' : ''}>Português</option><option value="en" ${S.lang === 'en' ? 'selected' : ''}>English</option></select></label>
       <label class="fld">${esc(t('millType'))}<select id="millSel">${L.MILL_TYPES.map(m => `<option value="${m}" ${S.cfg.millType === m ? 'selected' : ''}>${esc(t('mill_' + m))}${S.cfg.products[m] && S.cfg.products[m].length ? '' : ' — ' + esc(t('notConfiguredShort'))}</option>`).join('')}</select></label>
       </section>
-      <section class="card"><h3>${esc(t('rollSet'))}</h3><p class="sub">${esc(t('rollSetHelp'))}</p>
+      <section class="card"><h3>${esc(t('rollSet'))}</h3>
         <button class="btn" data-nav="maint" data-mact="tab" data-v="rollset">${esc(t('rollSet'))}</button></section>
       <section class="card"><h3>${esc(t('supervisorPin'))}</h3>
-        <p class="sub">${esc(S.pinSet ? t('pinIsSet') : t('pinNotSet'))} ${esc(t('pinNote'))}</p>
+        <p class="sub">${esc(S.pinSet ? t('pinIsSet') : t('pinNotSet'))}</p>
         ${S.pinSet ? `<label class="fld">${esc(t('currentPin'))}<input type="password" inputmode="numeric" id="pinOld"></label>` : ''}
         <label class="fld">${esc(t('newPin'))}<input type="password" inputmode="numeric" id="pinNew"></label>
         <label class="fld">${esc(t('repeatPin'))}<input type="password" inputmode="numeric" id="pinNew2"></label>
         <button class="btn primary" id="savePin">${esc(t('savePin'))}</button></section>
-      <section class="card"><h3>${esc(t('qualityLimits'))}</h3><p class="sub">${esc(t('limitsNote'))}</p>
+      <section class="card"><h3>${esc(t('qualityLimits'))}</h3>
         <button class="btn" id="openLimits">${esc(t('editLimits'))}</button></section>
-      <section class="card"><h3>${esc(t('limMasterTitle'))}</h3><p class="sub">${esc(t('limMasterNote'))}</p>
+      <section class="card"><h3>${esc(t('limMasterTitle'))}</h3>
         <p class="sub"><b>${esc(S.cfg.limitsVersion ? t('limMasterVersion', { v: S.cfg.limitsVersion }) : t('limMasterNone'))}</b></p>
         <label class="fld">${esc(t('pin'))}<input type="password" inputmode="numeric" id="limMasterPin"></label>
         <button class="btn" id="exportLim">${esc(t('limMasterExport'))}</button>
@@ -796,10 +861,10 @@
         <label class="fld">${esc(t('graceMin'))}<input inputmode="numeric" id="graceMin" value="${esc(S.cfg.graceMin)}"></label>
         <label class="fld">${esc(t('pin'))}<input type="password" inputmode="numeric" id="linesPin"></label>
         <button class="btn" id="saveLines">${esc(t('save'))}</button></section>
-      <section class="card"><h3>${esc(t('alerts'))}</h3><p class="sub">${esc(t('alertsNote'))}</p>
+      <section class="card"><h3>${esc(t('alerts'))}</h3>
         <p class="sub">${esc(t('notifStatus'))}: <b>${esc('Notification' in window ? Notification.permission : t('unsupported'))}</b></p>
         <button class="btn" id="askNotif">${esc(t('enableNotif'))}</button> <button class="btn ghost" id="testAlert">${esc(t('testAlert'))}</button></section>
-      <section class="card"><h3>${esc(t('backup'))}</h3><p class="sub">${esc(t('backupNote'))}</p>
+      <section class="card"><h3>${esc(t('backup'))}</h3>
         <button class="btn" id="exportBk">${esc(t('exportBackup'))}</button>
         <label class="btn ghost">${esc(t('importBackup'))}<input type="file" id="importBk" accept="application/json" hidden></label></section>
       <section class="card"><p class="sub">${esc(t('about', { v: L.VERSION }))}</p></section>`;
@@ -812,7 +877,7 @@
     const show = L.PARAMS.filter(p => !((p === 'granA' || p === 'granB') && !(prod.limits[p] && prod.limits[p].sieve)));
     return `<section class="card"><h2>${esc(t('qualityLimits'))}</h2>
       <label class="fld">${esc(t('product'))}<select id="limProd">${products().map(p => `<option value="${esc(p.id)}" ${p.id === pid ? 'selected' : ''}>${esc(prodName(p.id))}</option>`).join('')}</select></label>
-      <p class="sub">${esc(t('limitsHelp'))}</p></section>
+      </section>
       ${show.map(p => { const m = D[p] || {}; return `<details class="card lim-ed" ${L.hasLimits(prod.limits[p]) ? 'open' : ''}><summary><b>${esc(paramLabel(p, prod))}</b> <small>${esc(L.UNITS[p])} · ${esc(limitText(prod.limits[p]))}</small></summary>
         <p class="sub">${esc(t('now'))}: ${esc(limitText(prod.limits[p]))}${prod.limits[p].src ? ' · ' + esc(prod.limits[p].src) : ''}</p>
         <div class="grid3">
@@ -913,7 +978,7 @@
     if (pel) return PU.onClick(pel);
     const rc = e.target.closest('[data-reccat]');
     if (rc) { S.recCat = rc.dataset.reccat || ''; render(); return; }
-    const el = e.target.closest('[data-nav],[data-newsample],[data-wopen],[data-wsave],[data-phys],[data-haction],[data-detail],[data-correct],[data-repday],#saveSample,#waParse,#waImport,#closeModal,#genXlsx,#savePin,#openLimits,#saveLimits,#saveLines,#askNotif,#testAlert,#exportBk,#exportLim');
+    const el = e.target.closest('[data-nav],[data-newsample],[data-wopen],[data-wsave],[data-phys],[data-haction],[data-detail],[data-correct],[data-repday],#saveSample,#waParse,#waImport,#closeModal,#genXlsx,#sendXlsx,#savePin,#openLimits,#saveLimits,#saveLines,#askNotif,#testAlert,#exportBk,#exportLim');
     if (!el) return;
     if (el.dataset.nav) { S.view = el.dataset.nav; S.modal = null; if (S.view === 'prodset') S.prodDraft = null; if (S.view === 'sample' && !S.form) newForm(); render(); window.scrollTo(0, 0); return; }
     if (el.dataset.repday) { S.repDay = el.dataset.repday; S.view = 'report'; render(); return; }
@@ -930,6 +995,7 @@
       case 'waImport': return waImport();
       case 'closeModal': S.modal = null; render(); return;
       case 'genXlsx': return genExcel();
+      case 'sendXlsx': return sendExcel();
       case 'savePin': return savePin();
       case 'openLimits': if (!products().length) return toast(t('notConfigured')); S.view = 'limits'; S.limitsDraft = null; render(); return;
       case 'saveLimits': return saveLimits();
@@ -961,6 +1027,7 @@
     if (el.id === 'recLine') { S.recLine = el.value; render(); return; }
     if (el.id === 'repDay') { S.repDay = el.value; render(); return; }
     if (el.id === 'repShift') { S.repShift = el.value; render(); return; }
+    if (el.id === 'repType') { S.repType = el.value; render(); return; }
     if (el.id === 'limProd') { S.limitsProduct = el.value; S.limitsDraft = null; render(); return; }
     if (el.id === 'langSel') { S.lang = el.value; await DB.setConfig('lang', S.lang); render(); return; }
     if (el.id === 'millSel') { const cfg = Object.assign({}, S.cfg, { millType: el.value }); await DB.setConfig('cfg', cfg); S.cfg = cfg; S.form = null; render(); return; }

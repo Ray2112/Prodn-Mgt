@@ -683,3 +683,19 @@ t('bins-status: ordem em curso desconta o grão planeado; estado FULL/EMPTY', ()
 });
 
 console.log('OK — v1.5.0 (códigos, unidades, caudal) + bins-status');
+
+// v2.15.0: manutenção de processo e % feito no logout
+{
+  const P = require('../js/prod.js'), assert = require('assert');
+  assert.deepStrictEqual(P.expandSections('1C*4, 2C, Div.2&3, R6/R7'), ['1C-1', '1C-2', '1C-3', '1C-4', '2C', 'Div.2&3', 'R6/R7']);
+  assert.strictEqual(P.PROC_MAINT_DEFAULT.plansifter.sections.length, 26);
+  const cfg = P.procMaintCfg({});
+  assert.deepStrictEqual(P.validateProcMaint({ group: 'plansifter', section: 'B1-2', task: '@service' }, cfg), []);
+  assert.deepStrictEqual(P.validateProcMaint({ group: 'plansifter', section: 'B9', task: '@x' }, cfg), ['procSection', 'procTask']);
+  assert.deepStrictEqual(P.validateProcMaint({ group: 'filter', section: 'F qualquer', task: '@cleanSleeves' }, cfg), []);
+  assert.deepStrictEqual(P.validateProcMaint({ group: 'nada' }, cfg), ['procGroup']);
+  const last = P.procLast([{ uid: '1', kind: 'procMaint', group: 'plansifter', section: '1C-1', t: 1 }, { uid: '2', kind: 'procMaint', group: 'plansifter', section: '1C-1', t: 5 }, { uid: '3', kind: 'void', voids: '2', t: 6 }], 'plansifter');
+  assert.strictEqual(last['1C-1'].uid, '1');
+  assert.deepStrictEqual(['80', '0', '100', '101', '', 'x', '55,5'].map(P.readPct), [80, 0, 100, null, null, null, 55.5]);
+  console.log('prod v2.15.0: ok');
+}
