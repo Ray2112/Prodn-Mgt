@@ -128,6 +128,7 @@
   const CLEAR_ROLES = ['chief', 'qc', 'pm'];
   // v2.9.1: uma explicação pode fechar vários avisos de uma vez (keys = lista, «Limpar todos os avisos»)
   const clears = () => new Set([].concat(...(S.prodChanges || []).filter(c => c.kind === 'warnClear').map(c => Array.isArray(c.keys) ? c.keys : [c.key])));
+  const PU_reproc = r => { const v = window.Prod && window.Prod.reprocPct ? window.Prod.reprocPct(r.bags, r.durationMin) : null; return v == null ? '—' : String(v).replace('.', ',') + ' %'; };
   function issues() {
     const out = [], cl = clears(), nowMs = Date.now();
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
@@ -646,7 +647,7 @@
       case 'binEMPTY': return t('bk_empty', { b: r.binId });
       case 'binOUT': return t('bk_out', { b: r.binId, kg: kgS(r.kg), d: t('dest_' + (r.dest || 'other')), p: prodName(r.productId) });
       case 'issue': return (r.code || t('noStopCode')) + (typeof r.downtimeMin === 'number' ? ' · ' + r.downtimeMin + ' min' : '') + ' · ' + (r.description || '');
-      case 'activity': return t('at_' + r.type) + (r.floor ? ' · ' + r.floor : '') + (typeof r.qtyKg === 'number' ? ' · ' + kgS(r.qtyKg) : '') + (r.description ? ' · ' + r.description : '');
+      case 'activity': return t('at_' + r.type) + (r.floor ? ' · ' + r.floor : '') + (typeof r.qtyKg === 'number' ? ' · ' + kgS(r.qtyKg) : '') + (typeof r.bags === 'number' ? ' · ' + t('bagsN', { n: r.bags, h: (r.startTime || '') + '–' + (r.endTime || ''), p: PU_reproc(r) }) : '') + (r.description ? ' · ' + r.description : '');
       case 'safety': return t('sf_' + r.sType) + ': ' + r.description + (r.injured ? ' · ' + t('sfInjured') + ': ' + r.injured : '') + (r.action ? ' · ' + r.action : '');
       case 'warnClear': return t('bk_warnClear', { by: r.by }) + ': ' + (r.reason || '');
       case 'm_stop': return (r.code || '') + ' · ' + (r.durationMin || '') + ' min · ' + (r.description || '') + (r.action ? ' · ' + r.action : '');

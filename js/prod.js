@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.13.1';
+  const VERSION = '2.14.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -1015,11 +1015,30 @@
     if (!String(o.description || '').trim()) e.push('description');
     return e;
   }
+  // minutes from start to end (HH:MM), across midnight; equal times = 0
+  function reprocMins(a, b) {
+    const m = x => { const [h, mi] = String(x || '').split(':').map(Number); return h * 60 + mi; };
+    if (!/^\d{2}:\d{2}$/.test(String(a || '')) || !/^\d{2}:\d{2}$/.test(String(b || ''))) return null;
+    return (m(b) - m(a) + 1440) % 1440;
+  }
+  // rate as % of 4 bags per hour (owner); null without time
+  const REPROC_BAGS_PER_HOUR = 4;
+  const reprocPct = (bags, mins) => (bags > 0 && mins > 0) ? Math.round(bags / (mins / 60) / REPROC_BAGS_PER_HOUR * 1000) / 10 : null;
   function validateActivity(o) {
     const e = [];
     if (ACT_TYPES.indexOf(o.type) < 0) e.push('type');
     if (o.type === 'housekeeping' && !String(o.floor || '').trim()) e.push('floor');
-    if (o.type === 'reprocessing') { const q = num(o.qtyKg, 'kg'); if (q === null || isNaN(q) || q <= 0) e.push('qtyKg'); }
+    // v2.14.0 (Zhax, 16-11-2026): KPI 'bags re-processed in available time' = (bags ÷ hours spent re-processing ÷ 4) as %.
+    // Re-processing records the bags and the start / end time; kg is optional.
+    if (o.type === 'reprocessing') {
+      const b = num(o.bags);
+      if (b === null || isNaN(b) || b <= 0 || Math.round(b) !== b) e.push('bags');
+      if (!/^\d{2}:\d{2}$/.test(String(o.startTime || ''))) e.push('startTime');
+      if (!/^\d{2}:\d{2}$/.test(String(o.endTime || ''))) e.push('endTime');
+      else if (reprocMins(o.startTime, o.endTime) <= 0) e.push('endTime');
+      const q = String(o.qtyKg == null ? '' : o.qtyKg).trim() === '' ? null : num(o.qtyKg, 'kg');
+      if (q !== null && (isNaN(q) || q <= 0)) e.push('qtyKg');
+    }
     if (o.type !== 'housekeeping' && o.type !== 'reprocessing' && !String(o.description || '').trim()) e.push('description');
     return e;
   }
@@ -1199,7 +1218,7 @@
   const api = { HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
-    validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, shiftSummary, uid, validProdBackup };
+    validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Prod = api;
 })(typeof window !== 'undefined' ? window : this);

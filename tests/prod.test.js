@@ -560,7 +560,13 @@ t('diário: validação, anulação e resumo do turno', () => {
   assert.deepStrictEqual(P.validateIssue({ code: '', description: 'x', downtimeMin: '' }), []);          // sem paragem: código opcional
   assert.deepStrictEqual(P.validateIssue({ code: 'Z99', description: ' ', downtimeMin: '-1' }), ['downtimeMin', 'code', 'description']);
   assert.deepStrictEqual(P.validateActivity({ type: 'housekeeping', floor: '' }), ['floor']);
-  assert.deepStrictEqual(P.validateActivity({ type: 'reprocessing', qtyKg: '1.200' }), []);
+  // v2.14.0 (Zhax, 16-11-2026): re-processing needs bags and start / end time; kg optional
+  assert.deepStrictEqual(P.validateActivity({ type: 'reprocessing', qtyKg: '1.200' }), ['bags', 'startTime', 'endTime']);
+  assert.deepStrictEqual(P.validateActivity({ type: 'reprocessing', bags: '30', startTime: '22:00', endTime: '06:00' }), []);
+  assert.deepStrictEqual(P.validateActivity({ type: 'reprocessing', bags: '2.5', startTime: '08:00', endTime: '08:00' }), ['bags', 'endTime']);
+  assert.strictEqual(P.reprocMins('22:00', '06:00'), 480, 'across midnight');
+  assert.strictEqual(P.reprocPct(30, 480), 93.8, '30 bags in 8 h = 3.75 bags/h = 93.8 % of 4/h');
+  assert.strictEqual(P.reprocPct(30, null), null);
   assert.deepStrictEqual(P.validateActivity({ type: 'other', description: '' }), ['description']);
   const log = [
     { uid: 'i1', kind: 'issue', prodDay: '2026-10-08', period: 'D', t: 2, downtimeMin: 30, code: 'A22', status: 'open' },

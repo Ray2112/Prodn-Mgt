@@ -1133,7 +1133,10 @@ window.ProdUI = function (C) {
     return `<section class="card"><h3>${esc(t('newActivity'))}</h3><div class="grid2">${head}
         <label class="fld req">${esc(t('activityType'))}<select data-lf="type"><option value="">—</option>${P.ACT_TYPES.map(c => `<option value="${c}" ${f.type === c ? 'selected' : ''}>${esc(t('at_' + c))}</option>`).join('')}</select></label>
         ${f.type === 'housekeeping' ? `<label class="fld req">${esc(t('floor'))}<input data-lf="floor" list="floorList" value="${esc(f.floor)}"><datalist id="floorList">${(S.cfgP.floors || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>` : ''}
-        ${f.type === 'reprocessing' ? `<label class="fld req">${esc(t('qtyKg'))}<input inputmode="decimal" data-lf="qtyKg" value="${esc(f.qtyKg)}"></label>
+        ${f.type === 'reprocessing' ? `<label class="fld req">${esc(t('bags'))}<input inputmode="numeric" data-lf="bags" value="${esc(f.bags || '')}"></label>
+          <label class="fld req">${esc(t('startTime'))}<input type="time" data-lf="startTime" value="${esc(f.startTime || '')}"></label>
+          <label class="fld req">${esc(t('endTime'))}<input type="time" data-lf="endTime" value="${esc(f.endTime || '')}"></label>
+          <label class="fld">${esc(t('qtyKg'))} <small>${esc(t('optional'))}</small><input inputmode="decimal" data-lf="qtyKg" value="${esc(f.qtyKg)}"></label>
           <label class="fld">${esc(t('product'))}<select data-lf="productId"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}" ${f.productId === p.id ? 'selected' : ''}>${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
       </div>
       <label class="fld ${f.type && f.type !== 'housekeeping' && f.type !== 'reprocessing' ? 'req' : ''}">${esc(t('description'))}<textarea rows="2" data-lf="description">${esc(f.description)}</textarea></label>
@@ -1142,7 +1145,7 @@ window.ProdUI = function (C) {
   }
   function newLogForm(kind) {
     S.logForm = { kind, time: C.localInput(now()), lineId: '', code: '', equipment: '', description: '', downtimeMin: '', action: '',
-      type: '', floor: '', qtyKg: '', productId: '', sType: '', injured: '', by: S.operator };
+      type: '', floor: '', qtyKg: '', bags: '', startTime: '', endTime: '', productId: '', sType: '', injured: '', by: S.operator };
   }
   async function saveLog() {
     const f = S.logForm;
@@ -1167,7 +1170,9 @@ window.ProdUI = function (C) {
       const e = P.validateActivity(f);
       if (e.length) return C.toast(t('fillFields') + ': ' + e.map(x => t('f_' + x)).join(', '));
       rec = Object.assign(base(tms), { kind: 'activity', t: tms, lineId: f.lineId, type: f.type, floor: f.type === 'housekeeping' ? f.floor.trim() : '',
-        qtyKg: f.type === 'reprocessing' ? P.num(f.qtyKg, 'kg') : null, productId: f.type === 'reprocessing' ? f.productId : '',
+        qtyKg: f.type === 'reprocessing' && String(f.qtyKg || '').trim() ? P.num(f.qtyKg, 'kg') : null, productId: f.type === 'reprocessing' ? f.productId : '',
+        bags: f.type === 'reprocessing' ? P.num(f.bags) : null, startTime: f.type === 'reprocessing' ? f.startTime : null, endTime: f.type === 'reprocessing' ? f.endTime : null,
+        durationMin: f.type === 'reprocessing' ? P.reprocMins(f.startTime, f.endTime) : null,
         description: f.description.trim(), by: f.by.trim() });
     }
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
@@ -1194,7 +1199,7 @@ window.ProdUI = function (C) {
   function actItem(a) {
     const ty = ACT.has(a.type) ? a.type : 'other';
     const act = S.logAct && S.logAct.uid === a.uid ? S.logAct.mode : null;
-    return `<div class="rowitem"><div><b>${esc(C.fmtTime(a.t))}</b> · ${esc(t('at_' + ty))}${a.floor ? ' · ' + esc(a.floor) : ''}${a.lineId ? ' · ' + esc(C.lineName(a.lineId)) : ''}${isNum(a.qtyKg) ? ' · ' + fmtKg(a.qtyKg) + ' kg' + (a.productId ? ' ' + esc(C.prodName(a.productId)) : '') : ''}</div>
+    return `<div class="rowitem"><div><b>${esc(C.fmtTime(a.t))}</b> · ${esc(t('at_' + ty))}${a.floor ? ' · ' + esc(a.floor) : ''}${isNum(a.bags) ? ' · ' + esc(t('bagsN', { n: a.bags, h: (a.startTime || '') + '–' + (a.endTime || ''), p: P.reprocPct(a.bags, a.durationMin) == null ? '—' : String(P.reprocPct(a.bags, a.durationMin)).replace('.', ',') + ' %' })) : ''}${a.lineId ? ' · ' + esc(C.lineName(a.lineId)) : ''}${isNum(a.qtyKg) ? ' · ' + fmtKg(a.qtyKg) + ' kg' + (a.productId ? ' ' + esc(C.prodName(a.productId)) : '') : ''}</div>
       ${a.description ? `<div>${esc(a.description)}</div>` : ''}<small>${esc(t('crew'))} ${esc(a.crew)} · ${esc(a.by)}</small>
       ${act ? `<div class="holdform"><label class="fld req">${esc(t('voidReason'))}<textarea rows="2" id="la_text"></textarea></label>
         <label class="fld req">${esc(t('name'))}<input id="la_by" value="${esc(S.operator)}"></label>
@@ -1246,8 +1251,8 @@ window.ProdUI = function (C) {
         isNum(i.downtimeMin) ? i.downtimeMin : '', i.action, i.status === 'closed' ? t('is_closed') : t('is_open'), i.by, i.closedAt ? C.fmtDT(i.closedAt) : '', i.resolution || '']; })]);
     add(t('byTier3'), [['V2', t('downtimeMin')], ...Object.keys(sm.byTier3).map(k => [tierLabel(k), sm.byTier3[k]]), [], [t('oeeTreat'), t('downtimeMin')],
       ...Object.keys(sm.byOee).map(k => [oeeLabel(k), sm.byOee[k]]), [], [t('codesSource', { s: S.cfgP.codesSource || P.DOWNTIME_SOURCE })]]);
-    add(t('activities'), [[t('dateTime'), t('crew'), t('line'), t('activityType'), t('floor'), t('qtyKg'), t('product'), t('description'), t('doneBy')],
-      ...sm.acts.map(a => [C.fmtDT(a.t), a.crew, a.lineId ? C.lineName(a.lineId) : '', t('at_' + (ACT.has(a.type) ? a.type : 'other')), a.floor || '', isNum(a.qtyKg) ? a.qtyKg : '',
+    add(t('activities'), [[t('dateTime'), t('crew'), t('line'), t('activityType'), t('floor'), t('qtyKg'), t('bags'), t('startTime'), t('endTime'), t('product'), t('description'), t('doneBy')],
+      ...sm.acts.map(a => [C.fmtDT(a.t), a.crew, a.lineId ? C.lineName(a.lineId) : '', t('at_' + (ACT.has(a.type) ? a.type : 'other')), a.floor || '', isNum(a.qtyKg) ? a.qtyKg : '', isNum(a.bags) ? a.bags : '', a.startTime || '', a.endTime || '',
         a.productId ? C.prodName(a.productId) : '', a.description || '', a.by])]);
     const qa = L.effective(S.samples).filter(s => s.t >= range[0] && s.t < range[1] && (s.decision === 'warn' || s.decision === 'reject')).sort((a, b) => a.t - b.t);
     add(t('x_alerts'), [[t('dateTime'), t('line'), t('product'), t('decision'), t('failures')],

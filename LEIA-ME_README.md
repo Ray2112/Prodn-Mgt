@@ -1,4 +1,8 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.13.1
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.14.0
+
+> **v2.14.0 — Reprocessamento em sacos por hora (Zhax, 16-11-2026).** A actividade «Reprocessamento» do Diário de turno pede o número de sacos e a hora de início e de fim (kg passa a opcional). O registo mostra a taxa: sacos por hora de reprocessamento ÷ 4, em % (ex.: 30 sacos das 22:00 às 06:00 = 93,8 %). Entra na pontuação do turno no relatório da equipa.
+>
+> *EN:* the "Reprocessing" activity asks for bags and start / end time (kg optional); the record shows bags per hour ÷ 4 as % (30 bags 22:00–06:00 = 93.8 %); used in the team report shift score.
 
 > **v2.13.1 — Logótipo Carrinho no cabeçalho (Zhax, 15-11-2026).**
 >
