@@ -24,7 +24,7 @@ window.ProdUI = function (C) {
   async function load() {
     dropboxReturn();
     S.cfgP = (await DB.getConfig('cfgP')) || P.defaultProdConfig();
-    S.leaderPins = (await DB.getConfig('leaderPins')) || {};
+    S.leaderPins = S.rolePins || (await DB.getConfig('rolePins')) || {};   // v2.16.0: PIN dos chefes A–D em Definições → PIN
     // configuração anterior à v1.3: acrescenta os dados mestre em falta (não altera listas já existentes)
     const d = P.defaultProdConfig();
     ['grainSilos', 'dirtyBins', 'temperedBins', 'masterSource', 'leaders', 'dampenerMaxLhByLine'].forEach(k => { if (S.cfgP[k] === undefined) S.cfgP[k] = d[k]; });
@@ -316,7 +316,7 @@ window.ProdUI = function (C) {
   // v2.10.0 (Zhax, 14-11-2026): PIN de cada chefe de turno, definido pelo supervisor em Definições → Produção.
   // Fica só neste telemóvel (config 'leaderPins' = {A: {salt, hash, setAt}}), nunca nos ficheiros do dia.
   const hex = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
-  const pinHash = async (salt, pin) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin)));
+  const pinHash = async (salt, pin) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + pin)));   // v2.16.0: como os PIN de Definições → PIN
   async function makeLeaderPin(pin) { const salt = hex(crypto.getRandomValues(new Uint8Array(16))); return { salt, hash: await pinHash(salt, pin), setAt: new Date().toISOString() }; }
   // 'ok' | 'bad' | 'none' (chefe sem PIN definido: grava com aviso)
   async function leaderPinCheck(crew, pin) {
@@ -330,8 +330,8 @@ window.ProdUI = function (C) {
   function view() {
     if (S.prodTab === 'log') S.prodTab = 'shift';   // v2.15.0: o Diário de turno passou para o separador Turno
     const tab = S.prodTab || 'shift';
-    const tabs = ['shift', 'jobs', 'stops', 'grain', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
-    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
+    const tabs = ['shift', 'jobs', 'stops', 'grain', 'maize', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
+    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'maize' ? viewMaize() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
     const banner = S.ctx && S.ctx.testMode ? `<section class="card"><b>${esc(t('ctxTestBanner'))}</b></section>` : '';
     return `${banner}<section class="card"><h2>${esc(t('nav_prod'))}</h2><div class="row">${tabs}</div></section>${body}`;
   }
@@ -405,15 +405,15 @@ window.ProdUI = function (C) {
       <label class="fld">${esc(t('shift'))}<select id="shPeriod"><option value="D" ${per === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${per === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       ${plan ? '' : `<p class="sub">${esc(t('planMissing'))}</p>`}</section>`;
     const op = openShift(), opSel = op && op.prodDay === day && op.period === per;
-    const head = (op ? `<div class="banner b-reject">⚠ ${esc(t('logoutMissing', { s: t('shift_' + op.period), d: C.fmtDT(op.t).slice(0, 10), l: op.leader || '' }))}${opSel ? '' : ` <button class="btn small" data-shsel="${esc(op.prodDay)}|${esc(op.period)}">${esc(t('logoutGo'))}</button>`}</div>` : '') + head0 + dipCard();
+    const head = (op ? `<div class="banner b-reject">⚠ ${esc(t('logoutMissing', { s: t('shift_' + op.period), d: C.fmtDT(op.t).slice(0, 10), l: op.leader || '' }))}${opSel ? '' : ` <button class="btn small" data-shsel="${esc(op.prodDay)}|${esc(op.period)}">${esc(t('logoutGo'))}</button>`}</div>` : '') + head0;
     if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3>
       <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lg_leader"', defLeader())}</label>
-        <label class="fld req">${esc(t('leaderPin'))}<input type="password" inputmode="numeric" id="lg_pin" autocomplete="off"></label></div>
+        <label class="fld req">${esc(t('leaderPin'))}<input type="password" maxlength="4" id="lg_pin" autocomplete="off"></label></div>
       <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
       <div class="grid2"><label class="fld">${esc(t('sjPick'))}<select id="lg_jobsel"><option value="">—</option>${P.SHIFT_JOBS.map(k => `<option value="${k}">${esc(t('sj_' + k))}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('sjOtherText'))}<input id="lg_jobtxt"></label></div>
       <button class="btn small" data-pact="lgjobadd">＋ ${esc(t('sjAdd'))}</button><div id="lg_jobs">${jobChips()}</div>
-      <label class="fld req">${esc(t('stateNow'))}<select id="lg_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
+      <h4>${esc(t('runTitle'))}</h4>${runFields('lg')}
       <h4>${esc(t('scalesStart'))}</h4>${scaleInputs('lgs')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lg_comments"></textarea></label>
       <button class="btn primary big" data-pact="shiftlogin">${esc(t('loginBtn'))}</button></section>`;
@@ -424,7 +424,7 @@ window.ProdUI = function (C) {
       ${li.comments ? `<p><small>${esc(li.comments)}</small></p>` : ''}</section>`;
     const range = shiftRange(day, per);
     const sm = P.shiftSummary(day, per, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
-    if (!lo) return head + loginCard + `<section class="card"><h3>${esc(t('logoutTitle'))}</h3>
+    if (!lo) return head + loginCard + runCard(day, per) + scalesCard(li, null, day, per) + `<section class="card"><h3>${esc(t('logoutTitle'))}</h3>
       <div class="kpis k4"><div><b>${sm.jobs.length}</b><span>${esc(t('ptab_jobs'))}</span></div><div><b>${sm.issues.length}</b><span>${esc(t('ptab_stops'))}</span></div>
         <div><b>${sm.downtimeMin}</b><span>${esc(t('downtimeMin'))}</span></div><div><b>${sm.acts.length}</b><span>${esc(t('activities'))}</span></div></div>
       <label class="fld req">${esc(t('stateNow'))}<select id="lo_state"><option value="on">${esc(t('state_on'))}</option><option value="off">${esc(t('state_off'))}</option></select></label>
@@ -433,13 +433,11 @@ window.ProdUI = function (C) {
       <h4>${esc(t('scalesEnd'))}</h4>${scaleInputs('los')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lo_comments"></textarea></label>
       <div class="grid2"><label class="fld req">${esc(t('shiftLeader'))}${leaderField('id="lo_by"', li.leader || S.operator)}</label>
-        <label class="fld req">${esc(t('leaderPin'))}<input type="password" inputmode="numeric" id="lo_pin" autocomplete="off"></label></div>
+        <label class="fld req">${esc(t('leaderPin'))}<input type="password" maxlength="4" id="lo_pin" autocomplete="off"></label></div>
       <button class="btn primary big" data-pact="shiftlogout">${esc(t('logoutBtn'))}</button></section>`;
-    return head + loginCard + `<section class="card"><h3>${esc(t('logoutTitle'))} · ${esc(C.fmtDT(lo.t))}</h3>
+    return head + loginCard + scalesCard(li, lo, day, per) + `<section class="card"><h3>${esc(t('logoutTitle'))} · ${esc(C.fmtDT(lo.t))}</h3>
       <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + lo.state))}</b></div>
       <div class="kv"><span>${esc(t('targetAchieved'))}</span><b>${isNum(lo.achievedPct) ? esc(String(lo.achievedPct).replace('.', ',')) + ' %' : '—'} <small>(${esc(t('dayB1'))} ${isNum(lo.dayB1Kg) ? fmtKg(lo.dayB1Kg) + ' kg' : '—'} / ${esc(t('targetT'))} ${isNum(lo.targetKg) ? fmtKg(lo.targetKg) + ' kg' : '—'})</small></b></div>
-      <div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>${esc(t('srPoint_start'))}</th><th>${esc(t('srPoint_end'))}</th><th>${esc(t('srQty'))} (kg)</th></tr>${P.SCALES.map(k =>
-        `<tr><td>${esc(t('scale_' + k))}</td><td>${P.fmtScale((li.scalesStart || {})[k]) || '—'}</td><td>${P.fmtScale((lo.scalesEnd || {})[k]) || '—'}</td><td class="${(lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum((lo.shiftKg || {})[k]) ? P.fmtScale(lo.shiftKg[k]) : '—'}</td></tr>`).join('')}</table></div>
       ${(lo.activitiesPct || []).length ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${lo.activitiesPct.map(x => esc(itemLabel(x)) + ': ' + esc(String(x.pct).replace('.', ',')) + ' %').join('<br>')}</small></p>`
         : lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
       <button class="btn" data-pact="shiftxlsx">${esc(t('genExcel'))}</button></section>`;
@@ -452,10 +450,12 @@ window.ProdUI = function (C) {
     if (pinR !== 'ok') return C.toast(t('leaderPinNeed'));   // v2.15.0 (Zhax): sem PIN do chefe de turno não grava
     const sc = P.readScales(scaleVals('lgs'));
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
+    const run = readRun('lg', sel);
+    if (run.err) return C.toast(t('runTimeNeed', { a: t('ra_' + run.err) }));
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: L.crewOfTime(start + 60000),
-      leader: leader.trim(), state: $('#lg_state').value === 'off' ? 'off' : 'on', planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
+      leader: leader.trim(), state: run.areas.production.on ? 'on' : 'off', run: run.areas, planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
       planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader.trim(), leaderPin: 'ok' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = rec.by; await DB.setConfig('operator', S.operator); S.lgJobs = [];
@@ -540,6 +540,119 @@ window.ProdUI = function (C) {
     const tms = now();
     try { await DB.add('shiftLog', Object.assign(base(tms), { kind: 'procMaint', t: tms }, o, { by })); } catch (err) { return C.toast(t('saveFailed')); }
     S.procForm = { group: f.group }; await reload(); C.toast(t('saved')); keepScroll();
+  }
+
+  // ---------- leituras das balanças: abertura, fecho, movimento (v2.16.0) ----------
+  // As leituras de abertura (login) e de fecho (logout) ficam sempre à vista; movimento = fecho − abertura; total do dia = os dois turnos.
+  function scalesCard(li, lo, day, per) {
+    const tab = S.scTab === 'close' ? 'close' : 'open';
+    const other = shiftRec('logout', day, per === 'D' ? 'N' : 'D');
+    const v = (o, k) => o && isNum(o[k]) ? P.fmtScale(o[k]) : '—';
+    const mv = k => lo && lo.shiftKg && isNum(lo.shiftKg[k]) ? lo.shiftKg[k] : null;
+    const dayTot = k => isNum(mv(k)) && other && other.shiftKg && isNum(other.shiftKg[k]) ? mv(k) + other.shiftKg[k] : null;
+    return `<section class="card"><h3>${esc(t('scalesTitle'))}</h3>
+      <div class="row"><button class="btn small ${tab === 'open' ? 'primary' : 'ghost'}" data-pact="sctab" data-v="open">${esc(t('scOpen'))}</button>
+        <button class="btn small ${tab === 'close' ? 'primary' : 'ghost'}" data-pact="sctab" data-v="close">${esc(t('scClose'))}</button></div>
+      <div class="tablewrap"><table class="tbl"><tr><th>${esc(t('scale'))}</th><th>${esc(tab === 'open' ? t('scOpen') : t('scClose'))}</th><th>${esc(t('scMove'))} (kg)</th><th>${esc(t('scDay'))} (kg)</th></tr>
+      ${P.SCALES.map(k => `<tr><td>${esc(t('scale_' + k))}</td><td>${tab === 'open' ? v(li.scalesStart, k) : lo ? v(lo.scalesEnd, k) : '—'}</td>
+        <td class="${lo && (lo.negative || []).indexOf(k) >= 0 ? 'd-reject' : ''}">${isNum(mv(k)) ? P.fmtScale(mv(k)) : '—'}</td><td>${isNum(dayTot(k)) ? P.fmtScale(dayTot(k)) : '—'}</td></tr>`).join('')}</table></div></section>`;
+  }
+
+  // ---------- milho D/M e C/M: mergulhos, leituras, tipo e grau, reconciliação (v2.16.0) ----------
+  const dmIds = () => (S.cfgP.dirtyBins || []).map(b => b.id), cmIds = () => (S.cfgP.temperedBins || []).map(b => b.id);
+  function viewMaize() {
+    const day = S.mzDay || L.prodDay(now()), f = S.mzForm;
+    const R = P.reconcile({ day, cfgP: S.cfgP, stocks: S.stocks, moves: S.moves, log: S.shiftLog });
+    const kgT = v => isNum(v) ? fmtKg(v) + ' kg' : '<span class="sub">' + esc(t('noData')) + '</span>';
+    const dCls = x => !isNum(x.diffPct) ? '' : Math.abs(x.diffPct) > 2 ? 'd-reject' : Math.abs(x.diffPct) > 1 ? 'd-warn' : 'd-accept';
+    const recRows = (x, rows) => rows.map(([lab, val, sign]) => `<tr><td>${esc(lab)}</td><td>${sign || ''}${kgT(val)}</td></tr>`).join('') +
+      `<tr><td><b>${esc(t('rcExpected'))}</b></td><td><b>${kgT(x.expected)}</b></td></tr><tr><td><b>${esc(t('rcToday'))}</b></td><td><b>${kgT(x.today && x.today.kg)}</b></td></tr>
+       <tr><td><b>${esc(t('rcDiff'))}</b></td><td class="${dCls(x)}"><b>${isNum(x.diff) ? (x.diff > 0 ? '+' : '') + fmtKg(x.diff) + ' kg' + (isNum(x.diffPct) ? ' (' + String(x.diffPct).replace('.', ',') + ' %)' : '') : esc(t('noData'))}</b></td></tr>`;
+    const grades = [['dm', dmIds()], ['cm', cmIds()]].map(([g, ids]) => { const G = P.maizeByGrade(S.stocks, day, ids); return `<h4>${esc(t('mz_' + g))}</h4>` + (G.length ? `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('mzType'))}</th><th>${esc(t('mzGrade'))}</th><th>kg</th></tr>${G.map(x => `<tr><td>${esc(x.colour === '?' ? '—' : x.colour)}</td><td>${esc(x.grade === '?' ? '—' : x.grade)}</td><td>${fmtKg(x.kg)}</td></tr>`).join('')}<tr><td colspan="2"><b>${esc(t('total'))}</b></td><td><b>${fmtKg(G.reduce((a, x) => a + x.kg, 0))}</b></td></tr></table></div>` : `<p class="sub">—</p>`); }).join('');
+    return `<section class="card"><h3>${esc(t('mzTitle'))}</h3><label class="fld">${esc(t('prodDay'))}<input type="date" id="mzDay" value="${esc(day)}"></label>
+      ${f ? maizeForm(f) : `<button class="btn primary" data-pact="mznew">${esc(t('mzNew'))}</button>`}</section>
+      <section class="card"><h3>${esc(t('mzTotals'))}</h3>${grades}</section>
+      <section class="card"><h3>${esc(t('rcTitle'))} · ${esc(C.fmtDT(Date.parse(R.prev + 'T12:00:00')).slice(0, 10))} → ${esc(C.fmtDT(Date.parse(day + 'T12:00:00')).slice(0, 10))}</h3>
+        <h4>${esc(t('mz_dm'))}</h4><div class="tablewrap"><table class="tbl">${recRows(R.dm, [[t('rcYesterday'), R.dm.yesterday && R.dm.yesterday.kg], [t('rcReceived'), R.dm.received, '+ '], [t('scale_clean'), R.dm.clean, '− '], [t('scale_screenings'), R.dm.screenings, '− ']])}</table></div>
+        <h4>${esc(t('mz_cm'))}</h4><div class="tablewrap"><table class="tbl">${recRows(R.cm, [[t('rcYesterday'), R.cm.yesterday && R.cm.yesterday.kg], [t('scale_clean'), R.cm.clean, '+ '], ['B1', R.cm.b1, '− ']])}</table></div>
+        ${R.scales.shifts.every(Boolean) ? '' : `<p class="sub">${esc(t('rcNoLogout', { d: R.prev }))}</p>`}</section>`;
+  }
+  function maizeForm(f) {
+    const opt = (list, v) => `<option value="">—</option>` + list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
+    const row = (id, dip) => { const x = f.levels[id] || {}; const dk = dip && String(x.dipM || '').trim() !== '' ? P.dipKg(x.dipM) : null;
+      return `<tr><td><b>${esc(id)}</b></td><td>${dip ? `<input inputmode="decimal" data-mz="${esc(id)}|dipM" value="${esc(x.dipM || '')}" placeholder="${esc(t('dipD'))}"><br><small id="mzkg_${esc(id)}">${dipKgText(x.dipM, dk)}</small>`
+        : `<input inputmode="decimal" data-mz="${esc(id)}|kg" value="${esc(x.kg || '')}">`}</td>
+        <td><select data-mz="${esc(id)}|colour">${opt(P.COLOURS, x.colour)}</select></td><td><select data-mz="${esc(id)}|grade">${opt(P.SILO_GRADES, x.grade)}</select></td></tr>`; };
+    const head = k => `<tr><th></th><th>${esc(k === 'dm' ? t('dipD') : 'kg')}</th><th>${esc(t('mzType'))}</th><th>${esc(t('mzGrade'))}</th></tr>`;
+    return `<h4>${esc(t('mz_dm'))}</h4><div class="tablewrap"><table class="tbl">${head('dm')}${dmIds().map(id => row(id, P.DIP.bins.indexOf(id) >= 0)).join('')}</table></div>
+      <h4>${esc(t('mz_cm'))}</h4><div class="tablewrap"><table class="tbl">${head('cm')}${cmIds().map(id => row(id, false)).join('')}</table></div>
+      ${shiftLeader() ? '' : `<label class="fld req">${esc(t('name'))}<input data-mz="by" value="${esc(f.by || '')}"></label>`}
+      <button class="btn primary big" data-pact="mzsave">${esc(t('save'))}</button><button class="btn ghost" data-pact="mzcancel">${esc(t('cancel'))}</button>`;
+  }
+  async function saveMaize() {
+    const f = S.mzForm, by = shiftLeader() || String(f.by || '').trim();
+    const ids = dmIds().concat(cmIds()), levels = {};
+    ids.forEach(id => { const x = f.levels[id] || {}; if (String(x.dipM || '').trim() || String(x.kg || '').trim()) levels[id] = { dipM: x.dipM, kg: x.kg }; });
+    const r = P.validateBinStock({ levels, by }, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
+    if (r.errors.length) return C.toast(r.errors.map(stockMsg).join(' · '));
+    Object.keys(r.values).forEach(id => { const x = f.levels[id] || {}; r.values[id].colour = x.colour || ''; r.values[id].grade = x.grade || ''; });
+    const tms = now();
+    try { await DB.add('binStock', Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, scope: 'maize', warnings: r.warnings.map(w => w.code + ':' + w.bin) })); }
+    catch (e) { return C.toast(t('saveFailed')); }
+    S.mzForm = null; S.operator = by; await reload(); C.toast(t('saved')); keepScroll();
+  }
+
+  // ---------- em marcha: Produção, Limpeza, Reprocessamento (v2.16.0) ----------
+  const hmNow = () => { const d = new Date(now()); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  function runFields(p, cur) {
+    return `<div class="tablewrap"><table class="tbl">${P.RUN_AREAS.map(a => { const on = cur ? cur[a].on : false, show = on || p === 'rc'; return `<tr><td><b>${esc(t('ra_' + a))}</b></td>
+      <td><select id="${p}_on_${a}" data-runsel="${p}|${a}"><option value="0" ${on ? '' : 'selected'}>${esc(t('no'))}</option><option value="1" ${on ? 'selected' : ''}>${esc(t('yes'))}</option></select></td>
+      <td><div id="${p}_box_${a}" ${show ? '' : 'hidden'}><label class="fld">${esc(t(p === 'rc' ? 'runTime' : 'runStart'))}<input type="time" id="${p}_t_${a}" value="${esc(hmNow())}"></label>
+      <label class="fld">${esc(t('comments'))}<input id="${p}_c_${a}"></label></div></td></tr>`; }).join('')}</table></div>`;
+  }
+  function readRun(p, sel, only) {
+    const start = shiftRange(sel.day, sel.period)[0], areas = {};
+    for (const a of (only ? [only] : P.RUN_AREAS)) {
+      const on = (($('#' + p + '_on_' + a) || {}).value) === '1';
+      const hm = (($('#' + p + '_t_' + a) || {}).value) || '';
+      const at = P.shiftTimeMs(start, sel.period, hm);
+      if (on && at === null) return { err: a };
+      areas[a] = { on, at: on ? at : now(), time: on ? hm : '', comment: on ? ((($('#' + p + '_c_' + a) || {}).value) || '').trim() : '' };
+    }
+    return { areas };
+  }
+  function runCard(day, per) {
+    const rs = P.runState(S.shiftLog, day, per, now() + 24 * 3600000);
+    return `<section class="card"><h3>${esc(t('runTitle'))}</h3>
+      <div class="tablewrap"><table class="tbl">${P.RUN_AREAS.map(a => { const x = rs.areas[a]; return `<tr><td><b>${esc(t('ra_' + a))}</b></td>
+        <td><span class="chip ${x.on ? 'd-accept' : ''}">${esc(x.on ? t('yes') : t('no'))}</span>${x.at ? ' <small>' + esc(t('runSince', { h: C.fmtTime(x.at) })) + '</small>' : ''}${x.comment ? '<br><small>' + esc(x.comment) + '</small>' : ''}</td></tr>`; }).join('')}</table></div>
+      <h4>${esc(t('runChange'))}</h4>${runFields('rc', rs.areas)}
+      <button class="btn primary" data-pact="saverun">${esc(t('save'))}</button></section>`;
+  }
+  async function saveRun() {
+    const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
+    if (!li) return;
+    const cur = P.runState(S.shiftLog, sel.day, sel.period, now() + 24 * 3600000).areas;
+    const recs = [];
+    for (const a of P.RUN_AREAS) {
+      const on = (($('#rc_on_' + a) || {}).value) === '1';
+      if (on === cur[a].on) continue;
+      const hm = (($('#rc_t_' + a) || {}).value) || '';
+      const at = P.shiftTimeMs(shiftRange(sel.day, sel.period)[0], sel.period, hm);
+      if (at === null) return C.toast(t('runTimeNeed', { a: t('ra_' + a) }));
+      recs.push({ area: a, on, at, time: hm, comment: ((($('#rc_c_' + a) || {}).value) || '').trim() });
+    }
+    if (!recs.length) return C.toast(t('noChanges'));
+    const tms = now();
+    try { for (const r of recs) await DB.add('shiftLog', Object.assign(base(tms), { kind: 'runState', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew, by: li.leader }, r)); }
+    catch (e) { return C.toast(t('saveFailed')); }
+    await reload(); C.toast(t('saved')); keepScroll();
+  }
+  // Produção registada agora no turno actual? (sem login ou Produção = Não → sem verificações horárias)
+  function prodOn() {
+    const sh = L.shiftOf(now());
+    const rs = P.runState(S.shiftLog, sh.day, sh.period, now());
+    return rs.login && rs.areas.production.on;
   }
 
   // Aviso na página inicial: turno actual sem login
@@ -641,7 +754,7 @@ window.ProdUI = function (C) {
       ${st.runningJobs.length ? `<div><small>${esc(t('inUseBy', { n: st.runningJobs.length }))}</small></div>` : ''}
       ${mine ? `<div class="holdform"><p class="sub">${esc(t('emptyDirtyNote', { kg: fmtKg(st.kg) }))}</p>
           <label class="fld req">${esc(t('name'))}<input id="eb_by" value="${esc(S.operator)}"></label>
-          <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="eb_pin"></label>
+          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="eb_pin"></label>
           <button class="btn primary small" data-pact="emptydirty">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelempty">${esc(t('cancel'))}</button></div>`
         : (st.inKg > 0 || st.kg !== 0 ? `<div class="row"><button class="btn ghost small" data-emptydirty="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button></div>` : '')}</div>`;
   }
@@ -1353,7 +1466,7 @@ window.ProdUI = function (C) {
         ${h ? `<small>${esc(C.fmtDT(h.t))} · ${esc(h.by)}: ${esc(h.reason)}</small>` : ''}
         ${open ? `<div class="holdform"><label class="fld req">${esc(t(f.release ? 'holdReleaseReason' : 'holdReason'))}<textarea rows="2" id="hd_reason"></textarea></label>
           <label class="fld req">${esc(t('role_qc'))} — ${esc(t('name'))}<input id="hd_by" value="${esc(S.operator)}"></label>
-          <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="hd_pin"></label>
+          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="hd_pin"></label>
           <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`
           : (f ? '' : `<button class="btn small ${h ? '' : 'ghost'}" data-hold="${esc(b.id)}" data-release="${h ? 1 : ''}">${esc(t(h ? 'holdReleaseBtn' : 'holdBtn'))}</button>`)}</div>`;
     };
@@ -1387,11 +1500,13 @@ window.ProdUI = function (C) {
             ${mine === 'out' ? `<div class="grid2"><label class="fld req">${esc(t('outKg'))}<input inputmode="decimal" id="ba_kg"></label>
               <label class="fld req">${esc(t('outDest'))}<select id="ba_dest">${P.OUT_DESTS.map(d => `<option value="${d}">${esc(t('dest_' + d))}</option>`).join('')}</select></label></div>
               <label class="fld">${esc(t('notes'))}<input id="ba_note"></label>` : ''}
-            ${mine === 'set' ? `<label class="fld req">${esc(t('product'))}<select id="ba_prod"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}">${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
-            <label class="fld req">${esc(t('name'))}<input id="ba_by" value="${esc(S.operator)}"></label>
-            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="ba_pin"></label>` : mine === 'out' ? `` : `<p class="sub">${esc(t('emptyBinNote'))}</p>`}
-            <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : mine === 'out' ? 'outbin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
-          : `<div class="row">${st.productId ? `<button class="btn small" data-binact="out" data-bin="${esc(b.id)}">${esc(t('binOutBtn'))}</button>` : ''}${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button></div>`}</div>`;
+            ${mine === 'qty' ? `<label class="fld req">${esc(t('binQtyKg'))}<input inputmode="decimal" id="ba_qkg"></label>` : ''}
+            ${mine === 'set' || (mine === 'qty' && !st.productId) ? `<label class="fld ${mine === 'set' ? 'req' : ''}">${esc(t('product'))}<select id="ba_prod"><option value="">—</option>${C.products().map(p => `<option value="${esc(p.id)}">${esc(C.prodName(p.id))}</option>`).join('')}</select></label>` : ''}
+            ${mine === 'zero' ? `<p><b>${esc(t('binZeroAsk', { b: b.id }))}</b></p>` : ''}
+            ${shiftLeader() && (mine === 'qty' || mine === 'zero') ? `<input type="hidden" id="ba_by" value="${esc(shiftLeader())}">` : `<label class="fld req">${esc(t('name'))}<input id="ba_by" value="${esc(shiftLeader() || S.operator)}"></label>`}
+            ${mine === 'set' ? `<label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="ba_pin"></label>` : mine === 'empty' ? `<p class="sub">${esc(t('emptyBinNote'))}</p>` : ''}
+            <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : mine === 'out' ? 'outbin' : mine === 'qty' || mine === 'zero' ? 'qtybin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
+          : `<div class="row">${st.productId ? `<button class="btn small" data-binact="out" data-bin="${esc(b.id)}">${esc(t('binOutBtn'))}</button>` : ''}${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button><button class="btn small" data-binact="qty" data-bin="${esc(b.id)}">${esc(t('binQtyBtn'))}</button><button class="btn ghost small" data-binact="zero" data-bin="${esc(b.id)}">${esc(t('binZeroBtn'))}</button></div>`}</div>`;
       }).join('')}</section>`;
   }
   // ---------- totais das bins de manhã (v2.4.0) ----------
@@ -1413,7 +1528,7 @@ window.ProdUI = function (C) {
       <p class="sub">${last ? esc(t('stockLast')) + ': <b>' + esc(C.fmtDT(last.t)) + '</b> · ' + esc(last.by) : esc(t('stockNone'))}</p>`;
     if (!f) return h + `<button class="btn primary" data-pact="stocknew">${esc(t('stockNew'))}</button></section>`;
     h += ``;
-    P.STOCK_KINDS.forEach(k => {
+    P.STOCK_KINDS.filter(k => k !== 'dirty').forEach(k => {   // v2.16.0: bins D/M no separador Milho
       h += `<h4>${esc(t('stockKind_' + k))}</h4><table class="tbl stock"><tr><th></th><th>${esc(t('stockKg'))}</th>${k === 'product' ? `<th>${esc(t('product'))}</th>` : ''}</tr>` +
         B.filter(b => b.kind === k).map(b => { const x = f.levels[b.id] || {};
           const dip = k === 'dirty' && P.DIP.bins.indexOf(b.id) >= 0, dk = dip && String(x.dipM || '').trim() !== '' ? P.dipKg(x.dipM) : null;
@@ -1433,16 +1548,23 @@ window.ProdUI = function (C) {
     S.stockForm = { levels, by: S.operator };
   }
   const stockMsg = e => t((e.warn ? 'jw_' : 'je_') + e.code, { bin: e.bin, cap: isNum(e.cap) ? fmtKg(e.cap) : '', kg: isNum(e.kg) ? fmtKg(e.kg) : '', max: e.max || '', current: e.current ? C.prodName(e.current) : '' });
-  async function stockSave() {
-    const f = S.stockForm, r = P.validateBinStock(f, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
+  // v2.16.0: quantidade ou zero de uma só bin (separador Silos de produto) grava-se como leitura dessa bin
+  async function binQty() {
+    const a = S.binAct, st = P.binState(a.id, S.binEvents);
+    const kg = a.mode === 'zero' ? '0' : (($('#ba_qkg') || {}).value || '').trim();
+    if (!kg) return C.toast(t('binQtyKg'));
+    return stockSave({ levels: { [a.id]: { kg, productId: st.productId || (($('#ba_prod') || {}).value) || '' } }, by: (($('#ba_by') || {}).value || '').trim(), scope: 'bin' });
+  }
+  async function stockSave(fo) {
+    const f = fo || S.stockForm, r = P.validateBinStock(f, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
     if (r.errors.length) return C.toast(r.errors.map(stockMsg).join(' · '));
     const tms = now(), by = String(f.by).trim();
     // leitura + conteúdo das bins de produto (SET/EMPTY), tudo-ou-nada
-    const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, warnings: r.warnings.map(w => w.code + ':' + w.bin) }) }].concat(r.binOps.map((o, i) =>
+    const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, scope: f.scope || 'all', warnings: r.warnings.map(w => w.code + ':' + w.bin) }) }].concat(r.binOps.map((o, i) =>
       ({ store: 'binEvents', op: 'add', obj: Object.assign(base(tms), { binId: o.binId, type: o.type, productId: o.productId, t: tms, seq: i + 1, by, previous: o.previous, source: 'stock' }) })));
     try { await DB.batch(ops); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = String(f.by).trim(); await DB.setConfig('operator', S.operator);
-    S.stockForm = null; await reload();
+    if (fo) S.binAct = null; else S.stockForm = null; await reload();
     C.toast(r.warnings.length ? t('stockSaved') + ' — ' + r.warnings.map(w => stockMsg(Object.assign({ warn: true }, w))).join(' · ') : t('stockSaved')); keepScroll();
   }
   // Aviso na página inicial: leitura do dia de produção em falta
@@ -1514,8 +1636,7 @@ window.ProdUI = function (C) {
         <label class="fld">${esc(t('temperedBins'))}<textarea rows="2" data-ps="temperedBins">${esc(P.binsText(d.temperedBins || []))}</textarea></label>
         <label class="fld">${esc(t('ptab_bins'))}<textarea rows="4" data-ps="bins">${esc(P.binsText(d.bins))}</textarea></label>
         <h3>${esc(t('leaders'))}</h3>
-        <div class="grid2">${['A', 'B', 'C', 'D'].map(k => `<label class="fld">${esc(t('crew'))} ${k}<input data-ps="leader|${k}" value="${esc((d.leaders || {})[k] || '')}" maxlength="60"></label>
-          <label class="fld">${esc(t('leaderPinNew', { c: k }))} <small>${esc((S.leaderPins || {})[k] ? t('leaderPinIsSet') : t('leaderPinNotSet'))}</small><input type="password" inputmode="numeric" autocomplete="off" data-lpin="${k}"></label>`).join('')}</div>
+        <div class="grid2">${['A', 'B', 'C', 'D'].map(k => `<label class="fld">${esc(t('crew'))} ${k}<input data-ps="leader|${k}" value="${esc((d.leaders || {})[k] || '')}" maxlength="60"></label>`).join('')}</div>
         
         <h3>${esc(t('floors'))}</h3>
         <label class="fld"><input data-ps="floors" value="${esc((d.floors || []).join(', '))}"></label>
@@ -1525,7 +1646,7 @@ window.ProdUI = function (C) {
           <label class="fld">${esc(t('procTasks'))}<textarea rows="2" data-ps="procTask|${g}">${esc(c.tasks.map(procTaskLabel).join(', '))}</textarea></label>`; }).join('')}</section>
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="psBy"></label>
         <label class="fld req">${esc(t('reason'))}<input id="psReason"></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="psPin"></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="psPin"></label>
         <button class="btn primary big" data-pact="saveprodset">${esc(t('save'))}</button>
         <button class="btn ghost" data-nav="settings">${esc(t('cancel'))}</button></section>`;
   }
@@ -1560,8 +1681,7 @@ window.ProdUI = function (C) {
     if (errs.length) return C.toast(t('limitErrors') + ': ' + errs.join(', '));
     if (JSON.stringify(n.bins) !== JSON.stringify(S.cfgP.bins)) n.binSource = t('changedBy', { by, d: C.fmtDT(now()).slice(0, 10) });
     if (['grainSilos', 'dirtyBins', 'temperedBins'].some(k => JSON.stringify(n[k]) !== JSON.stringify(S.cfgP[k]))) n.masterSource = P.MASTER_SOURCE + ' + ' + t('changedBy', { by, d: C.fmtDT(now()).slice(0, 10) });
-    const newPins = [...document.querySelectorAll('[data-lpin]')].filter(el => el.value.trim()).map(el => ({ crew: el.dataset.lpin, pin: el.value.trim() }));
-    if (newPins.some(x => !/^\d{4,8}$/.test(x.pin))) return C.toast(t('leaderPinFormat'));
+    const newPins = [];
     const diff = P.prodConfigDiff(S.cfgP, n);
     if (!diff.length && !newPins.length) return C.toast(t('noChanges'));
     const r = await C.checkPin($('#psPin').value);
@@ -1596,7 +1716,7 @@ window.ProdUI = function (C) {
         <label class="fld">${esc(t('codeName'))} (EN)<input id="nc_name"></label></div></section>
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="cdBy"></label>
         <label class="fld req">${esc(t('reason'))}<input id="cdReason"></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="cdPin"></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="cdPin"></label>
         <button class="btn primary big" data-pact="savecodes">${esc(t('save'))}</button>
         <button class="btn ghost" data-nav="settings">${esc(t('cancel'))}</button></section>`;
   }
@@ -1665,7 +1785,7 @@ window.ProdUI = function (C) {
     if (el.dataset.logact) { S.logAct = { uid: el.dataset.uid, mode: el.dataset.logact === 'close' ? 'close' : 'void' }; keepScroll(); return; }
     if (el.dataset.shsel) { const [d, p] = el.dataset.shsel.split('|'); S.shiftSel = { day: d, period: p === 'N' ? 'N' : 'D' }; keepScroll(); return; }
     if (el.dataset.hold) { S.holdForm = { binId: el.dataset.hold, release: !!el.dataset.release }; keepScroll(); return; }
-    if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
+    if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out', 'qty', 'zero'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
     switch (el.dataset.pact) {
       case 'newjob': newJobForm(); keepScroll(); return;
       case 'addoutput': S.jobForm.outputs.push(newOutput()); keepScroll(); return;
@@ -1693,6 +1813,12 @@ window.ProdUI = function (C) {
       case 'shiftlogin': return shiftLogin();
       case 'lgjobadd': return addLgJob();
       case 'saveproc': return saveProc();
+      case 'qtybin': return binQty();
+      case 'sctab': S.scTab = el.dataset.v; keepScroll(); return;
+      case 'mznew': { const lv = {}; dmIds().concat(cmIds()).forEach(id => { const last = (S.stocks || []).filter(x => x.levels && x.levels[id]).sort((a, b) => b.t - a.t)[0]; const L0 = last ? last.levels[id] : {}; lv[id] = { colour: L0.colour || '', grade: L0.grade || '' }; }); S.mzForm = { levels: lv, by: S.operator }; keepScroll(); return; }
+      case 'mzcancel': S.mzForm = null; keepScroll(); return;
+      case 'mzsave': return saveMaize();
+      case 'saverun': return saveRun();
       case 'lgjobrm': { (S.lgJobs || []).splice(Number(el.dataset.i), 1); const c = $('#lg_jobs'); if (c) c.innerHTML = jobChips(); return; }
       case 'savedips': return saveDips();
       case 'shiftlogout': return shiftLogout();
@@ -1724,6 +1850,7 @@ window.ProdUI = function (C) {
     if (f === 'dipM') { const o = $('#dipkg_' + CSS.escape(id)); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); }
   }
   function onInput(el) {
+    if (el.dataset && el.dataset.mz && S.mzForm) return onChange(el);
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset.dip) { const o = $('#dipv_' + el.dataset.dip); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); return true; }
     if (el.dataset.jbl && S.jobForm) {
@@ -1757,6 +1884,9 @@ window.ProdUI = function (C) {
     if (el.dataset.scale) { const v = P.scaleNum(el.value); if (isNum(v) && v >= 0) el.value = P.fmtScale(v); return true; }   // v2.9.0: 1,234,567
     if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
+    if (el.dataset && el.dataset.runsel) { const [p, ar] = el.dataset.runsel.split('|'); const b = $('#' + p + '_box_' + ar); if (b && p !== 'rc') b.hidden = el.value !== '1'; return true; }
+    if (el.id === 'mzDay') { if (el.value) S.mzDay = el.value; keepScroll(); return true; }
+    if (el.dataset && el.dataset.mz && S.mzForm) { const [id, k] = el.dataset.mz.split('|'); if (k === undefined) S.mzForm[id] = el.value; else { S.mzForm.levels[id] = Object.assign(S.mzForm.levels[id] || {}, { [k]: el.value }); if (k === 'dipM') { const o = $('#mzkg_' + id); if (o) { const v = el.value; o.innerHTML = dipKgText(v, String(v).trim() ? P.dipKg(v) : null); } } } return true; }
     if (el.id === 'pm_group') { S.procForm = { group: el.value }; keepScroll(); return true; }
     if (el.id === 'pm_section' || el.id === 'pm_task') { S.procForm = Object.assign(S.procForm || {}, el.id === 'pm_task' ? { task: el.value } : { section: el.value }); return true; }
     if (el.id === 'shDay' || el.id === 'shPeriod') { const s = shiftSel(); if (el.id === 'shDay') { if (el.value) s.day = el.value; } else s.period = el.value === 'N' ? 'N' : 'D'; keepScroll(); return true; }
@@ -1793,5 +1923,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };
