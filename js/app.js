@@ -82,6 +82,24 @@
     await DB.setConfig('pinLock', S.pinLock);
     return { ok, left: 5 - S.pinLock.fails, locked: S.pinLock.until > now ? 5 : 0 };
   }
+  // v2.17.0 (Zhax, 17-11-2026): sem nomes — cada registo pede só o PIN; a app grava o título da função (ex.: «Chefe de turno B»)
+  const roleTitle = k => t('role_' + (['A', 'B', 'C', 'D'].indexOf(k) >= 0 ? 'leader' : k), { c: k });
+  async function who(pin, roles) {
+    const now = Date.now();
+    if (S.pinLock.until > now) return { err: t('pinLocked', { m: Math.ceil((S.pinLock.until - now) / 60000) }) };
+    if (!PIN_RE.test(String(pin || ''))) return { err: t('pinNeed') };
+    for (const k of (roles || PIN_ROLES)) {
+      if (await pinOk(S.rolePins[k], pin)) {
+        S.pinLock = { fails: 0, until: 0 }; await DB.setConfig('pinLock', S.pinLock);
+        const title = roleTitle(k); S.operator = title; await DB.setConfig('operator', title);
+        return { role: k, title };
+      }
+    }
+    S.pinLock.fails++; if (S.pinLock.fails >= 5) S.pinLock = { fails: 0, until: now + 5 * 60000 };
+    await DB.setConfig('pinLock', S.pinLock);
+    return { err: PIN_ROLES.some(k => S.rolePins[k]) ? pinMsg({ left: 5 - S.pinLock.fails, locked: S.pinLock.until > now ? 5 : 0 }) : t('pinNotSet') };
+  }
+  const pinFld = (id, lab) => `<label class="fld req">${esc(lab || t('pin'))}<input type="password" maxlength="4" autocomplete="off" id="${id}"></label>`;
   function pinMsg(r) {
     if (r.noPin) return t('pinNotSet');
     if (r.locked) return t('pinLocked', { m: r.locked });
@@ -148,7 +166,7 @@
     if (['A', 'B', 'C', 'D'].some(k => !S.rolePins[k])) out.push({ level: 'warn', text: t('leaderPinsMissing', { c: ['A', 'B', 'C', 'D'].filter(k => !S.rolePins[k]).join(', ') }), nav: 'settings' });
     const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings', daily: true });
     const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings', daily: true });
-    const lo = PU.logoutIssue(); if (lo) out.push({ level: 'bad', text: '👷 ' + lo, nav: 'prod', ptab: 'shift', noClear: true });   // v2.13.0: até ao logout
+    const lo = PU.logoutIssue(); if (lo) out.push({ level: 'bad', text: '👷 ' + lo, nav: 'prod', ptab: 'shift', noClear: true, inView: true });   // v2.13.0: até ao logout
     const sl = PU.shiftIssue(); if (sl) out.push({ level: 'warn', text: '👷 ' + sl, nav: 'prod', ptab: 'shift', daily: true });
     if (PU.stockDue()) out.push({ level: 'warn', text: '📦 ' + t('stockDue'), nav: 'prod', ptab: 'bins', daily: true });
     const from = L.prodDayRange(L.prodDay(nowMs - 24 * 3600000))[0];
@@ -161,7 +179,7 @@
     S.holds.filter(h => h.status !== 'closed' && !cl.has('hold:' + h.id))
       .forEach(h => out.push({ key: 'hold:' + h.id, level: 'bad', text: '⛔ ' + lineName(h.lineId) + ' · ' + holdProds(h) + ' — ' + t('oldHoldOpen', { h: fmtDT(h.openedAt) }) }));
     // v2.13.0: bins retidas pelo CQ — ficam até o supervisor de CQ as libertar (não se limpam aqui)
-    PU.holdIssues().forEach(x => out.push({ level: 'bad', text: '⛔ ' + x, nav: 'prod', ptab: 'bins', noClear: true }));
+    PU.holdIssues().forEach(x => out.push({ level: 'bad', text: '⛔ ' + x, nav: 'prod', ptab: 'bins', noClear: true, inView: true }));
     // amostra rejeitada com uma ordem a encher bins nessa linha: o supervisor de CQ decide se retém essas bins
     L.openQcWarnings(S.samples, cl, from).filter(s => s.decision === 'reject').forEach(s => {
       const j = (S.jobs || []).find(x => x.lineId === s.lineId && x.startedAt <= s.t && (!x.closedAt || x.closedAt >= s.t));
@@ -178,7 +196,7 @@
   }
   const ISS_CLS = { bad: 'b-reject', warn: 'b-warn', info: 'b-info' };
   function issueRow(i) {
-    const link = i.nav ? ` data-nav="${esc(i.nav)}"${i.ptab ? ` data-ptab="${esc(i.ptab)}"` : ''}` : i.repday ? ` data-repday="${esc(i.repday)}"` : i.newsample ? ` data-newsample="${esc(i.newsample)}"` : i.key ? ' data-nav="holds"' : '';
+    const link = i.nav ? ` data-nav="${esc(i.nav)}"${i.ptab ? ` data-ptab="${esc(i.ptab)}"` : ''}` : i.repday ? ` data-repday="${esc(i.repday)}"` : i.newsample ? ` data-newsample="${esc(i.newsample)}"` : '';
     return `<div class="banner ${ISS_CLS[i.level] || 'b-warn'}"${link}>${esc(i.text)}</div>`;
   }
 
@@ -249,7 +267,7 @@
   function render() {
     document.documentElement.lang = S.lang;
     const sh = L.shiftOf(Date.now());
-    const openN = issues().filter(i => i.level !== 'info').length;
+    S._iss = null; S._iss = issues();   // calculados uma vez por desenho (avisos por secção)
     $('#app').innerHTML = `
       <header class="top">
         <div class="brand"><span class="row" style="gap:10px;align-items:center"><img class="logo" src="img/carrinho-logo.png" alt="Carrinho Indústria"><b>${esc(t('appTitle'))}</b></span><span class="mill">${esc(t('mill_' + S.cfg.millType))}</span></div>
@@ -263,18 +281,29 @@
       </header>
       <main id="main">${view()}</main>
       <nav class="bottom">
-        ${navBtn('home', '⌂')}${navBtn('sample', '＋')}${navBtn('holds', '⚠', openN)}${navBtn('prod', '▶', (S.jobs || []).filter(j => j.status === 'running').length)}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('records', '☰')}${navBtn('report', '▤')}${navBtn('settings', '⚙')}
+        ${navBtn('home', '⌂')}${navBtn('sample', '＋', secN('sample'))}${navBtn('prod', '▶', secN('prod'))}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('report', '▤', secN('report'))}${navBtn('settings', '⚙', secN('settings'))}
       </nav>
       ${S.modal ? modal() : ''}`;
   }
   function navBtn(v, icon, badge) {
     return `<button class="nav ${S.view === v ? 'on' : ''}" data-nav="${v}"><span class="ic">${icon}</span><span>${esc(t('nav_' + v))}</span>${badge ? `<i class="badge">${badge}</i>` : ''}</button>`;
   }
+  // v2.17.0 (Zhax, 17-11-2026): sem separador Avisos — cada aviso aparece na sua secção (e o número no botão da secção)
+  const secOf = i => i.nav || (i.repday ? 'report' : 'sample');
+  function secIssues(v, ptab) { return (S._iss || issues()).filter(i => secOf(i) === v && (v !== 'prod' || !ptab || (i.ptab || 'jobs') === ptab)); }
+  const secN = v => ['maint', 'fssc'].indexOf(v) >= 0 ? 0 : secIssues(v).length;
+  function secWarnings(v) {
+    if (['sample', 'prod', 'settings', 'report'].indexOf(v) < 0) return '';
+    const L0 = secIssues(v, v === 'prod' ? (S.prodTab || 'shift') : null).filter(i => !i.inView);   // os que a secção já mostra não se repetem
+    return L0.length ? `<section class="card">${L0.map(i => i.key && !/^gen:/.test(i.key) ? warnCard(i) : issueRow(i)).join('')}</section>` : '';
+  }
   function view() {
+    if (S.view === 'holds' || S.view === 'records') S.view = 'home';
+    return secWarnings(S.view) + view0();
+  }
+  function view0() {
     switch (S.view) {
       case 'sample': return viewSample();
-      case 'holds': return viewHolds();
-      case 'records': return viewRecords();
       case 'report': return viewReport();
       case 'settings': return viewSettings();
       case 'limits': return viewLimits();
@@ -300,8 +329,8 @@
     if (!products().length) return `<section class="card warnbox"><h2>${esc(t('mill_' + S.cfg.millType))}</h2><p>${esc(t('notConfigured'))}</p></section>`;
     const iss = issues(), MAXH = 8;
     const summary = `<section class="card"><div class="row between"><h2>${esc(t('issuesTitle'))}</h2><span class="status ${iss.some(i => i.level === 'bad') ? 'd-reject' : iss.length ? 'd-warn' : 'd-accept'}">${iss.length}</span></div>
-      ${iss.length ? iss.slice(0, MAXH).map(issueRow).join('') + (iss.length > MAXH ? `<button class="btn ghost small" data-nav="holds">${esc(t('seeAllN', { n: iss.length }))}</button>` : '') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>`;
-    return summary + S.cfg.lines.map(lineCard).join('');
+      ${'' ? iss.slice(0, MAXH).map(issueRow).join('') + (iss.length > MAXH ? `<button class="btn ghost small" data-nav="holds">${esc(t('seeAllN', { n: iss.length }))}</button>` : '') : `<p class="sub">${esc(t('noIssues'))}</p>`}</section>`;
+    return S.cfg.lines.map(lineCard).join('');   // v2.17.0: os avisos estão em cada secção
   }
   function lineCard(l) {
     const st = lineRun(l.id);
@@ -351,7 +380,14 @@
     const prod = product(S.form.productId);
     return prod ? L.evaluateSample(prod, S.form.values, S.form.physical) : null;
   }
-  function viewSample() {
+  function daySamples() {
+    const day = L.prodDay(Date.now()), [a, b] = L.prodDayRange(day);
+    const superseded = new Set(S.samples.filter(x => x.correctsId).map(x => x.correctsId));
+    const list = S.samples.filter(x => x.t >= a && x.t < b).sort((x, y) => y.t - x.t);
+    return `<section class="card"><h3>${esc(t('samplesToday'))}</h3>${list.length ? list.map(x => recItem(x, superseded.has(x.id))).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</section>`;
+  }
+  function viewSample() { return viewSample0() + daySamples(); }
+  function viewSample0() {
     if (!products().length) return `<section class="card"><p>${esc(t('notConfigured'))}</p></section>`;
     if (!S.form) newForm();
     const f = S.form, prod = product(f.productId);
@@ -369,7 +405,7 @@
         <label class="fld">${esc(t('line'))}<select id="f_line" ${f.correctsId ? 'disabled' : ''}>${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${l.id === f.lineId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('product'))}<select id="f_prod" ${f.correctsId ? 'disabled' : ''}>${products().map(p => `<option value="${esc(p.id)}" ${p.id === f.productId ? 'selected' : ''}>${esc(prodName(p.id))}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('sampleTime'))}<input type="datetime-local" id="f_time" value="${esc(f.time)}"></label>
-        <label class="fld req">${esc(t('operator'))}<input id="f_op" value="${esc(f.operator)}" autocomplete="name"></label>
+        ${pinFld('f_pin')}
       </div>
       <div class="sub">${esc(t('crew'))}: <b>${esc(L.crewOfTime(Date.now()))}</b></div>
     </section>
@@ -422,7 +458,7 @@
     const f = S.form, prod = product(f.productId);
     const ev = formEval();
     const tms = new Date(f.time).getTime();
-    if (!String(f.operator).trim()) return toast(t('needOperator'));
+    const w0 = await who(($('#f_pin') || {}).value); if (w0.err) return toast(w0.err); f.operator = w0.title;
     if (!isFinite(tms)) return toast(t('badTime'));
     if (tms > Date.now() + 5 * 60000) return toast(t('futureTime'));
     if (tms < Date.now() - L.MAX_BACK_DAYS * 24 * 3600000) return toast(t('tooOld'));   // v2.6.0: resultados entram mais tarde, com a hora da amostragem
@@ -504,7 +540,7 @@
       <div class="grid2">
         <label class="fld">${esc(t('line'))}<select id="waLine">${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${l.id === w.lineId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('prodDay'))}<input type="date" id="waDay" value="${esc(w.day)}"></label>
-        <label class="fld req">${esc(t('operator'))}<input id="waOp" value="${esc(w.operator)}"></label></div>
+        ${pinFld('waPin')}</div>
       <label class="fld">${esc(t('waPasteHere'))}<textarea id="waText" rows="10">${esc(w.text)}</textarea></label>
       <button class="btn primary" id="waParse">${esc(t('waAnalyse'))}</button> <button class="btn ghost" data-nav="sample">${esc(t('cancel'))}</button></section>
       ${w.rows ? `<section class="card"><h3>${esc(t('waPreview'))}</h3>${rows.map(rowHtml).join('') || `<p class="sub">${esc(t('waNothing'))}</p>`}
@@ -512,7 +548,7 @@
   }
   async function waImport() {
     const w = waState();
-    if (!String(w.operator || '').trim()) return toast(t('needOperator'));
+    const w0 = await who(($('#waPin') || {}).value); if (w0.err) return toast(w0.err); w.operator = w0.title;
     waAnalyse();                                         // revalida com os dados actuais (evita duplicados)
     const ok = w.rows.filter(r => r.ok);
     let nS = 0, nM = 0, lastBad = null;
@@ -580,10 +616,8 @@
     const k = esc(i.key), open = S.clearKey === i.key;
     return `<div class="hold"><div class="${ISS_CLS[i.level] === 'b-reject' ? 'txt-reject' : ''}"><b>${esc(i.text)}</b></div>
       ${open ? `<div class="holdform">
-        <label class="fld req">${esc(t('clearRole'))}<select id="wc_role">${CLEAR_ROLES.map(r => `<option value="${r}">${esc(t('role_' + r))}</option>`).join('')}</select></label>
-        <label class="fld req">${esc(t('name'))}<input id="wc_by" value="${esc(S.operator)}"></label>
         <label class="fld req">${esc(t('clearReason'))}<textarea rows="2" id="wc_reason"></textarea></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="wc_pin"></label>
+        ${pinFld('wc_pin')}
         <button class="btn primary" data-wsave="${k}">${esc(t('clearBtn'))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
       : `<div class="row">${i.newsample ? `<button class="btn small" data-newsample="${esc(i.newsample)}">${esc(t('newSample'))}</button>` : ''}${i.detail ? `<button class="btn small" data-correct="${esc(i.detail)}">${esc(t('correct'))}</button>` : ''}<button class="btn ghost small" data-wopen="${k}">${esc(t('explainBtn'))}</button></div>`}</div>`;
   }
@@ -591,10 +625,10 @@
     const list = issues().filter(x => x.key && (key === '*' || x.key === key));
     const i = key === '*' ? { text: t('clearedAllN', { n: list.length }) } : list[0];
     if (!i || !list.length) { S.clearKey = null; return render(); }
-    const role = $('#wc_role').value, by = $('#wc_by').value.trim(), reason = $('#wc_reason').value.trim();
-    if (!by || !reason) return toast(t('needClear'));
-    const r = await checkPin($('#wc_pin').value);
-    if (!r.ok) return toast(pinMsg(r));
+    const reason = $('#wc_reason').value.trim();
+    if (!reason) return toast(t('needClear'));
+    const w = await who($('#wc_pin').value, ['chief', 'sup', 'pm', 'head']); if (w.err) return toast(w.err);
+    const role = w.role, by = w.title;
     const tms = Date.now();
     try { await DB.add('prodChanges', Object.assign(PU.newRec(tms), { kind: 'warnClear', key, keys: list.map(x => x.key), role, by, reason, text: i.text, t: tms })); }
     catch (e) { return toast(t('saveFailed')); }
@@ -609,7 +643,7 @@
       ${(h.actions || []).map(a => `<div class="act"><small>${esc(fmtDT(a.at))} · ${esc(a.by)}: ${esc(a.text)}</small></div>`).join('')}
       ${h.status === 'action' ? `<p class="sub">${esc(t('awaitResample'))}</p>` : ''}
       <div class="holdform">
-        <label class="fld">${esc(t('supervisor'))}<input data-hby="${h.id}"></label>
+
         <label class="fld">${esc(t('correctiveAction'))}<textarea rows="2" data-htext="${h.id}"></textarea></label>
         <label class="fld">${esc(t('pin'))}<input type="password" maxlength="4" data-hpin="${h.id}"></label>
         <button class="btn primary" data-haction="${h.id}">${esc(t('recordAction'))}</button>
@@ -617,10 +651,9 @@
   }
   async function recordHoldAction(id) {
     const h = S.holds.find(x => x.id === id);
-    const by = document.querySelector(`[data-hby="${id}"]`).value, text = document.querySelector(`[data-htext="${id}"]`).value, pin = document.querySelector(`[data-hpin="${id}"]`).value;
-    if (!by.trim() || !text.trim()) return toast(t('needActionBy'));
-    const r = await checkPin(pin);
-    if (!r.ok) return toast(pinMsg(r));
+    const text = document.querySelector(`[data-htext="${id}"]`).value, pin = document.querySelector(`[data-hpin="${id}"]`).value;
+    if (!text.trim()) return toast(t('needActionBy'));
+    const wh = await who(pin, ['sup', 'chief']); if (wh.err) return toast(wh.err); const by = wh.title;
     let nh;
     try { nh = L.addHoldAction(h, { at: Date.now(), by, text }); } catch (e) { return toast(t('saveFailed')); }
     await DB.put('holds', nh); await reloadData();
@@ -696,21 +729,43 @@
     const r = L.shiftReport(L.dayReport(day, S.samples, S.holds, S.cfg), S.repShift);   // v2.10.0: dia inteiro ou um turno
     const gen = S.reports.filter(x => x.day === day);
     const bk = window.DayBook.summary(bookData(), [r.start, r.end]); if (S.repShift) bk.prod = bk.prod.filter(p => p.period === S.repShift);   // v2.9.0: produção, grão, produtos, paragens, segurança, actividades
-    return `<section class="card"><h2>${esc(t('dailyReport'))}</h2>
+    return `<section class="card"><h2>${esc(t('nav_report'))} · ${esc(t('rt_' + repType()))}</h2>
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="repDay" value="${esc(day)}"></label>
         <label class="fld">${esc(t('shift'))}<select id="repShift"><option value="">${esc(t('wholeDay'))}</option><option value="D" ${S.repShift === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${S.repShift === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       <p class="sub">${esc(t('periodFromTo', { a: fmtDT(r.start), b: fmtDT(r.end) }))}</p>
-      <div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
-      <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>
+      ${repType() === 'qc' || repType() === 'daily' ? `<div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
+      <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>` : ''}
       ${r.end > Date.now() ? `<p class="banner b-warn">${esc(t('dayNotFinished'))}</p>` : ''}
       <label class="fld">${esc(t('repType'))}<select id="repType">${REP_TYPES.map(k => `<option value="${k}" ${repType() === k ? 'selected' : ''}>${esc(t('rt_' + k))}</option>`).join('')}</select></label>
       <button class="btn primary big" id="sendXlsx">${esc(t('sendExcel'))}</button>
       <button class="btn" id="genXlsx">${esc(t('genExcel'))}</button>
       <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a></section>
-      <section class="card"><h3>${esc(t('summary'))}</h3><div class="tablewrap"><table><thead><tr><th>${esc(t('line'))}</th><th>${esc(t('product'))}</th><th>${esc(t('shift'))}</th><th>${esc(t('crew'))}</th><th>n</th><th>✓</th><th>!</th><th>✗</th><th>${esc(t('p_moisture'))} ${esc(t('avg'))}</th><th>${esc(t('p_fat'))} ${esc(t('avg'))}</th><th>${esc(t('hoursChecked'))}</th></tr></thead><tbody>
+      ${repSummary(repType(), r, bk, day)}
+      ${repType() === 'qc' || repType() === 'daily' ? `<section class="card"><h3>${esc(t('summary'))}</h3><div class="tablewrap"><table><thead><tr><th>${esc(t('line'))}</th><th>${esc(t('product'))}</th><th>${esc(t('shift'))}</th><th>${esc(t('crew'))}</th><th>n</th><th>✓</th><th>!</th><th>✗</th><th>${esc(t('p_moisture'))} ${esc(t('avg'))}</th><th>${esc(t('p_fat'))} ${esc(t('avg'))}</th><th>${esc(t('hoursChecked'))}</th></tr></thead><tbody>
       ${r.summary.map(g => `<tr><td>${esc(lineName(g.lineId))}</td><td>${esc(prodName(g.productId))}</td><td>${esc(t('shift_' + g.period))}</td><td>${esc(g.crews)}</td><td>${g.n}</td><td>${g.accept}</td><td>${g.warn}</td><td>${g.reject}</td><td>${esc(fmtNum(g.moisture.avg))}</td><td>${esc(fmtNum(g.fat.avg))}</td><td>${g.hoursWithMoisture}/12</td></tr>`).join('') || `<tr><td colspan="11">${esc(t('noRecords'))}</td></tr>`}
-      </tbody></table></div></section>
-      ${bookReport(bk)}`;
+      </tbody></table></div></section>` : ''}`;
+  }
+  // v2.17.0 (Zhax, 17-11-2026): cada relatório com um resumo de alto nível (como o CQ) e exportação para Excel
+  function repSummary(ty, r, bk, day) {
+    const k = (v, lab, cls) => `<div class="${cls || ''}"><b>${v}</b><span>${esc(lab)}</span></div>`;
+    const pc = v => typeof v === 'number' && isFinite(v) ? String(Math.round(v * 10) / 10).replace('.', ',') + ' %' : '—';
+    const sum = f => bk.prod.reduce((a, p) => a + (typeof p[f] === 'number' ? p[f] : 0), 0), has = f => bk.prod.some(p => typeof p[f] === 'number');
+    const prod = () => { const b1 = has('b1') ? sum('b1') : null, fu = has('flour1') || has('flour2') ? sum('flour1') + sum('flour2') : null;
+      return `<section class="card"><h3>${esc(t('rt_prod'))}</h3><div class="kpis">${k(b1 === null ? '—' : kgS(b1), 'B1')}${k(fu === null ? '—' : kgS(fu), 'Fuba 1 + 2')}
+        ${k(b1 && fu !== null ? pc(fu / b1 * 100) : '—', t('srExtraction'))}${k(bk.jobs.started.length + ' / ' + bk.jobs.closed.length, t('rp_jobsShort'))}${k(bk.stops.min + ' min', t('rp_stops'))}</div>
+        <div class="tablewrap"><table><thead><tr><th>${esc(t('shift'))}</th><th>B1</th><th>Fuba 1</th><th>Fuba 2</th><th>${esc(t('srExtraction'))}</th><th>${esc(t('targetAchieved'))}</th></tr></thead><tbody>
+        ${bk.prod.map(p => `<tr><td>${esc(t('shift_' + p.period))}</td><td>${kgS(p.b1)}</td><td>${kgS(p.flour1)}</td><td>${kgS(p.flour2)}</td><td>${pc(p.extraction)}</td><td>${pc(p.pct)}</td></tr>`).join('') || `<tr><td colspan="6">—</td></tr>`}</tbody></table></div></section>`; };
+    const maint = () => { const E = window.Maint.effective(MU.entries()).filter(e => e.prodDay === day && (!S.repShift || e.period === S.repShift));
+      const of = x => E.filter(e => e.kind === x), stopMin = of('stop').reduce((a, e) => a + (Number(e.durationMin) || 0), 0), mt = MU.t;
+      return `<section class="card"><h3>${esc(t('rt_maint'))}</h3><div class="kpis">${k(of('stop').length + ' · ' + stopMin + ' min', mt('t_stops'))}${k(of('work').length, mt('t_work'))}
+        ${k(of('pmJob').length + ' / ' + of('pmUpdate').filter(e => e.status === 'done').length, mt('t_pm'))}${k(of('consumable').length, mt('t_cons'))}</div>
+        ${of('shift').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || '—')}</div></div>`).join('')}</section>`; };
+    const fssc = () => { const F = window.Fssc, R = (window.FsscReqs || {}).REQS || [], E = FU.entries ? FU.entries() : [], mo = day.slice(0, 7), today = L.prodDay(Date.now());
+      const sc = F.score(R, 'mill', F.grades(E, mo)), tr = F.trainingMonth(F.trainings(E, today), mo);
+      return `<section class="card"><h3>${esc(t('rt_fssc'))} · ${esc(mo)}</h3><div class="kpis">${k(pc(sc.score), t('fs_score'))}${k(sc.graded + '/' + sc.applicable, t('fs_graded'))}
+        ${k(F.monthState(E, mo).closed ? t('yes') : t('no'), t('fs_closed'))}${k(F.actions(E, today).filter(a => !a.done).length, t('fs_actions'))}
+        ${k(F.complaints(E, today).filter(c => c.open).length, t('fs_complaints'))}${k(tr.held + '/' + tr.planned, t('fs_training'))}</div></section>`; };
+    return ty === 'prod' || ty === 'daily' ? prod() : ty === 'maint' ? maint() : ty === 'fssc' ? fssc() : '';
   }
   // v2.9.0: secções do relatório além do CQ (Zhax, 14-11-2026)
   function bookReport(bk) {
@@ -904,7 +959,7 @@
           <label class="fld">${esc(t('warnAboveLbl'))}<input inputmode="decimal" data-lim="${p}|warnHi" value="${esc(fmtNum(m.warnHi))}"></label>
           <label class="fld">${esc(t('frequency'))}<select data-lim="${p}|freq">${L.FREQS.map(fr => `<option value="${fr}" ${m.freq === fr ? 'selected' : ''}>${esc(t('fr_' + fr))}</option>`).join('')}</select></label>
         </div></details>`; }).join('')}
-      <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="limBy"></label>
+      <section class="card">
         <label class="fld req">${esc(t('reason'))}<input id="limReason"></label>
         <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="limPin"></label>
         <button class="btn primary big" id="saveLimits">${esc(t('saveLimits'))}</button>
@@ -940,8 +995,9 @@
   }
   async function saveLimits() {
     const pid = S.limitsDraft.pid, prod = product(pid);
-    const by = $('#limBy').value.trim(), reason = $('#limReason').value.trim();
-    if (!by || !reason) return toast(t('needByReason'));
+    const reason = $('#limReason').value.trim();
+    if (!reason) return toast(t('needByReason'));
+    const wl = await who($('#limPin').value, ['sup', 'chief']); if (wl.err) return toast(wl.err); const by = wl.title;
     const newLim = JSON.parse(JSON.stringify(prod.limits));
     const errs = [];
     document.querySelectorAll('[data-lim]').forEach(el => {
@@ -1027,7 +1083,6 @@
     if (el.dataset.val && S.form) { S.form.values[el.dataset.val] = el.value; updateLive(); return; }
     if (el.id === 'waText' || el.id === 'waOp') { const w = waState(); if (el.id === 'waText') { w.text = el.value; w.rows = null; } else w.operator = el.value; return; }
     if (!S.form) return;
-    if (el.id === 'f_op') S.form.operator = el.value;
     if (el.id === 'f_notes') S.form.notes = el.value;
     if (el.id === 'f_reason') S.form.reason = el.value;
     if (el.id === 'f_time') S.form.time = el.value;
@@ -1096,7 +1151,7 @@
 
   // ---------- arranque ----------
   async function start() {
-    PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin, pinMsg, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
+    PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin, pinMsg, who, pinFld, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
       lineName, lineStatus, anyLabel, decLabel, decCls, waLink, plan: () => S.plan });
     // Manutenção: registos na loja 'maint'; passagens de rolos = dados mestre js/roll-passages.js (tabelas de estriagem C e D)
     const crewOf = (day, period) => L.crewOfTime(L.prodDayRange(day)[0] + (period === 'N' ? 12 : 0) * 3600000 + 60000);
@@ -1108,12 +1163,12 @@
       operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); },
       pmTasks: () => (window.PmList && window.PmList.TASKS) || [],   // lista de preventiva da Linha C (Mill C - Preventative.xlsx)
       rollDefaults: () => (window.RollPassages && window.RollPassages.DEFAULT_HOURS) || {}, rollHours: () => S.rollHours, rollHoursRefresh: refreshRollHours,
-      checkPin, pinMsg });
+      checkPin, pinMsg, who });
     // Conformidade FSSC 22000: área da moagem; scores separados da Grain-Mgt (Zhax, 28-10-2026)
     FU = window.FsscUI({ lang: () => S.lang, esc, toast, render, area: 'mill', training: true,
       load: () => DB.all('fssc'), add: rec => DB.add('fssc', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
       operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })),
-      complaints: true, products: () => products().map(p => prodName(p.id)) });
+      complaints: true, products: () => products().map(p => prodName(p.id)), who, roleTitles: () => PIN_ROLES.map(roleTitle) });
     S.rollHours = readRollHours(); S.plan = readPlan();
     await load(); render();
     refreshRollHours().then(ok => { if (ok) render(); });

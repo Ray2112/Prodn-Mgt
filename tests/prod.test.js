@@ -730,3 +730,15 @@ console.log('OK — v1.5.0 (códigos, unidades, caudal) + bins-status');
   assert.deepStrictEqual(P.OUT_DESTS, ['FEM', 'FRA', 'FCM', 'bigbag', 'other']);
   console.log('prod v2.16.0: ok');
 }
+
+// v2.17.0: mergulho das bins C/M, (20 − D) × 4 500
+{
+  const P = require('../js/prod.js'), assert = require('assert');
+  assert.strictEqual(P.dipKg('5', P.DIP_CM), 67500);
+  assert.strictEqual(P.dipKg('5'), 101250);
+  const cfg = P.defaultProdConfig();
+  const r = P.validateBinStock({ levels: { B05: { dipM: '10' }, B01: { dipM: '20' } }, by: 'X' }, cfg, {});
+  assert.deepStrictEqual([r.values.B05.kg, r.values.B05.method, r.values.B01.kg], [45000, 'dip', 0]);
+  assert.strictEqual(P.dipSpec('B05', cfg), P.DIP_CM);
+  console.log('prod v2.17.0: ok');
+}
