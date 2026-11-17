@@ -60,16 +60,23 @@
     const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
     return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
   }
-  async function setPin(pin) {
+  // v2.16.0 (Zhax, 17-11-2026): um PIN de 4 caracteres por função. Os PIN antigos foram apagados uma vez; um PIN ainda não definido
+  // grava-se livremente; mudar um PIN já definido exige o PIN do Chief Miller. Aprovações da app (limites, definições, retenções,
+  // FSSC): PIN do Supervisor ou do Chief Miller (assumido). Os chefes de turno A–D usam o seu PIN no login e logout.
+  const PIN_ROLES = ['pm', 'head', 'chief', 'sup', 'A', 'B', 'C', 'D'];
+  const PIN_RE = /^[A-Za-z0-9]{4}$/;
+  async function makePin(pin) {
     const salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x => x.toString(16).padStart(2, '0')).join('');
-    await DB.setConfig('pin', { salt, hash: await sha(salt + pin) });
+    return { salt, hash: await sha(salt + pin), setAt: new Date().toISOString() };
   }
-  async function checkPin(pin) {
+  const pinOk = async (p, pin) => !!p && (await sha(p.salt + String(pin || ''))) === p.hash;
+  async function checkPin(pin, roles) {
     const now = Date.now();
     if (S.pinLock.until > now) return { ok: false, locked: Math.ceil((S.pinLock.until - now) / 60000) };
-    const p = await DB.getConfig('pin');
-    if (!p) return { ok: false, noPin: true };
-    const ok = (await sha(p.salt + String(pin || ''))) === p.hash;
+    const R = (roles || ['sup', 'chief']).map(k => (S.rolePins || {})[k]).filter(Boolean);
+    if (!R.length) return { ok: false, noPin: true };
+    let ok = false;
+    for (const p of R) if (await pinOk(p, pin)) ok = true;
     if (ok) S.pinLock = { fails: 0, until: 0 };
     else { S.pinLock.fails++; if (S.pinLock.fails >= 5) S.pinLock = { fails: 0, until: now + 5 * 60000 }; }
     await DB.setConfig('pinLock', S.pinLock);
@@ -88,7 +95,13 @@
     S.operator = (await DB.getConfig('operator')) || '';
     S.lineState = (await DB.getConfig('lineState')) || {};
     S.pinLock = (await DB.getConfig('pinLock')) || { fails: 0, until: 0 };
-    S.pinSet = !!(await DB.getConfig('pin'));
+    if (!(await DB.getConfig('pinReset216'))) {   // v2.16.0: apagar todos os PIN antigos, uma vez (Zhax, 17-11-2026)
+      await DB.setConfig('pin', null); await DB.setConfig('leaderPins', null); await DB.setConfig('rolePins', {});
+      await DB.setConfig('pinLock', { fails: 0, until: 0 }); S.pinLock = { fails: 0, until: 0 };
+      await DB.setConfig('pinReset216', new Date().toISOString());
+    }
+    S.rolePins = (await DB.getConfig('rolePins')) || {};
+    S.pinSet = !!(S.rolePins.sup || S.rolePins.chief);
     await reloadData();
     await PU.load();
     await MU.reload();
@@ -132,6 +145,7 @@
   function issues() {
     const out = [], cl = clears(), nowMs = Date.now();
     if (!S.pinSet) out.push({ level: 'warn', text: t('setPinFirst'), nav: 'settings' });
+    if (['A', 'B', 'C', 'D'].some(k => !S.rolePins[k])) out.push({ level: 'warn', text: t('leaderPinsMissing', { c: ['A', 'B', 'C', 'D'].filter(k => !S.rolePins[k]).join(', ') }), nav: 'settings' });
     const up = PU.uploadIssue(); if (up) out.push({ level: 'bad', text: '☁ ' + up, nav: 'settings', daily: true });
     const sf = PU.siloFeedIssue(); if (sf) out.push({ level: 'warn', text: '🌾 ' + sf, nav: 'settings', daily: true });
     const lo = PU.logoutIssue(); if (lo) out.push({ level: 'bad', text: '👷 ' + lo, nav: 'prod', ptab: 'shift', noClear: true });   // v2.13.0: até ao logout
@@ -211,7 +225,7 @@
     const out = [];
     S.cfg.lines.forEach(l => {
       const st = lineRun(l.id);
-      if (!st.running) return;
+      if (!st.running || !PU.prodOn()) return;   // v2.16.0: sem produção registada no turno, sem verificações horárias
       lineProds(st).forEach(pid => {
         const prod = product(pid); if (!prod) return;
         const d = L.dueStatus(prod, lineSamples(l.id), st.since, Date.now(), S.cfg.graceMin);
@@ -294,7 +308,8 @@
     const status = lineStatus(l.id);
     const pids = lineProds(st), multi = pids.length > 1;
     let due = '';
-    if (st.running) pids.forEach(pid => {
+    if (st.running && !PU.prodOn()) due = `<p class="sub">${esc(t('noProdNoChecks'))}</p>`;
+    if (st.running && PU.prodOn()) pids.forEach(pid => {
       const prod = product(pid); if (!prod) return;
       const d = L.dueStatus(prod, lineSamples(l.id), st.since, Date.now(), S.cfg.graceMin);
       due += `${multi ? `<div class="sub"><b>▸ ${esc(prodName(pid))}</b></div>` : ''}<div class="due"><div class="sub">${esc(t('hourlyChecks'))}</div>${d.hourly.map(x =>
@@ -551,7 +566,7 @@
         <label class="fld req">${esc(t('clearRole'))}<select id="wc_role">${CLEAR_ROLES.map(r => `<option value="${r}">${esc(t('role_' + r))}</option>`).join('')}</select></label>
         <label class="fld req">${esc(t('name'))}<input id="wc_by" value="${esc(S.operator)}"></label>
         <label class="fld req">${esc(t('clearReason'))}<textarea rows="2" id="wc_reason"></textarea></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="wc_pin"></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="wc_pin"></label>
         <button class="btn primary" data-wsave="*">${esc(t('clearAllBtn', { n: all.length }))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
       : `<button class="btn" data-wopen="*">${esc(t('clearAllBtn', { n: all.length }))}</button>`;
     return `<section class="card"><h2>${esc(t('issuesTitle'))}</h2>${clearAll}
@@ -568,7 +583,7 @@
         <label class="fld req">${esc(t('clearRole'))}<select id="wc_role">${CLEAR_ROLES.map(r => `<option value="${r}">${esc(t('role_' + r))}</option>`).join('')}</select></label>
         <label class="fld req">${esc(t('name'))}<input id="wc_by" value="${esc(S.operator)}"></label>
         <label class="fld req">${esc(t('clearReason'))}<textarea rows="2" id="wc_reason"></textarea></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="wc_pin"></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="wc_pin"></label>
         <button class="btn primary" data-wsave="${k}">${esc(t('clearBtn'))}</button> <button class="btn ghost" data-wopen="">${esc(t('cancel'))}</button></div>`
       : `<div class="row">${i.newsample ? `<button class="btn small" data-newsample="${esc(i.newsample)}">${esc(t('newSample'))}</button>` : ''}${i.detail ? `<button class="btn small" data-correct="${esc(i.detail)}">${esc(t('correct'))}</button>` : ''}<button class="btn ghost small" data-wopen="${k}">${esc(t('explainBtn'))}</button></div>`}</div>`;
   }
@@ -596,7 +611,7 @@
       <div class="holdform">
         <label class="fld">${esc(t('supervisor'))}<input data-hby="${h.id}"></label>
         <label class="fld">${esc(t('correctiveAction'))}<textarea rows="2" data-htext="${h.id}"></textarea></label>
-        <label class="fld">${esc(t('pin'))}<input type="password" inputmode="numeric" data-hpin="${h.id}"></label>
+        <label class="fld">${esc(t('pin'))}<input type="password" maxlength="4" data-hpin="${h.id}"></label>
         <button class="btn primary" data-haction="${h.id}">${esc(t('recordAction'))}</button>
       </div></div>`;
   }
@@ -842,24 +857,24 @@
       </section>
       <section class="card"><h3>${esc(t('rollSet'))}</h3>
         <button class="btn" data-nav="maint" data-mact="tab" data-v="rollset">${esc(t('rollSet'))}</button></section>
-      <section class="card"><h3>${esc(t('supervisorPin'))}</h3>
-        <p class="sub">${esc(S.pinSet ? t('pinIsSet') : t('pinNotSet'))}</p>
-        ${S.pinSet ? `<label class="fld">${esc(t('currentPin'))}<input type="password" inputmode="numeric" id="pinOld"></label>` : ''}
-        <label class="fld">${esc(t('newPin'))}<input type="password" inputmode="numeric" id="pinNew"></label>
-        <label class="fld">${esc(t('repeatPin'))}<input type="password" inputmode="numeric" id="pinNew2"></label>
+      <section class="card"><h3>${esc(t('pinsTitle'))}</h3>
+        <div class="tablewrap"><table class="tbl"><tr><th></th><th>${esc(t('status'))}</th><th>${esc(t('newPin'))}</th></tr>${PIN_ROLES.map(k => `<tr><td>${esc(roleName(k))}</td>
+          <td><span class="chip ${S.rolePins[k] ? 'd-accept' : 'd-warn'}">${esc(S.rolePins[k] ? t('pinIsSet') : t('pinNotSet'))}</span></td>
+          <td><input type="password" autocomplete="off" maxlength="4" data-rpin="${k}" style="max-width:110px"></td></tr>`).join('')}</table></div>
+        ${PIN_ROLES.some(k => S.rolePins[k]) ? `<label class="fld">${esc(t('pinChiefToChange'))}<input type="password" autocomplete="off" maxlength="4" id="pinChief"></label>` : ''}
         <button class="btn primary" id="savePin">${esc(t('savePin'))}</button></section>
       <section class="card"><h3>${esc(t('qualityLimits'))}</h3>
         <button class="btn" id="openLimits">${esc(t('editLimits'))}</button></section>
       <section class="card"><h3>${esc(t('limMasterTitle'))}</h3>
         <p class="sub"><b>${esc(S.cfg.limitsVersion ? t('limMasterVersion', { v: S.cfg.limitsVersion }) : t('limMasterNone'))}</b></p>
-        <label class="fld">${esc(t('pin'))}<input type="password" inputmode="numeric" id="limMasterPin"></label>
+        <label class="fld">${esc(t('pin'))}<input type="password" maxlength="4" id="limMasterPin"></label>
         <button class="btn" id="exportLim">${esc(t('limMasterExport'))}</button>
         <label class="btn ghost">${esc(t('limMasterImport'))}<input type="file" id="importLim" accept="application/json" hidden></label></section>
       ${PU.settingsCard()}
       <section class="card"><h3>${esc(t('lines'))}</h3>
         ${S.cfg.lines.map(l => `<label class="fld">${esc(l.id)}<input data-linename="${esc(l.id)}" value="${esc(l.name)}"></label>`).join('')}
         <label class="fld">${esc(t('graceMin'))}<input inputmode="numeric" id="graceMin" value="${esc(S.cfg.graceMin)}"></label>
-        <label class="fld">${esc(t('pin'))}<input type="password" inputmode="numeric" id="linesPin"></label>
+        <label class="fld">${esc(t('pin'))}<input type="password" maxlength="4" id="linesPin"></label>
         <button class="btn" id="saveLines">${esc(t('save'))}</button></section>
       <section class="card"><h3>${esc(t('alerts'))}</h3>
         <p class="sub">${esc(t('notifStatus'))}: <b>${esc('Notification' in window ? Notification.permission : t('unsupported'))}</b></p>
@@ -891,7 +906,7 @@
         </div></details>`; }).join('')}
       <section class="card"><label class="fld req">${esc(t('supervisor'))}<input id="limBy"></label>
         <label class="fld req">${esc(t('reason'))}<input id="limReason"></label>
-        <label class="fld req">${esc(t('pin'))}<input type="password" inputmode="numeric" id="limPin"></label>
+        <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="limPin"></label>
         <button class="btn primary big" id="saveLimits">${esc(t('saveLimits'))}</button>
         <button class="btn ghost" data-nav="settings">${esc(t('cancel'))}</button></section>`;
   }
@@ -1035,12 +1050,19 @@
     if (el.id === 'importLim') { const f = el.files[0]; el.value = ''; return importLimitsMaster(f); }   // limpa para poder escolher o mesmo ficheiro de novo (ex.: após PIN errado)
   });
 
+  function roleName(k) { return ['A', 'B', 'C', 'D'].indexOf(k) >= 0 ? t('role_leader', { c: k }) + ((S.cfgP && S.cfgP.leaders && S.cfgP.leaders[k]) ? ' · ' + S.cfgP.leaders[k] : '') : t('role_' + k); }
   async function savePin() {
-    const n1 = $('#pinNew').value, n2 = $('#pinNew2').value;
-    if (!/^\d{4,8}$/.test(n1)) return toast(t('pinFormat'));
-    if (n1 !== n2) return toast(t('pinMismatch'));
-    if (S.pinSet) { const r = await checkPin($('#pinOld').value); if (!r.ok) return toast(pinMsg(r)); }
-    await setPin(n1); S.pinSet = true; toast(t('pinSaved')); render();
+    const nw = [...document.querySelectorAll('[data-rpin]')].filter(el => el.value !== '').map(el => ({ role: el.dataset.rpin, pin: el.value }));
+    if (!nw.length) return toast(t('noChanges'));
+    if (nw.some(x => !PIN_RE.test(x.pin))) return toast(t('pinFormat'));
+    if (nw.some(x => S.rolePins[x.role])) {   // mudar um PIN já definido: PIN do Chief Miller
+      const r = await checkPin(($('#pinChief') || {}).value, ['chief']);
+      if (!r.ok) return toast(r.noPin ? t('pinChiefNone') : pinMsg(r));
+    }
+    const rp = Object.assign({}, S.rolePins);
+    for (const x of nw) rp[x.role] = await makePin(x.pin);
+    await DB.setConfig('rolePins', rp); S.rolePins = rp; S.leaderPins = rp; S.pinSet = !!(rp.sup || rp.chief);
+    toast(t('pinSaved')); render();
   }
   async function saveLines() {
     const r = await checkPin($('#linesPin').value);

@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.15.0';
+  const VERSION = '2.16.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -680,7 +680,9 @@
     return Object.keys(by).map(k => Object.assign(by[k], { pct: by[k].capKg ? Math.round(by[k].kg / by[k].capKg * 1000) / 10 : null }));
   }
   // Saída de produto de uma bin durante o dia (v2.6.0). f: {binId, kg (texto), dest, by, note}
-  const OUT_DESTS = ['bagging', 'bulk', 'transfer', 'other'];
+  // v2.16.0 (Zhax, 17-11-2026): destinos FEM, FRA, FCM, Big Bag, outro (os registos antigos com ensaque/granel/transferência continuam a ler-se)
+  const OUT_DESTS = ['FEM', 'FRA', 'FCM', 'bigbag', 'other'];
+  const OLD_DESTS = ['bagging', 'bulk', 'transfer'];
   function validateDispatch(f, cfgP, binEvents, holds) {
     const E = [];
     const b = (cfgP.bins || []).find(x => x.id === f.binId);
@@ -1134,6 +1136,76 @@
   // Logout (v2.15.0): % feito de cada trabalho marcado no login; 0–100, obrigatório
   function readPct(v) { const n = num(v); return n === null || isNaN(n) || n < 0 || n > 100 ? null : Math.round(n * 10) / 10; }
 
+  // v2.16.0 (Zhax, 17-11-2026): no login e durante o turno — Produção, Limpeza, Reprocessamento: Sim/Não, hora de início e comentário.
+  // Login: run {area: {on, at, time, comment}}; mudanças no turno: registo 'runState' {area, on, at, time, comment}.
+  // Sem login ou com Produção = Não: não há verificações horárias de amostras.
+  const RUN_AREAS = ['production', 'cleaning', 'reproc'];
+  // HH:MM de um turno → ms (no turno da noite, horas antes das 07:00 são do dia seguinte); dayStartMs = início do dia de produção (07:00)
+  function shiftTimeMs(dayStartMs, period, hm) {
+    if (!/^\d{2}:\d{2}$/.test(String(hm || ''))) return null;
+    const [h, m] = hm.split(':').map(Number);
+    let mins = (h * 60 + m) - 7 * 60;
+    if (mins < 0) mins += 24 * 60;
+    if (period === 'D' && mins >= 12 * 60) return null;
+    if (period === 'N' && mins < 12 * 60) return null;
+    return dayStartMs + mins * 60000;
+  }
+  // Estado de cada área num turno, no instante 'atMs' (o último registo com hora ≤ atMs manda)
+  function runState(log, day, period, atMs) {
+    const eff = effectiveLog(log).filter(x => x.prodDay === day && x.period === period);
+    const li = eff.filter(x => x.kind === 'login').sort((a, b) => b.t - a.t)[0] || null;
+    const out = {};
+    RUN_AREAS.forEach(a => { out[a] = { on: false, at: null, comment: '', set: false }; });
+    if (!li) return { login: false, areas: out };
+    RUN_AREAS.forEach(a => {
+      const r = li.run && li.run[a];
+      if (r) out[a] = { on: !!r.on, at: r.at || li.t, comment: r.comment || '', set: true };
+      else if (a === 'production') out[a] = { on: li.state !== 'off', at: li.t, comment: '', set: true };   // logins antes da v2.16.0
+    });
+    eff.filter(x => x.kind === 'runState' && RUN_AREAS.indexOf(x.area) >= 0 && (x.at || x.t) <= atMs).sort((a, b) => (a.at || a.t) - (b.at || b.t))
+      .forEach(x => { out[x.area] = { on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }; });
+    return { login: true, areas: out };
+  }
+
+  // v2.16.0 (Zhax, 17-11-2026): reconciliação das bins de milho sujo (D/M) e temperado (C/M), em grupo, pelas balanças.
+  // D/M: leitura de ontem + recebido dos silos − Limpeza − Impurezas = esperado; comparado com a leitura desta manhã.
+  // C/M: leitura de ontem + Limpeza − B1 = esperado (a água da temperagem aparece na diferença). Nada é estimado: falta = null.
+  const dayBefore = d => new Date(Date.parse(d + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  function groupReading(stocks, day, ids) {
+    const ok = (stocks || []).filter(s => s && s.prodDay === day && s.levels && ids.every(id => s.levels[id] && isNum(s.levels[id].kg))).sort((a, b) => b.t - a.t)[0];
+    return ok ? { t: ok.t, kg: r3(ids.reduce((a, id) => a + ok.levels[id].kg, 0)), levels: ok.levels, by: ok.by } : null;
+  }
+  function reconcile(ctx) {
+    const c = ctx || {}, day = c.day, prev = dayBefore(day);
+    const dm = (c.cfgP.dirtyBins || []).map(b => b.id), cm = (c.cfgP.temperedBins || []).map(b => b.id);
+    const lo = per => effectiveLog(c.log).filter(x => x.kind === 'logout' && x.prodDay === prev && x.period === per).sort((a, b) => b.t - a.t)[0] || null;
+    const shifts = [lo('D'), lo('N')];
+    const scale = k => shifts.every(x => x && x.shiftKg && isNum(x.shiftKg[k])) ? r3(shifts.reduce((a, x) => a + x.shiftKg[k], 0)) : null;
+    const clean = scale('clean'), scr = scale('screenings'), b1 = scale('b1');
+    const one = (ids, ins, outs) => {
+      const y = groupReading(c.stocks, prev, ids), td = groupReading(c.stocks, day, ids);
+      const add = ins.every(isNum) && outs.every(isNum) && y ? r3(y.kg + ins.reduce((a, v) => a + v, 0) - outs.reduce((a, v) => a + v, 0)) : null;
+      const diff = isNum(add) && td ? r3(td.kg - add) : null;
+      return { yesterday: y, today: td, expected: add, diff, diffPct: isNum(diff) && add ? Math.round(diff / add * 1000) / 10 : null };
+    };
+    const yD = groupReading(c.stocks, prev, dm), tD = groupReading(c.stocks, day, dm);
+    const received = yD && tD ? r3((c.moves || []).filter(m => m && m.type === 'TRANSFER' && dm.indexOf(m.binId) >= 0 && m.t > yD.t && m.t <= tD.t && isNum(m.kg)).reduce((a, m) => a + m.kg, 0)) : null;
+    return { day, prev, scales: { clean, screenings: scr, b1, shifts: shifts.map(x => !!x) },
+      dm: Object.assign(one(dm, [received], [clean, scr]), { received, clean, screenings: scr }),
+      cm: Object.assign(one(cm, [clean], [b1]), { clean, b1 }) };
+  }
+  // Totais por tipo (cor) e grau, da leitura mais recente de cada bin no dia
+  function maizeByGrade(stocks, day, ids) {
+    const out = {};
+    ids.forEach(id => {
+      const s = (stocks || []).filter(x => x && x.prodDay === day && x.levels && x.levels[id] && isNum(x.levels[id].kg)).sort((a, b) => b.t - a.t)[0];
+      if (!s) return;
+      const L = s.levels[id], k = (L.colour || '?') + '|' + (L.grade || '?');
+      out[k] = r3((out[k] || 0) + L.kg);
+    });
+    return Object.keys(out).sort().map(k => ({ colour: k.split('|')[0], grade: k.split('|')[1], kg: out[k] }));
+  }
+
   const SHIFT_JOBS = ['hk0', 'hk1', 'hk2', 'hk3', 'hk4', 'hk5', 'hk6', 'reproc', 'fumig', 'warehouse', 'plansifter', 'sweepings', 'other'];
   function readScales(o) {
     const out = {}, bad = [];
@@ -1256,7 +1328,7 @@
     return out;
   }
 
-  const api = { PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

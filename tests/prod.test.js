@@ -699,3 +699,34 @@ console.log('OK — v1.5.0 (códigos, unidades, caudal) + bins-status');
   assert.deepStrictEqual(['80', '0', '100', '101', '', 'x', '55,5'].map(P.readPct), [80, 0, 100, null, null, null, 55.5]);
   console.log('prod v2.15.0: ok');
 }
+
+// v2.16.0: em marcha, reconciliação D/M e C/M, totais por tipo e grau
+{
+  const P = require('../js/prod.js'), assert = require('assert');
+  const s0 = Date.UTC(2026, 10, 17, 7);
+  assert.strictEqual(P.shiftTimeMs(s0, 'D', '07:00'), s0);
+  assert.strictEqual(P.shiftTimeMs(s0, 'N', '06:59'), s0 + (24 * 60 - 1) * 60000);
+  assert.strictEqual(P.shiftTimeMs(s0, 'N', '10:00'), null);
+  const log = [{ uid: 'l', kind: 'login', prodDay: '2026-11-17', period: 'D', t: s0 + 60000, run: { production: { on: false }, cleaning: { on: true, at: s0 + 60000 }, reproc: { on: false } } },
+    { uid: 'r1', kind: 'runState', prodDay: '2026-11-17', period: 'D', area: 'production', on: true, at: s0 + 3600000, t: s0 + 3600000 }];
+  assert.strictEqual(P.runState(log, '2026-11-17', 'D', s0 + 1800000).areas.production.on, false);
+  assert.strictEqual(P.runState(log, '2026-11-17', 'D', s0 + 7200000).areas.production.on, true);
+  assert.strictEqual(P.runState(log, '2026-11-17', 'N', s0 + 7200000).login, false);
+  assert.strictEqual(P.runState([{ uid: 'o', kind: 'login', prodDay: 'x', period: 'D', t: 1, state: 'off' }], 'x', 'D', 5).areas.production.on, false);   // login antigo
+  const cfgP = { dirtyBins: [{ id: 'B01' }, { id: 'B02' }], temperedBins: [{ id: 'B05' }] };
+  const lv = (a, b, c) => ({ B01: { kg: a, colour: 'Branco', grade: 'G1' }, B02: { kg: b, colour: 'Branco', grade: 'G2' }, B05: { kg: c, colour: 'Branco', grade: 'G1' } });
+  const stocks = [{ prodDay: '2026-11-16', t: 100, levels: lv(100000, 50000, 40000) }, { prodDay: '2026-11-17', t: 200, levels: lv(90000, 60000, 45000) }];
+  const lo = (p, k) => ({ uid: p, kind: 'logout', prodDay: '2026-11-16', period: p, t: 150, shiftKg: k });
+  const L2 = [lo('D', { clean: 100000, screenings: 2000, b1: 95000 }), lo('N', { clean: 100000, screenings: 2000, b1: 100000 })];
+  const R = P.reconcile({ day: '2026-11-17', cfgP, stocks, log: L2, moves: [{ type: 'TRANSFER', binId: 'B01', t: 160, kg: 205000 }, { type: 'TRANSFER', binId: 'B01', t: 250, kg: 9 }] });
+  assert.strictEqual(R.dm.received, 205000);
+  assert.strictEqual(R.dm.expected, 150000 + 205000 - 200000 - 4000);
+  assert.strictEqual(R.dm.diff, 150000 - 151000);
+  assert.strictEqual(R.cm.expected, 40000 + 200000 - 195000);
+  assert.strictEqual(R.cm.diff, 0);
+  const R2 = P.reconcile({ day: '2026-11-17', cfgP, stocks, log: L2.slice(0, 1), moves: [] });
+  assert.strictEqual(R2.dm.expected, null);   // falta um logout: nada estimado
+  assert.deepStrictEqual(P.maizeByGrade(stocks, '2026-11-17', ['B01', 'B02', 'B05']), [{ colour: 'Branco', grade: 'G1', kg: 135000 }, { colour: 'Branco', grade: 'G2', kg: 60000 }]);
+  assert.deepStrictEqual(P.OUT_DESTS, ['FEM', 'FRA', 'FCM', 'bigbag', 'other']);
+  console.log('prod v2.16.0: ok');
+}
