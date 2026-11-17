@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.16.0';
+  const VERSION = '2.17.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
@@ -404,21 +404,25 @@
   // quantidade = (20 - D) x 6 750 kg. As apps registam, não controlam: acima da capacidade e produto diferente do registado
   // passam a avisos (a leitura fica gravada); só valores inválidos ou em falta impedem a gravação.
   const DIP = { heightM: 20, kgPerM: 6750, bins: ['B01', 'B02', 'B03', 'B04'], source: 'Zhax, 12-11-2026' };
-  function dipKg(d) {
-    const D = typeof d === 'number' ? d : num(d, 'm');
-    if (D === null || isNaN(D) || D < 0 || D > DIP.heightM) return null;
-    return r3((DIP.heightM - D) * DIP.kgPerM);
+  // v2.17.0 (Zhax, 17-11-2026): bins C/M também por mergulho: kg = (20 − D) × 4 500 (D = espaço vazio em m)
+  const DIP_CM = { heightM: 20, kgPerM: 4500, source: 'Zhax, 17-11-2026' };
+  function dipKg(d, spec) {
+    const S0 = spec || DIP, D = typeof d === 'number' ? d : num(d, 'm');
+    if (D === null || isNaN(D) || D < 0 || D > S0.heightM) return null;
+    return r3((S0.heightM - D) * S0.kgPerM);
   }
+  const dipSpec = (binId, cfgP) => (cfgP && (cfgP.temperedBins || []).some(b => b.id === binId)) ? DIP_CM : DIP;
   function validateBinStock(f, cfgP, ctx) {
     const E = [], W = [], values = {}, binOps = [], c = ctx || {};
     stockBins(cfgP).forEach(b => {
       const x = (f.levels || {})[b.id] || {};
       const raw = x.kg === undefined || x.kg === null ? '' : String(x.kg).trim();
       const dipRaw = x.dipM === undefined || x.dipM === null ? '' : String(x.dipM).trim();
-      const isDip = b.kind === 'dirty' && DIP.bins.indexOf(b.id) >= 0 && dipRaw !== '';
+      const isDip = ((b.kind === 'dirty' && DIP.bins.indexOf(b.id) >= 0) || b.kind === 'tempered') && dipRaw !== '';
       if (raw === '' && !isDip) return;
-      const kg = isDip ? dipKg(dipRaw) : num(raw, 'kg');
-      if (kg === null || isNaN(kg) || kg < 0) { E.push({ code: isDip ? 'stock_dip_bad' : 'stock_bad', bin: b.id, max: DIP.heightM }); return; }
+      const spec = b.kind === 'tempered' ? DIP_CM : DIP;
+      const kg = isDip ? dipKg(dipRaw, spec) : num(raw, 'kg');
+      if (kg === null || isNaN(kg) || kg < 0) { E.push({ code: isDip ? 'stock_dip_bad' : 'stock_bad', bin: b.id, max: spec.heightM }); return; }
       if (isNum(b.capKg) && kg > b.capKg) W.push({ code: 'stock_over_cap', bin: b.id, cap: b.capKg, kg: r3(kg) });
       if (b.kind === 'product' && kg > 0 && !x.productId) { E.push({ code: 'stock_product', bin: b.id }); return; }
       if (b.kind === 'product') {
@@ -489,6 +493,10 @@
   // opts: {now (epoch ms), writerVersion, site}. Devolve o objeto a gravar (JSON.stringify).
   const BINS_STATUS_SCHEMA = 1;
   function isoUtc(ms) { return new Date(ms).toISOString(); }
+  function binTag(binId, stocks) {
+    const s0 = (stocks || []).filter(x => x && x.levels && x.levels[binId] && (x.levels[binId].colour || x.levels[binId].grade)).sort((a, b) => b.t - a.t)[0];
+    return s0 ? { colour: s0.levels[binId].colour || null, grade: s0.levels[binId].grade || null } : { colour: null, grade: null };
+  }
   function buildBinsStatus(cfgP, moves, jobs, opts) {
     const o = opts || {};
     const now = isNum(o.now) ? o.now : Date.now();
@@ -510,6 +518,8 @@
         // v2.8.1: capKg null = sem verificação de espaço na Grain-Mgt (enchimento contínuo); a capacidade física vai em binCapKg
         id: b.id, lines: b.lines.slice(), capKg: CONTINUOUS_FEED ? null : (isNum(b.capKg) ? b.capKg : null), binCapKg: isNum(b.capKg) ? b.capKg : null,
         continuousFeed: CONTINUOUS_FEED, kg, state,
+        // v2.17.0 (Zhax, 17-11-2026): tipo e grau da última leitura da manhã (para o cartão das bins D/M na Silo Cereais)
+        colour: binTag(b.id, o.stocks).colour, grade: binTag(b.id, o.stocks).grade,
         since: since === null ? null : isoUtc(since), transfers,
         runningJobs: st.runningJobs.slice()
       };
@@ -1162,7 +1172,7 @@
       if (r) out[a] = { on: !!r.on, at: r.at || li.t, comment: r.comment || '', set: true };
       else if (a === 'production') out[a] = { on: li.state !== 'off', at: li.t, comment: '', set: true };   // logins antes da v2.16.0
     });
-    eff.filter(x => x.kind === 'runState' && RUN_AREAS.indexOf(x.area) >= 0 && (x.at || x.t) <= atMs).sort((a, b) => (a.at || a.t) - (b.at || b.t))
+    eff.filter(x => x.kind === 'runState' && RUN_AREAS.indexOf(x.area) >= 0 && (x.at || x.t) <= atMs).sort((a, b) => (a.at || a.t) - (b.at || b.t) || (a.t || 0) - (b.t || 0) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
       .forEach(x => { out[x.area] = { on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }; });
     return { login: true, areas: out };
   }
@@ -1328,7 +1338,7 @@
     return out;
   }
 
-  const api = { reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };
