@@ -1594,9 +1594,21 @@ window.ProdUI = function (C) {
           <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`
           : (f ? '' : `<button class="btn small ${h ? '' : 'ghost'}" data-hold="${esc(b.id)}" data-release="${h ? 1 : ''}">${esc(t(h ? 'holdReleaseBtn' : 'holdBtn'))}</button>`)}</div>`;
     };
-    const n = Object.keys(H).length;
-    return `<section class="card"><h3>${esc(t('holdsTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3>${B.map(row).join('')}</section>`;
+    const n = Object.keys(H).length, held = B.filter(b => H[b.id]), free = B.filter(b => !H[b.id]);
+    // v2.23.0 (Zhax, 26-11-2026): no CQ — bins não conformes primeiro, a pedir autorização do Supervisor (ou acima) para libertar
+    return `<section class="card"><h3>${esc(t('ncTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3>
+      ${held.length ? `<div class="banner b-reject">${esc(t('ncNeedSup'))}</div>${held.map(row).join('')}` : `<p class="sub">${esc(t('ncNone'))}</p>`}
+      <details ${f && !H[f.binId] ? 'open' : ''}><summary>${esc(t('ncHoldOther'))}</summary>${free.map(row).join('')}</details></section>`;
   }
+  // v2.23.0: amostra do CQ «reject» com bin de destino → a bin fica retida automaticamente (libertar só com PIN de Supervisor ou acima)
+  async function autoHold(binId, sample) {
+    const b = P.holdableBins(S.cfgP).find(x => x.id === binId); if (!b || holds()[binId]) return false;
+    const tms = now();
+    await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: 'binHold', binId: b.id, binKind: b.kind, reason: t('ncAutoReason', { id: String(sample.id || '').slice(-6), p: C.prodName(sample.productId) }),
+      by: sample.operator, role: 'qc', auto: true, sampleId: sample.id || null, productId: sample.productId || null }));
+    await reload(); return true;
+  }
+  const productBinIds = () => (S.cfgP.bins || []).map(b => b.id);
   async function holdSave() {
     const f = S.holdForm, reason = ($('#hd_reason') || {}).value || '';
     const wh = await C.who(($('#hd_pin') || {}).value, ['sup', 'chief', 'head', 'pm']); if (wh.err) return C.toast(wh.err); const by = wh.title;
@@ -2093,5 +2105,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { holdsCard, autoHold, productBinIds, prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };
