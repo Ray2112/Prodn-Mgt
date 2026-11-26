@@ -1,5 +1,9 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.25.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.26.0
 
+> **v2.26.0 — Consumíveis: o consumo registado (registo de consumível e material usado num trabalho) sai do stock automaticamente; anular o registo devolve o stock.
+>
+> *EN:* Consumables: recorded usage (consumable record and material used on a job) comes off stock automatically; voiding the record puts it back.
+>
 > **v2.25.0 — FSSC e Relatórios (Zhax, 26-11-2026).** FSSC: sem a descrição da certificação no topo. Relatórios: no fim de cada tipo (Produção, CQ, Manutenção, FSSC) o resumo dos últimos 7 dias de produção até ao dia escolhido, com totais; na Produção também as transferências de grão e as ordens fechadas nesses 7 dias (antes no Turno e no Grão).
 >
 > *EN:* FSSC: certification description removed from the top. Reports: each type ends with a 7-day summary up to the chosen day, with totals; Production also lists grain transfers and the jobs closed in those 7 days.

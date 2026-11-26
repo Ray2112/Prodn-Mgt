@@ -26,7 +26,7 @@ window.MaintUI = function (C) {
       pmPlanned: 'Preventiva planeada para este turno', bdAttend: 'Avarias a atender', bdAdd: 'Mais uma avaria', mill: 'Moagem', millC: 'Moagem C', millD: 'Moagem D',
       // v2.24.0
       pmToDateTitle: 'Preventiva planeada até hoje', pmOverduePct: 'Em atraso', pmDonePct: 'Feita', pmShowList: 'Mostrar a lista da preventiva', bdTitle: 'AVARIAS A ATENDER', bdNone: 'Sem avarias a atender.',
-      rfBig: 'REESTRIAGEM', rcBig: 'TROCA DE ROLOS', invTitle: 'Inventário de consumíveis', inStock: 'Em stock', required: 'Necessário', heldPct: '% do necessário', addQty: 'Entrada (+)', subQty: 'Saída (−)',
+      rfBig: 'REESTRIAGEM', rcBig: 'TROCA DE ROLOS', invTitle: 'Inventário de consumíveis', invAuto: 'O consumo registado (consumíveis e material usado nos trabalhos) sai do stock automaticamente. Só conta se o nome e a unidade forem os do catálogo.', usedQty: 'consumido', inStock: 'Em stock', required: 'Necessário', heldPct: '% do necessário', addQty: 'Entrada (+)', subQty: 'Saída (−)',
       moveQty: 'Quantidade', ordersT: 'Encomendas', newOrder: 'Nova encomenda', ordName: 'Nome', ordDescr: 'Descrição', glose: 'N.º Glose', invNone: 'Catálogo vazio: junte artigos no Catálogo (em baixo).', reqOnlyTop: 'Necessário: só com PIN de Supervisor ou acima.',
       techs: 'N.º de técnicos', eta: 'Hora prevista de fim', consUsed: 'Consumíveis', overdueTitle: 'Preventiva em atraso', intervention: 'Intervenção feita',
       rfTitle: 'Reestriagem de rolos', rcTitle: 'Troca de rolos', rfAwait: 'Rolos à espera de reestriagem', rfFluting: 'Rolos em reestriagem', rfTest: 'Teste depois da reestriagem', rfDone: 'Testados',
@@ -91,7 +91,7 @@ window.MaintUI = function (C) {
       pmPlanned: 'Preventive planned for this shift', bdAttend: 'Breakdowns to attend to', bdAdd: 'One more breakdown', mill: 'Mill', millC: 'Mill C', millD: 'Mill D',
       // v2.24.0
       pmToDateTitle: 'Preventive planned to date', pmOverduePct: 'Overdue', pmDonePct: 'Done', pmShowList: 'Show the preventive list', bdTitle: 'BREAKDOWNS TO ATTEND', bdNone: 'No breakdowns to attend.',
-      rfBig: 'RE-FLUTING', rcBig: 'ROLL CHANGE', invTitle: 'Consumables inventory', inStock: 'In stock', required: 'Required', heldPct: '% of required', addQty: 'Add (+)', subQty: 'Remove (−)',
+      rfBig: 'RE-FLUTING', rcBig: 'ROLL CHANGE', invTitle: 'Consumables inventory', invAuto: 'Recorded usage (consumables and material used on jobs) comes off stock automatically. It only counts when the name and unit match the catalogue.', usedQty: 'used', inStock: 'In stock', required: 'Required', heldPct: '% of required', addQty: 'Add (+)', subQty: 'Remove (−)',
       moveQty: 'Quantity', ordersT: 'Orders', newOrder: 'New order', ordName: 'Name', ordDescr: 'Description', glose: 'Glose no.', invNone: 'Catalogue empty: add items in the Catalogue (below).', reqOnlyTop: 'Required: only with a Supervisor-or-above PIN.',
       techs: 'No. of technicians', eta: 'Estimated finish time', consUsed: 'Consumables', overdueTitle: 'Overdue preventive', intervention: 'Intervention done',
       rfTitle: 'Roll fluting', rcTitle: 'Roll change', rfAwait: 'Rolls awaiting fluting', rfFluting: 'Rolls being fluted', rfTest: 'Test after fluting', rfDone: 'Tested',
@@ -741,7 +741,7 @@ window.MaintUI = function (C) {
     const I = M.consStock(st.entries), f = st.form, fm = f && f.kind === 'stockMove' ? f : null, fo = f && f.kind === 'consOrder' ? f : null, O = M.orders(st.entries);
     const pc = v => v === null ? '—' : nf(v) + ' %', col = v => v === null ? '' : v < 50 ? 'color:var(--rej,#b00020)' : v < 100 ? 'color:#b26a00' : 'color:var(--ok,#1b7f3b)';
     const inv = I.length ? `<div style="overflow-x:auto"><table class="mt-t"><tr><td><b>${esc(t('item'))}</b></td><td><b>${esc(t('inStock'))}</b></td><td><b>${esc(t('required'))}</b></td><td><b>${esc(t('heldPct'))}</b></td><td></td></tr>
-      ${I.map(x => `<tr><td>${esc(x.item.name)}${x.item.dims ? ' <span class="mt-sub">' + esc(x.item.dims) + '</span>' : ''}</td><td class="mt-n">${esc(nf(x.stock))} ${esc(t('u_' + x.item.unit))}</td><td class="mt-n">${x.required === null ? '—' : esc(nf(x.required))}</td>
+      ${I.map(x => `<tr><td>${esc(x.item.name)}${x.item.dims ? ' <span class="mt-sub">' + esc(x.item.dims) + '</span>' : ''}</td><td class="mt-n">${esc(nf(x.stock))} ${esc(t('u_' + x.item.unit))}${x.used ? `<div class="mt-sub">−${esc(nf(x.used))} ${esc(t('usedQty'))}</div>` : ''}</td><td class="mt-n">${x.required === null ? '—' : esc(nf(x.required))}</td>
         <td><b style="${col(x.pct)}">${esc(pc(x.pct))}</b></td><td>${st.form ? '' : `<button type="button" class="btn small" data-mact="new" data-v="stockMove" data-uid="${esc(x.itemId)}">± </button>`}</td></tr>
         ${fm && fm.itemId === x.itemId ? `<tr><td colspan="5"><div class="mt-box"><div class="grid2">${fld(t('moveQty'), `<select data-mf="dir"><option value="+" ${fm.dir === '+' ? 'selected' : ''}>${esc(t('addQty'))}</option><option value="-" ${fm.dir === '-' ? 'selected' : ''}>${esc(t('subQty'))}</option></select>`, 1)}
           ${fld(t('qty'), inp('qty', fm.qty, 'inputmode="decimal"'), 1)}</div>${fld(t('comments'), inp('note', fm.note))}${byF(fm)}${saveBtns('savemove')}</div></td></tr>` : ''}`).join('')}</table></div>` : `<p class="mt-sub">${esc(t('invNone'))}</p>`;
@@ -749,7 +749,7 @@ window.MaintUI = function (C) {
         ${fld(t('ordDescr'), area('descr', fo.descr))}${fld(t('comments'), area('comment', fo.comment))}${byF(fo)}${saveBtns('saveorder')}</div>` : st.form ? '' : `<button type="button" class="btn primary" data-mact="new" data-v="consOrder">＋ ${esc(t('newOrder'))}</button>`}
       <div style="overflow-x:auto"><table class="mt-t"><tr><td><b>${esc(t('ordName'))}</b></td><td><b>${esc(t('ordDescr'))}</b></td><td><b>${esc(t('qty'))}</b></td><td><b>${esc(t('glose'))}</b></td><td><b>${esc(t('comments'))}</b></td></tr>
         ${O.map(o => `<tr><td>${esc(o.name)}<div class="mt-sub">${esc(ddmm(o.date))}</div></td><td>${esc(o.descr || '')}</td><td class="mt-n">${esc(nf(o.qty))}</td><td>${esc(o.glose || '—')}</td><td>${esc(o.comment || '')}<div>${voidBox(o.uid)}</div></td></tr>`).join('') || `<tr><td colspan="5">—</td></tr>`}</table></div>`;
-    return `<section class="card"><h3>${esc(t('invTitle'))}</h3>${inv}</section><section class="card"><h3>${esc(t('ordersT'))}</h3>${ord}</section>`;
+    return `<section class="card"><h3>${esc(t('invTitle'))}</h3><p class="mt-sub">${esc(t('invAuto'))}</p>${inv}</section><section class="card"><h3>${esc(t('ordersT'))}</h3>${ord}</section>`;
   }
   async function saveMove() {
     const f = st.form, q = M.num(f.qty), d = q === null || isNaN(q) ? null : (f.dir === '-' ? -Math.abs(q) : Math.abs(q));

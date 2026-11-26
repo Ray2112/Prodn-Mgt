@@ -538,12 +538,21 @@
     if (d === null || isNaN(d) || d === 0) e.push('qty');
     return e;
   }
+  // v2.26.0 (Zhax, 26-11-2026, "Automatic"): o consumo registado (registo de consumível e material usado num trabalho) sai do stock sozinho.
+  // Liga ao artigo do catálogo pelo itemId ou, no material de um trabalho, pelo nome (sem maiúsculas/espaços). Só desconta se a unidade for a do catálogo (ou vazia).
+  // Um registo anulado deixa de contar, por isso o stock volta.
   function consStock(entries) {
-    const st = {};
-    effective(entries).filter(e => e.kind === 'stockMove' && e.itemId).forEach(e => { const d = num(e.delta); if (isNum(d)) st[e.itemId] = Math.round(((st[e.itemId] || 0) + d) * 1000) / 1000; });
-    return consCatalog(entries).map(c => {
+    const st = {}, used = {}, cat = consCatalog(entries), key = x => txt(x).toLowerCase().replace(/\s+/g, ' ');
+    const byName = new Map(cat.map(c => [key(c.name), c])), byId = new Map(cat.map(c => [c.itemId, c]));
+    const add = (o, id, d) => { o[id] = Math.round(((o[id] || 0) + d) * 1000) / 1000; };
+    const use = (c, q, unit) => { if (!c || !isNum(q) || q <= 0 || (unit && c.unit && unit !== c.unit)) return; add(used, c.itemId, q); add(st, c.itemId, -q); };
+    const E = effective(entries);
+    E.filter(e => e.kind === 'stockMove' && e.itemId).forEach(e => { const d = num(e.delta); if (isNum(d)) add(st, e.itemId, d); });
+    E.filter(e => e.kind === 'consumable').forEach(e => use(e.itemId ? byId.get(e.itemId) : byName.get(key(e.item)), num(e.qty), e.unit));
+    E.filter(e => e.kind === 'work').forEach(e => cleanParts(e.parts).forEach(p => use(p.itemId ? byId.get(p.itemId) : byName.get(key(p.item)), num(p.qty), p.unit)));
+    return cat.map(c => {
       const q = st[c.itemId] || 0, req = num(c.required);
-      return { item: c, itemId: c.itemId, stock: q, required: isNum(req) && req > 0 ? req : null, pct: isNum(req) && req > 0 ? Math.round(q / req * 1000) / 10 : null };
+      return { item: c, itemId: c.itemId, stock: q, used: used[c.itemId] || 0, required: isNum(req) && req > 0 ? req : null, pct: isNum(req) && req > 0 ? Math.round(q / req * 1000) / 10 : null };
     });
   }
   function validateOrder(o) {

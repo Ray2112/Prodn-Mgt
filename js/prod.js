@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.25.0';
+  const VERSION = '2.26.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)

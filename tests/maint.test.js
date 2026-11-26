@@ -321,3 +321,17 @@ console.log('maint: ' + n + ' testes OK');
   assert.deepStrictEqual([T.planned, T.done, T.overdue, T.overduePct, T.donePct], [2, 1, 1, 50, 50]);
   console.log('inventário e preventiva até hoje (v2.24.0): OK');
 }
+
+// v2.26.0 — consumo registado sai do stock automaticamente
+{
+  const E = [
+    rec('consItem', { itemId: 'i1', name: 'Rolamento 6205', unit: 'un', required: 10 }),
+    rec('stockMove', { itemId: 'i1', delta: 12 }),
+    rec('consumable', { itemId: 'i1', item: 'Rolamento 6205', qty: 2, unit: 'un' }),
+    rec('work', { parts: [{ item: ' rolamento  6205 ', qty: 3, unit: 'un' }, { item: 'Rolamento 6205', qty: 1, unit: 'kg' }, { item: 'Outro', qty: 5, unit: 'un' }] }),
+    rec('consumable', { uid: 'cx', itemId: 'i1', item: 'Rolamento 6205', qty: 4, unit: 'un' }), rec('void', { voids: 'cx' })
+  ];
+  const r = M.consStock(E).find(x => x.itemId === 'i1');
+  assert.deepStrictEqual([r.stock, r.used, r.pct], [7, 5, 70], 'consumo e material de trabalho descontam; unidade diferente e anulado não');
+  console.log('consumo sai do stock (v2.26.0): OK');
+}
