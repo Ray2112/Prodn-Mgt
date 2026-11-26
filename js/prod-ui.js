@@ -1494,7 +1494,7 @@ window.ProdUI = function (C) {
   }
   async function holdSave() {
     const f = S.holdForm, reason = ($('#hd_reason') || {}).value || '';
-    const wh = await C.who(($('#hd_pin') || {}).value, ['sup', 'chief']); if (wh.err) return C.toast(wh.err); const by = wh.title;
+    const wh = await C.who(($('#hd_pin') || {}).value, ['sup', 'chief', 'head', 'pm']); if (wh.err) return C.toast(wh.err); const by = wh.title;
     const E = P.validateHold({ binId: f.binId, reason, by }, S.cfgP, holds(), f.release);
     if (E.length) return C.toast(E.map(x => t(x)).join(' · '));
     const r = await C.checkPin(($('#hd_pin') || {}).value);
@@ -1610,7 +1610,7 @@ window.ProdUI = function (C) {
     S.binAct = null; await reload(); C.toast(t('outSaved', { kg: fmtKg(v.kg), b: id })); keepScroll();
   }
   async function binAction(mode) {
-    const id = S.binAct.id, w = await whoP('ba_pin', mode === 'set' ? ['sup', 'chief'] : null); if (!w) return; const by = w.title;
+    const id = S.binAct.id, w = await whoP('ba_pin', mode === 'set' ? ['sup', 'chief', 'head', 'pm'] : null); if (!w) return; const by = w.title;
     const st = P.binState(id, S.binEvents);
     if (mode === 'empty') {
       const job = st.jobUid ? S.jobs.find(j => j.uid === st.jobUid) : null;
@@ -1678,7 +1678,7 @@ window.ProdUI = function (C) {
   async function saveProdSet() {
     const reason = $('#psReason').value.trim();
     if (!reason) return C.toast(t('needByReason'));
-    const wp = await whoP('psPin', ['sup', 'chief']); if (!wp) return; const by = wp.title;
+    const wp = await whoP('psPin', ['sup', 'chief', 'head', 'pm']); if (!wp) return; const by = wp.title;
     const n = JSON.parse(JSON.stringify(S.cfgP));
     const bad = [];
     document.querySelectorAll('[data-ps]').forEach(el => {
@@ -1749,7 +1749,7 @@ window.ProdUI = function (C) {
   async function saveCodes() {
     const reason = $('#cdReason').value.trim();
     if (!reason) return C.toast(t('needByReason'));
-    const wp = await whoP('cdPin', ['sup', 'chief']); if (!wp) return; const by = wp.title;
+    const wp = await whoP('cdPin', ['sup', 'chief', 'head', 'pm']); if (!wp) return; const by = wp.title;
     const list = JSON.parse(JSON.stringify(codes()));
     document.querySelectorAll('[data-cd]').forEach(el => {
       const [i, f] = el.dataset.cd.split('|'); const c = list[Number(i)]; if (!c) return;
