@@ -302,7 +302,7 @@
   }
   // v2.17.0 (Zhax, 17-11-2026): sem separador Avisos — cada aviso aparece na sua secção (e o número no botão da secção)
   const secOf = i => i.nav || (i.repday ? 'report' : 'sample');
-  function secIssues(v, ptab) { return (S._iss || issues()).filter(i => secOf(i) === v && (v !== 'prod' || !ptab || (i.ptab || 'jobs') === ptab)); }
+  function secIssues(v, ptab) { return (S._iss || issues()).filter(i => secOf(i) === v && (v !== 'prod' || !ptab || ({ jobs: 'shift', log: 'shift', maize: 'grain' }[i.ptab || 'jobs'] || i.ptab) === ({ jobs: 'shift', log: 'shift', maize: 'grain' }[ptab] || ptab))); }
   const secN = v => ['maint', 'fssc'].indexOf(v) >= 0 ? 0 : secIssues(v).length;
   function secWarnings(v) {
     if (['sample', 'prod', 'settings', 'report'].indexOf(v) < 0) return '';

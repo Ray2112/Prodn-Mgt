@@ -6,13 +6,17 @@ function t(name, fn) { try { fn(); n++; } catch (e) { console.error('FALHOU:', n
 const H = 3600000, T0 = Date.parse('2026-11-12T07:00:00Z');
 
 t('paragem: categoria → códigos v3, duração calculada, falha obrigatória', () => {
-  assert.ok(P.codesForCat('electrical').every(c => c.tier3 === 'Breakdown'));
+  assert.ok(P.codesForCat('electrical').every(c => /^A/.test(c.code)));
+  // v2.18.0: Pxx Processo, Oxx Planeada, Axx Mecânica/Eléctrica (Zhax, 26-11-2026)
+  assert.ok(P.codesForCat('process').every(c => /^P/.test(c.code)) && P.codesForCat('process').some(c => c.code === 'P17'));
+  assert.ok(P.codesForCat('planned').every(c => /^O/.test(c.code)) && P.codesForCat('planned').some(c => c.code === 'O03'));
+  assert.deepStrictEqual(P.codesForCat('other').map(c => c.code).sort(), ['A50', 'O50', 'P50']);
   assert.ok(P.codesForCat('process').some(c => c.code === 'P01'));
   let r = P.validateStop({ category: 'electrical', code: 'A01', start: T0, end: T0 + 95 * 60000, fault: 'Disjuntor disparou' });
   assert.deepStrictEqual(r, { errors: [], downtimeMin: 95 });
   r = P.validateStop({ category: 'process', code: 'A01', start: T0, end: T0 - 1, fault: '' });
   assert.deepStrictEqual(r.errors, ['code', 'end', 'fault'], 'código de avaria numa paragem de processo; fim antes do início');
-  assert.deepStrictEqual(P.validateStop({ category: 'x', code: 'P01', start: T0, end: T0 + 25 * H, fault: 'a' }).errors, ['category', 'end']);
+  assert.deepStrictEqual(P.validateStop({ category: 'x', code: 'P01', start: T0, end: T0 + 25 * H, fault: 'a' }).errors, ['category', 'code', 'end']);
 });
 
 t('balanças: em branco fica null, inválido assinalado; quantidade do turno = fim − início', () => {

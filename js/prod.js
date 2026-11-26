@@ -12,8 +12,9 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.18.0';
+  const VERSION = '2.19.0';
   const COLOURS = ['Amarelo', 'Branco'];
+  const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
   // Códigos de paragem FMO — fonte: 2026-09-30_FMO_Downtime_Codes_v2.xlsx (folha Folha1), autorizado por Zhax (14-10-2026).
   // [código, nome, Tier 3, tratamento OEE] como no ficheiro. P17: nome 'FUBA BIN FULL' definido por Zhax (no ficheiro: FLOUR BIN FILLING).
@@ -1082,15 +1083,18 @@
   const SCALES = ['clean', 'screenings', 'b1', 'flour1', 'flour2', 'germ', 'zf'];
   const SCALE_SCADA = { clean: 'Clean', screenings: 'Screening', b1: 'B1', flour1: 'Flour 1', flour2: 'Flour 2', germ: 'Germ', zf: 'Z.F' };
   // Categoria da paragem → nível dos Downtime Codes v3 (mecânica e eléctrica são avarias: Breakdown)
-  const STOP_CATS = ['mechanical', 'electrical', 'process', 'other'];
-  const STOP_TIER = { mechanical: 'Breakdown', electrical: 'Breakdown', process: 'Process', other: 'Other' };
-  const codesForCat = (cat, list) => (list || DOWNTIME_CODES).filter(c => c.active !== false && c.tier3 === STOP_TIER[cat]);
+  // v2.18.0 (Zhax, 26-11-2026): tipo da paragem pelo prefixo do código v3 — Pxx Processo, Oxx Planeada, Axx Mecânica/Eléctrica.
+  // «Outra» (Assumido): só os códigos «outro» P50, A50, O50. O nível OEE (tier3) de cada código não muda.
+  const STOP_CATS = ['mechanical', 'electrical', 'process', 'planned', 'other'];
+  const STOP_PREFIX = { mechanical: 'A', electrical: 'A', process: 'P', planned: 'O' };
+  const codeInCat = (c, cat) => cat === 'other' ? /^[APO]50$/.test(c.code) : !!STOP_PREFIX[cat] && String(c.code).charAt(0) === STOP_PREFIX[cat];
+  const codesForCat = (cat, list) => (list || DOWNTIME_CODES).filter(c => c.active !== false && codeInCat(c, cat));
   // f: {category, code, start, end (ms), fault, action}. Duração calculada (minutos inteiros); avaria precisa de descrição da falha.
   function validateStop(f, list) {
     const e = [];
     if (STOP_CATS.indexOf(f.category) < 0) e.push('category');
     const cd = f.code ? findCode(f.code, list) : null;
-    if (!cd || cd.active === false || (STOP_TIER[f.category] && cd.tier3 !== STOP_TIER[f.category])) e.push('code');
+    if (!cd || cd.active === false || !codeInCat(cd, f.category)) e.push('code');
     const a = Number(f.start), b = Number(f.end);
     if (!isFinite(a) || !f.start) e.push('start');
     if (!isFinite(b) || !f.end) e.push('end');
@@ -1338,7 +1342,7 @@
     return out;
   }
 
-  const api = { DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_TIER, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

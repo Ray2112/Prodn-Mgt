@@ -331,10 +331,12 @@ window.ProdUI = function (C) {
 
   // ---------- vista principal ----------
   function view() {
-    if (S.prodTab === 'log') S.prodTab = 'shift';   // v2.15.0: o Diário de turno passou para o separador Turno
+    // v2.18.0 (Zhax, 26-11-2026): Turno (com ordens), Paragens, Grão (com Milho D/M e C/M), Produtos
+    const PTAB_MAP = { log: 'shift', jobs: 'shift', maize: 'grain' };
+    if (PTAB_MAP[S.prodTab]) S.prodTab = PTAB_MAP[S.prodTab];
     const tab = S.prodTab || 'shift';
-    const tabs = ['shift', 'jobs', 'stops', 'grain', 'maize', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
-    const body = tab === 'shift' ? viewShift() : tab === 'stops' ? viewStops() : tab === 'maize' ? viewMaize() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrain() : viewJobs();
+    const tabs = ['shift', 'stops', 'grain', 'bins'].map(k => `<button class="btn ${tab === k ? 'primary' : 'ghost'} small" data-ptab="${k}">${esc(t('ptab_' + k))}</button>`).join(' ');
+    const body = tab === 'stops' ? viewStops() : tab === 'bins' ? viewBins() : tab === 'grain' ? viewGrainAll() : viewShift();
     const banner = S.ctx && S.ctx.testMode ? `<section class="card"><b>${esc(t('ctxTestBanner'))}</b></section>` : '';
     return `${banner}<section class="card"><h2>${esc(t('nav_prod'))}</h2><div class="row">${tabs}</div></section>${body}`;
   }
@@ -398,7 +400,30 @@ window.ProdUI = function (C) {
     S.operator = by; await DB.setConfig('operator', S.operator);
     await reload(); C.toast(t('dipSaved')); keepScroll();
   }
-  function viewShift() { return viewShiftTop() + procCard(); }   // v2.17.0: sem Ocorrências e Actividades (Zhax)
+  // v2.18.0: a manutenção de processo planeia-se no login; o registo do feito aparece depois do login; as ordens ficam no Turno
+  function viewShift() {
+    const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
+    return viewShiftTop() + (li ? procCard() : '') + `<section class="card"><h3>${esc(t('ordersTitle'))}</h3></section>` + viewJobs();
+  }
+  // Turno anterior (para as notas de passagem de turno)
+  const prevShiftOf = (day, per) => per === 'N' ? { day, period: 'D' } : { day: P.dayBefore(day), period: 'N' };
+  function handoverCard(day, per) {
+    const pv = prevShiftOf(day, per), lo = shiftRec('logout', pv.day, pv.period);
+    if (!lo || !(lo.handover || lo.comments)) return '';
+    return `<section class="card"><h3>${esc(t('handoverFrom', { s: t('shift_' + pv.period), d: pv.day }))}</h3>
+      ${lo.handover ? `<p>${esc(lo.handover)}</p>` : ''}${lo.comments ? `<p>${esc(lo.comments)}</p>` : ''}</section>`;
+  }
+  function procPlanHtml() {
+    const cfg = P.procMaintCfg(S.cfgP), secs = (cfg.plansifter && cfg.plansifter.sections) || [];
+    return P.PROC_GROUPS.map(g => `<label class="chk"><input type="checkbox" class="lg_proc" data-g="${g}"> ${esc(t('pg_' + g))}</label>` +
+      (g === 'plansifter' ? `<div id="lg_psecs" hidden>${secs.length ? secs.map(x => `<label class="chk"><input type="checkbox" class="lg_psec" value="${esc(x)}"> ${esc(x)}</label>`).join('') : `<p class="sub">—</p>`}</div>` : '')).join('');
+  }
+  function readProcPlan() {
+    const groups = [...document.querySelectorAll('.lg_proc')].filter(x => x.checked).map(x => x.dataset.g);
+    const secs = [...document.querySelectorAll('.lg_psec')].filter(x => x.checked).map(x => x.value);
+    if (groups.indexOf('plansifter') >= 0 && !secs.length) return { err: true };
+    return { plan: groups.map(g => ({ group: g, sections: g === 'plansifter' ? secs : [] })) };
+  }
   function viewShiftTop() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
     const li = shiftRec('login', day, per), lo = shiftRec('logout', day, per);
@@ -409,12 +434,13 @@ window.ProdUI = function (C) {
       ${plan ? '' : `<p class="sub">${esc(t('planMissing'))}</p>`}</section>`;
     const op = openShift(), opSel = op && op.prodDay === day && op.period === per;
     const head = (op ? `<div class="banner b-reject">⚠ ${esc(t('logoutMissing', { s: t('shift_' + op.period), d: C.fmtDT(op.t).slice(0, 10), l: op.leader || '' }))}${opSel ? '' : ` <button class="btn small" data-shsel="${esc(op.prodDay)}|${esc(op.period)}">${esc(t('logoutGo'))}</button>`}</div>` : '') + head0;
-    if (!li) return head + `<section class="card"><h3>${esc(t('loginTitle'))}</h3>
+    if (!li) return head + handoverCard(day, per) + `<section class="card"><h3>${esc(t('loginTitle'))}</h3>
       ${C.pinFld('lg_pin', t('leaderPin'))}
       <div class="sub req">${esc(t('jobsToDo'))}</div>${planHtml(day)}
-      <div class="grid2"><label class="fld">${esc(t('sjPick'))}<select id="lg_jobsel"><option value="">—</option>${P.SHIFT_JOBS.map(k => `<option value="${k}">${esc(t('sj_' + k))}</option>`).join('')}</select></label>
+      <div class="grid2"><label class="fld">${esc(t('sjPick'))}<select id="lg_jobsel"><option value="">—</option>${P.SHIFT_JOBS.filter(k => k !== 'plansifter').map(k => `<option value="${k}">${esc(t('sj_' + k))}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('sjOtherText'))}<input id="lg_jobtxt"></label></div>
       <button class="btn small" data-pact="lgjobadd">＋ ${esc(t('sjAdd'))}</button><div id="lg_jobs">${jobChips()}</div>
+      <h4>${esc(t('procTitle'))}</h4>${procPlanHtml()}
       <h4>${esc(t('runTitle'))}</h4>${runFields('lg')}
       <h4>${esc(t('scalesStart'))}</h4>${scaleInputs('lgs')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lg_comments"></textarea></label>
@@ -423,6 +449,7 @@ window.ProdUI = function (C) {
       <div class="kv"><span>${esc(t('shiftLeader'))}</span><b>${esc(li.leader)} · ${esc(t('crew'))} ${esc(li.crew || '—')}</b></div>
       <div class="kv"><span>${esc(t('stateNow'))}</span><b>${esc(t('state_' + li.state))}</b></div>
       <div class="kv"><span>${esc(t('jobsToDo'))}</span><b>${esc((li.planJobs || []).map(j => (j.product || t('planNoProduct')) + (isNum(j.targetKg) ? ' · ' + fmtKg(j.targetKg) + ' kg' : '')).concat((li.shiftJobs || []).map(jobText)).concat(li.jobsExtra ? [li.jobsExtra] : []).join(' | ') || '—')}</b></div>
+      ${(li.procPlan || []).length ? `<div class="kv"><span>${esc(t('procTitle'))}</span><b>${esc(li.procPlan.map(x => itemLabel({ src: 'proc', group: x.group, sections: x.sections })).join(' | '))}</b></div>` : ''}
       ${li.comments ? `<p><small>${esc(li.comments)}</small></p>` : ''}</section>`;
     const range = shiftRange(day, per);
     const sm = P.shiftSummary(day, per, range, { log: S.shiftLog, jobs: S.jobs, now: now(), codes: codes() });
@@ -434,6 +461,7 @@ window.ProdUI = function (C) {
         `<tr><td>${esc(x.label)}</td><td><input inputmode="decimal" class="lo_pct" data-i="${i}" placeholder="0–100" style="max-width:90px"> %</td></tr>`).join('')}</table></div>` : ''}
       <h4>${esc(t('scalesEnd'))}</h4>${scaleInputs('los')}
       <label class="fld">${esc(t('comments'))}<textarea rows="2" id="lo_comments"></textarea></label>
+      <label class="fld">${esc(t('handoverNotes'))}<textarea rows="2" id="lo_handover"></textarea></label>
       ${P.runState(S.shiftLog, day, per, now() + 24 * 3600000).areas.reproc.on ? `<label class="fld req">${esc(t('reprocBags'))}<input inputmode="numeric" id="lo_bags"></label>` : ''}
       ${C.pinFld('lo_pin', t('leaderPin'))}
       <div id="lo_check">${logoutCheckHtml(li, day, per)}</div>
@@ -443,6 +471,8 @@ window.ProdUI = function (C) {
       <div class="kv"><span>${esc(t('targetAchieved'))}</span><b>${isNum(lo.achievedPct) ? esc(String(lo.achievedPct).replace('.', ',')) + ' %' : '—'} <small>(${esc(t('dayB1'))} ${isNum(lo.dayB1Kg) ? fmtKg(lo.dayB1Kg) + ' kg' : '—'} / ${esc(t('targetT'))} ${isNum(lo.targetKg) ? fmtKg(lo.targetKg) + ' kg' : '—'})</small></b></div>
       ${(lo.activitiesPct || []).length ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${lo.activitiesPct.map(x => esc(itemLabel(x)) + ': ' + esc(String(x.pct).replace('.', ',')) + ' %').join('<br>')}</small></p>`
         : lo.activitiesDone ? `<p><b>${esc(t('activitiesDone'))}:</b><br><small>${esc(lo.activitiesDone).replace(/\n/g, '<br>')}</small></p>` : ''}${lo.comments ? `<p><small>${esc(lo.comments)}</small></p>` : ''}
+      ${lo.handover ? `<div class="kv"><span>${esc(t('handoverNotes'))}</span><b>${esc(lo.handover)}</b></div>` : ''}
+      <p class="sub">${esc(t('shiftReadOnly'))}</p>
       <button class="btn" data-pact="shiftxlsx">${esc(t('genExcel'))}</button></section>`;
   }
   async function shiftLogin() {
@@ -453,10 +483,12 @@ window.ProdUI = function (C) {
     if (sc.bad.length) return C.toast(t('fixInvalid') + ': ' + sc.bad.map(k => t('scale_' + k)).join(', '));
     const run = readRun('lg', sel);
     if (run.err) return C.toast(t('runTimeNeed', { a: t('ra_' + run.err) }));
+    const pp = readProcPlan();
+    if (pp.err) return C.toast(t('procSecsNeed'));
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: crewOfRole(w.role, sel.day, sel.period),
-      leader, leaderRole: w.role, state: run.areas.production.on ? 'on' : 'off', run: run.areas, planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(),
+      leader, leaderRole: w.role, state: run.areas.production.on ? 'on' : 'off', run: run.areas, planJobs: picks.map(i => rows[i]).filter(Boolean), shiftJobs: (S.lgJobs || []).slice(), procPlan: pp.plan,
       planSource: C.plan() ? C.plan().source : null, scalesStart: sc.values, comments: $('#lg_comments').value.trim(), by: leader, leaderPin: 'ok' });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = rec.by; await DB.setConfig('operator', S.operator); S.lgJobs = [];
@@ -483,7 +515,7 @@ window.ProdUI = function (C) {
     const tms = now();
     const rec = Object.assign(base(tms), { kind: 'logout', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew,
       state: $('#lo_state').value === 'off' ? 'off' : 'on', activitiesPct, activitiesDone: activitiesPct.map(x => itemLabel(x) + ': ' + x.pct + ' %').join('\n'), scalesEnd: sc.values, shiftKg: q.kg, negative: q.negative,
-      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), by, byRole: w.role, loginUid: li.uid, leaderPin: 'ok', reproc });
+      dayB1Kg: dayB1, targetKg: target, achievedPct: P.achievedPct(dayB1, target), comments: $('#lo_comments').value.trim(), handover: (($('#lo_handover') || {}).value || '').trim(), by, byRole: w.role, loginUid: li.uid, leaderPin: 'ok', reproc });
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
     await reload(); C.toast(t('logoutSaved')); keepScroll();
@@ -493,11 +525,13 @@ window.ProdUI = function (C) {
     return (li.planJobs || []).map((j, i) => ({ rec: { src: 'plan', i, product: j.product || '', targetKg: isNum(j.targetKg) ? j.targetKg : null } }))
       .concat((li.shiftJobs || []).map((j, i) => ({ rec: { src: 'job', i, code: j.code, note: j.note || '' } })))
       .concat(li.jobsExtra ? [{ rec: { src: 'text', note: li.jobsExtra } }] : [])
+      .concat((li.procPlan || []).map((x, i) => ({ rec: { src: 'proc', i, group: x.group, sections: (x.sections || []).slice() } })))
       .map(x => Object.assign(x, { label: itemLabel(x.rec) }));
   }
   function itemLabel(x) {
     if (x.src === 'plan') return (x.product || t('planNoProduct')) + (isNum(x.targetKg) ? ' · ' + fmtKg(x.targetKg) + ' kg' : '');
     if (x.src === 'job') return jobText({ code: x.code, note: x.note });
+    if (x.src === 'proc') return t('pg_' + x.group) + ((x.sections || []).length ? ': ' + x.sections.join(', ') : '');
     return x.note || '';
   }
   // Nome de quem regista: o chefe de turno do login (turno escolhido, senão o turno actual)
@@ -603,6 +637,11 @@ window.ProdUI = function (C) {
   }
   async function saveMaize() {
     const f = S.mzForm, w = await whoP('mz_pin'); if (!w) return; const by = w.title;
+    const changedTG = dmIds().some(id => { const x = f.levels[id] || {}, r = maizeRow(id, 'dm');
+      return (x.colour !== undefined && (x.colour || '') !== (r.colour || '')) || (x.grade !== undefined && (x.grade || '') !== (r.grade || '')); });
+    if (changedTG && TOP.indexOf(w.role) < 0) return C.toast(t('tgSupOnly'));
+    cmIds().forEach(id => { const r = maizeRow(id, 'cm'); f.levels[id] = Object.assign(f.levels[id] || {}, { colour: r.colour || '', grade: r.grade || '' }); });
+    dmIds().forEach(id => { const r = maizeRow(id, 'dm'), x = f.levels[id] || {}; f.levels[id] = Object.assign(x, { colour: x.colour !== undefined ? x.colour : r.colour || '', grade: x.grade !== undefined ? x.grade : r.grade || '' }); });
     const ids = dmIds().concat(cmIds()), levels = {};
     ids.forEach(id => { const x = f.levels[id] || {}; if (String(x.dipM || '').trim() || String(x.kg || '').trim()) levels[id] = { dipM: x.dipM, kg: x.kg }; });
     const r = P.validateBinStock({ levels, by }, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
@@ -702,7 +741,9 @@ window.ProdUI = function (C) {
       ${C.pinFld('st_pin')}</div>
       <p class="sub" id="st_dur">${esc(t('stopDurHint'))}</p>
       <label class="fld req">${esc(t('stopFault'))}<textarea rows="2" id="st_fault"></textarea></label>
-      <label class="fld">${esc(t('actionTaken'))}<textarea rows="2" id="st_action"></textarea></label>
+      <label class="fld">${esc(t('stopIntervention'))}<textarea rows="2" id="st_action"></textarea></label>
+      <label class="fld">${esc(t('stopConsumables'))}<textarea rows="2" id="st_cons"></textarea></label>
+      <label class="fld">${esc(t('comments'))}<textarea rows="2" id="st_comments"></textarea></label>
       <button class="btn primary big" data-pact="savestop">${esc(t('save'))}</button></section>
       <section class="card"><h3>${esc(t('ptab_stops'))} · ${esc(sel.day)} ${esc(t('shift_' + sel.period))} · ${sm.downtimeMin} min</h3>${sm.issues.map(issueItem).join('') || '<p class="sub">—</p>'}</section>`;
   }
@@ -720,7 +761,8 @@ window.ProdUI = function (C) {
     const action = String(f.action || '').trim();
     const rec = Object.assign(base(f.start), { kind: 'issue', t: f.start, startT: f.start, endT: f.end, category: f.category, lineId: $('#st_line').value, code: f.code,
       codeInfo: Object.assign({ source: S.cfgP.codesSource || P.DOWNTIME_SOURCE }, P.findCode(f.code, codes())), equipment: cName(P.findCode(f.code, codes()) || {}),
-      description: String(f.fault).trim(), downtimeMin: r.downtimeMin, action, by, status: action ? 'closed' : 'open' });
+      description: String(f.fault).trim(), downtimeMin: r.downtimeMin, action, consumables: (($('#st_cons') || {}).value || '').trim(),
+      comments: (($('#st_comments') || {}).value || '').trim(), by, status: action ? 'closed' : 'open' });
     if (rec.status === 'closed') { rec.closedAt = f.end; rec.closedBy = by; rec.resolution = action; }
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
@@ -745,15 +787,74 @@ window.ProdUI = function (C) {
   const gradeName = g => t('g_' + (P.SILO_GRADES.indexOf(g) >= 0 ? g : 'none'));
   const compText = comps => (comps || []).filter(c => c.kg > 0).map(c => (c.cereal === 'Milho' ? '' : c.cereal + ' ') + c.colour + ' · ' + gradeName(c.grade) + ': ' + fmtKg(c.kg) + ' kg (' + c.silos.join(', ') + ')').join(' + ');
 
+  // ---------- v2.18.0 (Zhax, 26-11-2026): Grão = tabela das bins D/M e C/M + leitura + totais por grau + transferências ----------
+  // Bin | Espaço vazio (m) | Quantidade | Tipo | Grau | Data de enchimento | Retenção. D/M: tipo e grau só com PIN de Supervisor ou acima;
+  // chefes de turno só o espaço vazio; data de enchimento = última descarga recebida (Silo Cereais). C/M: tipo, grau e data vêm
+  // da última ordem que usa a C/M (D/M da limpeza → C/M); o espaço vazio é mergulhado pelo chefe de turno.
+  const TOP = ['pm', 'head', 'chief', 'sup'];
+  const typeName = v => v ? t('ty_' + v) : '—';
+  function lastLevel(id) {
+    const s = (S.stocks || []).filter(x => x.levels && x.levels[id]).sort((a, b) => b.t - a.t)[0];
+    return s ? Object.assign({ t: s.t }, s.levels[id]) : null;
+  }
+  const dmFilled = id => { const m = (S.moves || []).filter(x => x.binId === id && x.type !== 'EMPTY').sort((a, b) => b.t - a.t)[0]; return m ? m.t : null; };
+  function cmFromJob(id) {
+    const j = (S.jobs || []).filter(x => (x.tempered || []).indexOf(id) >= 0 && isNum(x.startedAt)).sort((a, b) => b.startedAt - a.startedAt)[0];
+    if (!j) return null;
+    const cols = [], grs = [];
+    (j.sources || []).forEach(src => {
+      const comps = (j.sourceComps && j.sourceComps[src]) || [], lv = lastLevel(src) || {};
+      const c = comps.length ? comps.map(x => x.colour) : [lv.colour], g = comps.length ? comps.map(x => x.grade) : [lv.grade];
+      c.filter(Boolean).forEach(x => { if (cols.indexOf(x) < 0) cols.push(x); }); g.filter(Boolean).forEach(x => { if (grs.indexOf(x) < 0) grs.push(x); });
+    });
+    return { colour: cols.length > 1 ? 'Mistura' : cols[0] || '', grade: grs.join('/'), t: j.startedAt, sources: j.sources || [], jobUid: j.uid };
+  }
+  function maizeRow(id, kind) {
+    const lv = lastLevel(id) || {}, cm = kind === 'cm' ? cmFromJob(id) : null, H = holds()[id];
+    return { id, kind, dipM: lv.dipM, kg: lv.kg, colour: cm ? cm.colour : lv.colour, grade: cm ? cm.grade : lv.grade, filled: kind === 'cm' ? (cm && cm.t) : dmFilled(id), hold: H || null, cm };
+  }
+  const dash = v => v === undefined || v === null || v === '' ? '—' : esc(String(v));
+  function maizeTable(rows, edit) {
+    const f = S.mzForm, opt = (list, v, lab) => `<option value="">—</option>` + list.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(lab ? lab(x) : x)}</option>`).join('');
+    return `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('emptySpace'))}</th><th>${esc(t('quantityKg'))}</th><th>${esc(t('mzType'))}</th><th>${esc(t('mzGrade'))}</th><th>${esc(t('dateFilled'))}</th><th>${esc(t('holdCol'))}</th></tr>
+      ${rows.map(r => { const x = edit ? (f.levels[r.id] || {}) : {};
+        const dip = edit ? `<input inputmode="decimal" data-mz="${esc(r.id)}|dipM" value="${esc(x.dipM !== undefined ? x.dipM : '')}" style="max-width:80px">` : isNum(Number(r.dipM)) && String(r.dipM || '').trim() !== '' ? esc(String(r.dipM).replace('.', ',')) : '—';
+        const ty = edit && r.kind === 'dm' ? `<select data-mz="${esc(r.id)}|colour">${opt(P.MZ_TYPES, x.colour !== undefined ? x.colour : r.colour, typeName)}</select>` : esc(typeName(r.colour));
+        const gr = edit && r.kind === 'dm' ? `<select data-mz="${esc(r.id)}|grade">${opt(P.SILO_GRADES, x.grade !== undefined ? x.grade : r.grade)}</select>` : dash(r.grade);
+        return `<tr><td><b>${esc(r.id)}</b></td><td>${dip}</td><td>${isNum(r.kg) ? fmtKg(r.kg) : '—'}</td><td>${ty}</td><td>${gr}</td><td>${r.filled ? esc(C.fmtDT(r.filled).slice(0, 10)) : '—'}</td>
+          <td>${r.hold ? `<span class="chip d-reject">${esc(t('onHold'))}</span>` : '—'}</td></tr>`; }).join('')}</table></div>`;
+  }
+  function gradeTotals(rows) {
+    const T = {}; rows.forEach(r => { if (!isNum(r.kg)) return; const g = r.grade || '—'; T[g] = (T[g] || 0) + r.kg; });
+    const ks = Object.keys(T).sort();
+    return ks.length ? `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('mzGrade'))}</th><th>kg</th></tr>${ks.map(g => `<tr><td>${esc(g)}</td><td>${fmtKg(T[g])}</td></tr>`).join('')}
+      <tr><td><b>${esc(t('total'))}</b></td><td><b>${fmtKg(ks.reduce((a, g) => a + T[g], 0))}</b></td></tr></table></div>` : `<p class="sub">${esc(t('noData'))}</p>`;
+  }
+  function viewGrainAll() {
+    const dm = dmIds().map(id => maizeRow(id, 'dm')), cm = cmIds().map(id => maizeRow(id, 'cm')), f = S.mzForm;
+    const cleaning = cm.filter(r => r.cm).map(r => `<div class="kv"><span>${esc(r.cm.sources.join(', ') || '—')} → <b>${esc(r.id)}</b></span><b>${esc(C.fmtDT(r.cm.t))}</b></div>`).join('');
+    const R = P.reconcile({ day: S.mzDay || L.prodDay(now()), cfgP: S.cfgP, stocks: S.stocks, moves: S.moves, log: S.shiftLog });
+    const kgT = v => isNum(v) ? fmtKg(v) + ' kg' : esc(t('noData'));
+    const recRows = (x, rows) => rows.map(([lab, val, sign]) => `<tr><td>${esc(lab)}</td><td>${sign || ''}${kgT(val)}</td></tr>`).join('') +
+      `<tr><td><b>${esc(t('rcExpected'))}</b></td><td><b>${kgT(x.expected)}</b></td></tr><tr><td><b>${esc(t('rcToday'))}</b></td><td><b>${kgT(x.today && x.today.kg)}</b></td></tr>
+       <tr><td><b>${esc(t('rcDiff'))}</b></td><td><b>${isNum(x.diff) ? (x.diff > 0 ? '+' : '') + fmtKg(x.diff) + ' kg' : esc(t('noData'))}</b></td></tr>`;
+    return `<section class="card"><h3>${esc(t('mz_dm'))}</h3>${maizeTable(dm, !!f)}
+      <h3>${esc(t('mz_cm'))}</h3>${maizeTable(cm, !!f)}
+      ${f ? `${C.pinFld('mz_pin')}<button class="btn primary big" data-pact="mzsave">${esc(t('save'))}</button><button class="btn ghost" data-pact="mzcancel">${esc(t('cancel'))}</button>`
+        : `<button class="btn primary" data-pact="mznew">${esc(t('mzNew'))}</button>`}</section>
+      <section class="card"><h3>${esc(t('cleaningSec'))}</h3>${cleaning || '<p class="sub">—</p>'}</section>
+      <section class="card"><h3>${esc(t('gradeTotals'))}</h3><h4>${esc(t('mz_dm'))}</h4>${gradeTotals(dm)}<h4>${esc(t('mz_cm'))}</h4>${gradeTotals(cm)}</section>
+      <section class="card"><h3>${esc(t('rcTitle'))}</h3><label class="fld">${esc(t('prodDay'))}<input type="date" id="mzDay" value="${esc(S.mzDay || L.prodDay(now()))}"></label>
+        <h4>${esc(t('mz_dm'))}</h4><div class="tablewrap"><table class="tbl">${recRows(R.dm, [[t('rcYesterday'), R.dm.yesterday && R.dm.yesterday.kg], [t('rcReceived'), R.dm.received, '+ '], [t('scale_clean'), R.dm.clean, '− '], [t('scale_screenings'), R.dm.screenings, '− ']])}</table></div>
+        <h4>${esc(t('mz_cm'))}</h4><div class="tablewrap"><table class="tbl">${recRows(R.cm, [[t('rcYesterday'), R.cm.yesterday && R.cm.yesterday.kg], [t('scale_clean'), R.cm.clean, '+ '], ['B1', R.cm.b1, '− ']])}</table></div></section>` + viewGrain();
+  }
+
   // ---------- grão: stock da app de Silos, transferências para silos de milho sujo ----------
   function viewGrain() {
     const recent = (S.moves || []).slice().sort((a, b) => b.t - a.t).slice(0, 10);
     return snapCard() +
       (feedAuto() ? `<section class="card"></section>` : S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
-      `<section class="card"><h3>${esc(t('dirtyBins'))}</h3>${(S.cfgP.dirtyBins || []).map(dirtyCard).join('')}</section>
-      <section class="card"><h3>${esc(t('temperedBins'))}</h3>${(S.cfgP.temperedBins || []).map(b => `<div class="kv"><span><b>${esc(b.id)}</b> · ${esc(t('fedBy'))} ${esc(b.lines.join('/'))}</span><b>${isNum(b.capKg) ? fmtKg(b.capKg) + ' kg' : esc(t('capNotSet'))}</b></div>`).join('')}
-        </section>
-      <section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
+      `<section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
       <section class="card"></section>`;
   }
   function dirtyCard(b) {
@@ -1378,6 +1479,7 @@ window.ProdUI = function (C) {
       <div class="row between"><span><b>${esc(C.fmtTime(i.t))}</b>${i.code ? ' · <b>' + esc(codeLabel(i.code, cd)) + '</b> <small>(' + esc(tierLabel(cd && cd.tier3)) + ')</small>' : ' · ' + esc(t('noStopCode'))}${i.lineId ? ' · ' + esc(C.lineName(i.lineId)) : ''}${i.equipment ? ' · ' + esc(i.equipment) : ''}</span>
         <span class="chip ${open ? 'd-warn' : 'd-accept'}">${esc(open ? t('is_open') : t('is_closed'))}</span></div>
       <div>${esc(i.description)}</div>
+      ${i.consumables ? `<div><small><b>${esc(t('stopConsumables'))}:</b> ${esc(i.consumables)}</small></div>` : ''}${i.comments ? `<div><small>${esc(i.comments)}</small></div>` : ''}
       <small>${isNum(i.downtimeMin) ? esc(t('downtimeMin')) + ': ' + i.downtimeMin + ' · ' : ''}${esc(t('crew'))} ${esc(i.crew)} · ${esc(i.by)}</small>
       ${i.resolution ? `<div class="act"><small>${esc(i.closedAt ? C.fmtDT(i.closedAt) : '')} · ${esc(i.closedBy || '')}: ${esc(i.resolution)}</small></div>` : ''}
       ${act ? `<div class="holdform"><label class="fld req">${esc(act === 'close' ? t('resolution') : t('voidReason'))}<textarea rows="2" id="la_text"></textarea></label>
@@ -1508,11 +1610,11 @@ window.ProdUI = function (C) {
   function holdIssues() { const H = holds(); return Object.keys(H).map(id => t('holdIssue', { b: id, r: H[id].reason })); }
   function viewBins() {
     const a = S.binAct;
-    // v2.17.0 (Zhax, 17-11-2026): quantidades das bins numa tabela
-    const qtyTbl = `<section class="card"><h3>${esc(t('binQtyTitle'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('product'))}</th><th>kg</th><th>%</th></tr>${S.cfgP.bins.map(b => {
+    // v2.18.0 (Zhax, 26-11-2026): Bin | Quantidade | Tipo | Grau | Data de enchimento | Retenção; o chefe de turno grava a quantidade; total por grau
+    const qtyTbl = productsCard() + `<!-- v2.17 -->` + (false ? `<section class="card"><h3>${esc(t('binQtyTitle'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('product'))}</th><th>kg</th><th>%</th></tr>${S.cfgP.bins.map(b => {
       const st = P.binState(b.id, S.binEvents), lv = levelOf(b.id) || {};
-      return `<tr><td><b>${esc(b.id)}</b></td><td>${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</td><td>${isNum(lv.kg) ? fmtKg(lv.kg) : '—'}</td><td>${isNum(lv.pct) ? esc(String(lv.pct).replace('.', ',')) + ' %' : '—'}</td></tr>`; }).join('')}</table></div></section>`;
-    return qtyTbl + holdsCard() + totalsCard() + stockCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3>
+      return `<tr><td><b>${esc(b.id)}</b></td><td>${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</td><td>${isNum(lv.kg) ? fmtKg(lv.kg) : '—'}</td><td>${isNum(lv.pct) ? esc(String(lv.pct).replace('.', ',')) + ' %' : '—'}</td></tr>`; }).join('')}</table></div></section>` : '');
+    return qtyTbl + holdsCard() + totalsCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3>
       ${S.cfgP.bins.map(b => {
         const st = P.binState(b.id, S.binEvents);
         const job = st.jobUid ? S.jobs.find(j => j.uid === st.jobUid) : null;
@@ -1532,6 +1634,35 @@ window.ProdUI = function (C) {
             <button class="btn primary small" data-pact="${mine === 'set' ? 'setbin' : mine === 'out' ? 'outbin' : mine === 'qty' || mine === 'zero' ? 'qtybin' : 'emptybin'}">${esc(t('save'))}</button> <button class="btn ghost small" data-pact="cancelba">${esc(t('cancel'))}</button></div>`
           : `<div class="row">${st.productId ? `<button class="btn small" data-binact="out" data-bin="${esc(b.id)}">${esc(t('binOutBtn'))}</button>` : ''}${st.productId ? `<button class="btn ghost small" data-binact="empty" data-bin="${esc(b.id)}">${esc(t('binEmptyBtn'))}</button>` : ''}<button class="btn ghost small" data-binact="set" data-bin="${esc(b.id)}">${esc(t('binSetBtn'))}</button><button class="btn small" data-binact="qty" data-bin="${esc(b.id)}">${esc(t('binQtyBtn'))}</button><button class="btn ghost small" data-binact="zero" data-bin="${esc(b.id)}">${esc(t('binZeroBtn'))}</button></div>`}</div>`;
       }).join('')}</section>`;
+  }
+  const PTYPES = ['Branco', 'Amarelo'], PGRADES = ['1', '2'];
+  function productRow(b) {
+    const st = P.binState(b.id, S.binEvents), lv = lastLevel(b.id) || {}, lvl = levelOf(b.id) || {};
+    const g0 = /([12])$/.exec(String(st.productId || '')), H = holds()[b.id];
+    return { id: b.id, productId: st.productId, kg: isNum(lvl.kg) ? lvl.kg : lv.kg, colour: lv.colour || '', grade: lv.grade || (g0 ? g0[1] : ''), filled: st.productId ? st.since : null, hold: H || null };
+  }
+  function productsCard() {
+    const rows = S.cfgP.bins.map(productRow), f = S.pqForm;
+    const opt = (list, v, lab) => `<option value="">—</option>` + list.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(lab ? lab(x) : x)}</option>`).join('');
+    return `<section class="card"><h3>${esc(t('ptab_bins'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('quantityKg'))}</th><th>${esc(t('mzType'))}</th><th>${esc(t('mzGrade'))}</th><th>${esc(t('dateFilled'))}</th><th>${esc(t('holdCol'))}</th></tr>
+      ${rows.map(r => { const x = f ? (f[r.id] || {}) : null;
+        return `<tr><td><b>${esc(r.id)}</b>${r.productId ? '<br>' + esc(C.prodName(r.productId)) : x ? `<br><select data-pq="${esc(r.id)}|productId"><option value="">${esc(t('product'))}</option>${C.products().map(pp => `<option value="${esc(pp.id)}" ${x.productId === pp.id ? 'selected' : ''}>${esc(C.prodName(pp.id))}</option>`).join('')}</select>` : ''}</td>
+          <td>${x ? `<input inputmode="decimal" data-pq="${esc(r.id)}|kg" value="${esc(x.kg || '')}" style="max-width:100px">` : isNum(r.kg) ? fmtKg(r.kg) : '—'}</td>
+          <td>${x ? `<select data-pq="${esc(r.id)}|colour">${opt(PTYPES, x.colour !== undefined ? x.colour : r.colour, typeName)}</select>` : esc(typeName(r.colour))}</td>
+          <td>${x ? `<select data-pq="${esc(r.id)}|grade">${opt(PGRADES, x.grade !== undefined ? x.grade : r.grade)}</select>` : dash(r.grade)}</td>
+          <td>${r.filled ? esc(C.fmtDT(r.filled).slice(0, 10)) : '—'}</td><td>${r.hold ? `<span class="chip d-reject">${esc(t('onHold'))}</span>` : '—'}</td></tr>`; }).join('')}</table></div>
+      ${f ? `${C.pinFld('pq_pin')}<button class="btn primary big" data-pact="pqsave">${esc(t('save'))}</button><button class="btn ghost" data-pact="pqcancel">${esc(t('cancel'))}</button>`
+        : `<button class="btn primary" data-pact="pqnew">${esc(t('pqNew'))}</button>`}
+      <h4>${esc(t('gradeTotals'))}</h4>${gradeTotals(rows)}</section>`;
+  }
+  async function saveProducts() {
+    const f = S.pqForm, w = await whoP('pq_pin'); if (!w) return;
+    const levels = {};
+    S.cfgP.bins.forEach(b => { const x = f[b.id] || {}; if (String(x.kg || '').trim() !== '') { const r = productRow(b);
+      levels[b.id] = { kg: x.kg, productId: r.productId || x.productId || '', colour: x.colour !== undefined ? x.colour : r.colour, grade: x.grade !== undefined ? x.grade : r.grade }; } });
+    if (!Object.keys(levels).length) return C.toast(t('pqNone'));
+    S.pqForm = null;
+    return stockSave({ levels, by: w.title, scope: 'products' });
   }
   // ---------- totais das bins de manhã (v2.4.0) ----------
   const LV_CLS = { FULL: 'd-reject', OVER: 'd-reject', NEG: 'd-reject', EMPTY: 'd-accept', OK: '', UNKNOWN: 'd-record' };
@@ -1585,6 +1716,7 @@ window.ProdUI = function (C) {
     if (!fo) { const w = await whoP('stk_pin'); if (!w) return; f.by = w.title; }
     const r = P.validateBinStock(f, S.cfgP, { binEvents: S.binEvents, jobs: S.jobs });
     if (r.errors.length) return C.toast(r.errors.map(stockMsg).join(' · '));
+    Object.keys(r.values).forEach(id => { const x = (f.levels || {})[id] || {}; if (x.colour !== undefined) r.values[id].colour = x.colour || ''; if (x.grade !== undefined) r.values[id].grade = x.grade || ''; });
     const tms = now(), by = String(f.by).trim();
     // leitura + conteúdo das bins de produto (SET/EMPTY), tudo-ou-nada
     const ops = [{ store: 'binStock', op: 'add', obj: Object.assign(base(tms), { kind: 'stock', t: tms, levels: r.values, by, scope: f.scope || 'all', warnings: r.warnings.map(w => w.code + ':' + w.bin) }) }].concat(r.binOps.map((o, i) =>
@@ -1845,6 +1977,9 @@ window.ProdUI = function (C) {
       case 'mznew': { const lv = {}; dmIds().concat(cmIds()).forEach(id => { const last = (S.stocks || []).filter(x => x.levels && x.levels[id]).sort((a, b) => b.t - a.t)[0]; const L0 = last ? last.levels[id] : {}; lv[id] = { colour: L0.colour || '', grade: L0.grade || '' }; }); S.mzForm = { levels: lv, by: S.operator }; keepScroll(); return; }
       case 'mzcancel': S.mzForm = null; keepScroll(); return;
       case 'mzsave': return saveMaize();
+      case 'pqnew': S.pqForm = {}; keepScroll(); return;
+      case 'pqcancel': S.pqForm = null; keepScroll(); return;
+      case 'pqsave': return saveProducts();
       case 'saverun': return saveRun();
       case 'lgjobrm': { (S.lgJobs || []).splice(Number(el.dataset.i), 1); const c = $('#lg_jobs'); if (c) c.innerHTML = jobChips(); return; }
       case 'savedips': return saveDips();
@@ -1878,6 +2013,7 @@ window.ProdUI = function (C) {
   }
   function onInput(el) {
     if (el.dataset && el.dataset.mz && S.mzForm) return onChange(el);
+    if (el.dataset && el.dataset.pq && S.pqForm) return onChange(el);
     if (($('#lo_check')) && (/^lo_|^los_/.test(el.id || '') || el.classList.contains('lo_pct'))) { const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period); if (li) $('#lo_check').innerHTML = logoutCheckHtml(li, sel.day, sel.period); }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset.dip) { const o = $('#dipv_' + el.dataset.dip); if (o) o.innerHTML = dipKgText(el.value, P.dipKg(el.value)); return true; }
@@ -1914,6 +2050,8 @@ window.ProdUI = function (C) {
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset && el.dataset.runsel) { const [p, ar] = el.dataset.runsel.split('|'); const b = $('#' + p + '_box_' + ar); if (b && p !== 'rc') b.hidden = el.value !== '1'; return true; }
     if (el.id === 'mzDay') { if (el.value) S.mzDay = el.value; keepScroll(); return true; }
+    if (el.classList && el.classList.contains('lg_proc') && el.dataset.g === 'plansifter') { const d = $('#lg_psecs'); if (d) d.hidden = !el.checked; return true; }
+    if (el.dataset && el.dataset.pq && S.pqForm) { const [id, k] = el.dataset.pq.split('|'); S.pqForm[id] = Object.assign(S.pqForm[id] || {}, { [k]: el.value }); return true; }
     if (el.dataset && el.dataset.mz && S.mzForm) { const [id, k] = el.dataset.mz.split('|'); if (k === undefined) S.mzForm[id] = el.value; else { S.mzForm.levels[id] = Object.assign(S.mzForm.levels[id] || {}, { [k]: el.value }); if (k === 'dipM') { const o = $('#mzkg_' + id); if (o) { const v = el.value; o.innerHTML = dipKgText(v, String(v).trim() ? P.dipKg(v, P.dipSpec(id, S.cfgP)) : null); } } } return true; }
     if (el.id === 'pm_group') { S.procForm = { group: el.value }; keepScroll(); return true; }
     if (el.id === 'pm_section' || el.id === 'pm_task') { S.procForm = Object.assign(S.procForm || {}, el.id === 'pm_task' ? { task: el.value } : { section: el.value }); return true; }
