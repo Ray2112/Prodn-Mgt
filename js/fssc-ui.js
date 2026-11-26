@@ -130,7 +130,8 @@ window.FsscUI = function (C) {
     // v2.21.0 (Zhax, 26-11-2026): MTD | Acções em aberto | Reclamações de clientes | Formação (documentos e histórico dentro do MTD)
     if (['month', 'docs', 'hist'].indexOf(st.tab) >= 0) st.tab = 'mtd';
     const tabs = ['mtd', 'actions'].concat(C.complaints ? ['complaints'] : []).concat(C.training ? ['training'] : []);
-    const head = `<section class="card"><h2>${esc(t('title'))}</h2><p class="fs-sub">${esc(t('area_' + C.area))} · ${esc(Q.SOURCE)}</p>
+    // v2.25.0 (Zhax, 26-11-2026): sem a descrição da certificação no topo
+    const head = `<section class="card"><h2>${esc(t('title'))}</h2>
       <div class="fs-tabs">${tabs.map(k => `<button type="button" class="btn small ${st.tab === k ? 'primary' : ''}" data-fact="tab" data-v="${k}">${esc(t('t_' + k))}</button>`).join('')}</div></section>`;
     const bn = warnings().map(w => `<div class="fs-bn ${w.level === 'bad' ? 'fs-bad' : 'fs-warn'}">✔ ${esc(warnText(w))}</div>`).join('');
     return bn + head + ({ mtd: vMtd, actions: () => vOpen() + vActions(), complaints: vComplaints, training: vTraining }[st.tab] || vMtd)();

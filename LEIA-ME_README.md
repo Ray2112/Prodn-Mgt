@@ -1,5 +1,9 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.24.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.25.0
 
+> **v2.25.0 — FSSC e Relatórios (Zhax, 26-11-2026).** FSSC: sem a descrição da certificação no topo. Relatórios: no fim de cada tipo (Produção, CQ, Manutenção, FSSC) o resumo dos últimos 7 dias de produção até ao dia escolhido, com totais; na Produção também as transferências de grão e as ordens fechadas nesses 7 dias (antes no Turno e no Grão).
+>
+> *EN:* FSSC: certification description removed from the top. Reports: each type ends with a 7-day summary up to the chosen day, with totals; Production also lists grain transfers and the jobs closed in those 7 days.
+>
 > **v2.24.0 — Manutenção, 2.ª ronda (Zhax, 26-11-2026).** Turno: preventiva só em % do planeado até hoje (em atraso e feita); a lista só ao pedir; secção AVARIAS A ATENDER destacada no login e no login gravado. Avarias e intervenções mostram só a duração total; sem comentários nas avarias. Rolos: dois títulos grandes (REESTRIAGEM, TROCA DE ROLOS); a passagem escolhe-se em lista nos dois (obrigatória nos rolos à espera). Consumíveis: inventário com entradas (+) e saídas (−) que mudam o stock e a % do necessário bem visível (o necessário de cada artigo do catálogo só com PIN de Supervisor ou acima); encomendas com nome, descrição, quantidade, n.º Glose e comentário. O stock muda só com as entradas e saídas (os consumíveis gastos ficam como registo, Assumido).
 >
 > *EN:* Maintenance round 2. Shift: preventive shown as % of planned to date (overdue and done), list on request; prominent BREAKDOWNS TO ATTEND section. Breakdowns and interventions show total duration only; no comments on breakdowns. Rolls: two bold titles; passage dropdown for both re-fluting and roll change. Consumables: inventory with add (+) / remove (−) moves changing the stock and % of required (required per catalogue item, top-four PIN only); orders list with name, description, quantity, Glose no., comment. Stock only changes with +/− moves (usage stays a log, Assumed).
