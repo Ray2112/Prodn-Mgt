@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.23.0';
+  const VERSION = '2.24.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
@@ -1117,7 +1117,7 @@
   // v2.22.0 (Zhax, 26-11-2026): filtros CF01–CF07, condutas de exaustão CF01–CF07, separadores CS01/CS02, despedregadores CT01/CT02, turbo-peneiro CT-P
   const PROC_GROUPS = ['plansifter', 'filter', 'exhaust', 'separator', 'stoner', 'turbo'];
   const CF = ['CF01', 'CF02', 'CF03', 'CF04', 'CF05', 'CF06', 'CF07'];
-  const PROC_TASK_CODES = ['service', 'cleanSleeves', 'changeSleeves', 'cleanScreens', 'repairScreens', 'cleanTrunking'];
+  const PROC_TASK_CODES = ['clean', 'service', 'cleanSleeves', 'changeSleeves', 'cleanScreens', 'repairScreens', 'cleanTrunking'];
   function expandSections(text) {
     const out = [];
     String(text || '').split(/[,\n;]/).map(x => x.trim()).filter(Boolean).forEach(x => {
@@ -1132,8 +1132,8 @@
     filter: { sections: CF.slice(), tasks: ['@cleanSleeves', '@changeSleeves'] },
     exhaust: { sections: CF.slice(), tasks: ['@cleanTrunking'] },
     separator: { sections: ['CS01', 'CS02'], tasks: ['@cleanScreens', '@repairScreens'] },
-    stoner: { sections: ['CT01', 'CT02'], tasks: ['@service'] },     // tarefa: Assumido (serviço)
-    turbo: { sections: ['CT-P'], tasks: ['@service'] }
+    stoner: { sections: ['CT01', 'CT02'], tasks: ['@clean', '@service'] },     // Zhax 26-11-2026: limpar, serviço
+    turbo: { sections: ['CT-P'], tasks: ['@clean', '@service'] }
   };
   const procMaintCfg = cfgP => { const c = (cfgP && cfgP.procMaint) || {}; const o = {}; PROC_GROUPS.forEach(g => { o[g] = c[g] && Array.isArray(c[g].sections) && Array.isArray(c[g].tasks) && c[g].tasks.length ? (c[g].sections.length ? c[g] : Object.assign({}, c[g], { sections: PROC_MAINT_DEFAULT[g].sections.slice() })) : PROC_MAINT_DEFAULT[g]; }); return o; };
   function validateProcMaint(o, cfg) {

@@ -21,7 +21,9 @@
   'use strict';
   const KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'sensorAck', 'consumable', 'consItem', 'note', 'void',
     // v2.20.0 (Zhax, 26-11-2026): login/logout do turno de manutenção, da reestriagem e da troca de rolos; fluxo dos rolos
-    'mLogin', 'mLogout', 'rfLogin', 'rfLogout', 'rcLogin', 'rcLogout', 'rollAwait', 'rollFlute', 'rollFluteEnd', 'rollCare', 'rcPlan', 'rcWork', 'rcDone'];
+    'mLogin', 'mLogout', 'rfLogin', 'rfLogout', 'rcLogin', 'rcLogout', 'rollAwait', 'rollFlute', 'rollFluteEnd', 'rollCare', 'rcPlan', 'rcWork', 'rcDone',
+    // v2.24.0 (Zhax, 26-11-2026): stock dos consumíveis (entradas e saídas) e encomendas
+    'stockMove', 'consOrder'];
   // v2.15.0 / v0.18.0 (Zhax, 16-11-2026): o turno de manutenção regista as tarefas (avarias a atender com descrição; preventiva)
   // v2.16.0 / v0.19.0 (Zhax, 17-11-2026): lista de tarefas de manutenção; preventiva escolhida da lista de preventiva (várias, «juntar trabalho»)
   const SHIFT_TASKS = ['breakdown', 'inspection', 'cleaning', 'lubrication', 'preventive', 'other'];
@@ -522,7 +524,37 @@
     return { planned, working, resolved: resolved.sort((a, b) => b.doneT - a.doneT) };
   }
 
-  const api = { secLog, validateLogout, ROLL_STATE, CARE_RESULTS, validateRollAwait, rollFlow, changeFlow, KIND_PREFIX, codeInKind, codesForKind, validatePmDone, pmDoneRecords, KINDS, CATEGORIES, WORK_TYPES, PM_STATUS, PM_UPDATES, ROLL_COND, ROLL_REASONS, BRUSH_STATES, NOTE_TOPICS, UNITS,
+  // ---------- v2.24.0: preventiva até hoje — % em atraso do que estava planeado até hoje ----------
+  function pmToDate(entries, today) {
+    const S = pmState(entries, today).filter(s => s.status !== 'cancelled' && String(s.due || '') <= String(today));
+    const done = S.filter(s => s.status === 'done').length, overdue = S.filter(s => s.overdue).length, n = S.length;
+    const p = x => n ? Math.round(x / n * 1000) / 10 : null;
+    return { planned: n, done, overdue, donePct: p(done), overduePct: p(overdue) };
+  }
+  // ---------- v2.24.0: inventário de consumíveis — stock = soma das entradas (+) e saídas (−); % do stock sobre o necessário ----------
+  function validateStockMove(o) {
+    const e = [], d = num(o.delta);
+    if (!txt(o.itemId)) e.push('item');
+    if (d === null || isNaN(d) || d === 0) e.push('qty');
+    return e;
+  }
+  function consStock(entries) {
+    const st = {};
+    effective(entries).filter(e => e.kind === 'stockMove' && e.itemId).forEach(e => { const d = num(e.delta); if (isNum(d)) st[e.itemId] = Math.round(((st[e.itemId] || 0) + d) * 1000) / 1000; });
+    return consCatalog(entries).map(c => {
+      const q = st[c.itemId] || 0, req = num(c.required);
+      return { item: c, itemId: c.itemId, stock: q, required: isNum(req) && req > 0 ? req : null, pct: isNum(req) && req > 0 ? Math.round(q / req * 1000) / 10 : null };
+    });
+  }
+  function validateOrder(o) {
+    const e = [], q = num(o.qty);
+    if (!txt(o.name)) e.push('item');
+    if (q === null || isNaN(q) || q <= 0) e.push('qty');
+    return e;
+  }
+  const orders = entries => effective(entries).filter(e => e.kind === 'consOrder').sort((a, b) => b.t - a.t);
+
+  const api = { pmToDate, validateStockMove, consStock, validateOrder, orders, secLog, validateLogout, ROLL_STATE, CARE_RESULTS, validateRollAwait, rollFlow, changeFlow, KIND_PREFIX, codeInKind, codesForKind, validatePmDone, pmDoneRecords, KINDS, CATEGORIES, WORK_TYPES, PM_STATUS, PM_UPDATES, ROLL_COND, ROLL_REASONS, BRUSH_STATES, NOTE_TOPICS, UNITS,
     num, addDays, daysBetween, weekOf, weekRange, validWeek, catOfCode, codesFor, findCode, effective, cleanParts,
     STOP_KINDS, KIND_CAT, SHIFT_TASKS, TASK_NEEDS_DESC, validateConsItem, consCatalog, minsBetween, validateShift, validateStop, validateWork, validatePmJob, validatePmUpdate, validateRollCheck, validateRollChange, validateRollMeasure,
     validateBrushCheck, validateRollConfig, validateNote, validateConsumable,

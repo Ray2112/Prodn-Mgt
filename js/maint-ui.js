@@ -24,6 +24,10 @@ window.MaintUI = function (C) {
       t_stops: 'Avarias', k_planned: 'Planeada', slogin: 'Login', slogout: 'Logout', sLoginBtn: 'Fazer login', sLogoutBtn: 'Fazer logout', loginDone: 'Login gravado', logoutDone: 'Logout gravado',
       pctDone: '% feito', pctCol: '% feito', itemsPlanned: 'Planeado no login', noItems: 'Nada planeado no login.', comments: 'Comentários', readOnly: 'Só leitura.',
       pmPlanned: 'Preventiva planeada para este turno', bdAttend: 'Avarias a atender', bdAdd: 'Mais uma avaria', mill: 'Moagem', millC: 'Moagem C', millD: 'Moagem D',
+      // v2.24.0
+      pmToDateTitle: 'Preventiva planeada até hoje', pmOverduePct: 'Em atraso', pmDonePct: 'Feita', pmShowList: 'Mostrar a lista da preventiva', bdTitle: 'AVARIAS A ATENDER', bdNone: 'Sem avarias a atender.',
+      rfBig: 'REESTRIAGEM', rcBig: 'TROCA DE ROLOS', invTitle: 'Inventário de consumíveis', inStock: 'Em stock', required: 'Necessário', heldPct: '% do necessário', addQty: 'Entrada (+)', subQty: 'Saída (−)',
+      moveQty: 'Quantidade', ordersT: 'Encomendas', newOrder: 'Nova encomenda', ordName: 'Nome', ordDescr: 'Descrição', glose: 'N.º Glose', invNone: 'Catálogo vazio: junte artigos no Catálogo (em baixo).', reqOnlyTop: 'Necessário: só com PIN de Supervisor ou acima.',
       techs: 'N.º de técnicos', eta: 'Hora prevista de fim', consUsed: 'Consumíveis', overdueTitle: 'Preventiva em atraso', intervention: 'Intervenção feita',
       rfTitle: 'Reestriagem de rolos', rcTitle: 'Troca de rolos', rfAwait: 'Rolos à espera de reestriagem', rfFluting: 'Rolos em reestriagem', rfTest: 'Teste depois da reestriagem', rfDone: 'Testados',
       rollId: 'ID do rolo', spec: 'Especificação', diameter: 'Diâmetro (mm)', rollState: 'Estado', rs_normal: 'Normal', rs_bad: 'Mau', rs_discard: 'Abater', rfAdd: 'Juntar rolo',
@@ -85,6 +89,10 @@ window.MaintUI = function (C) {
       t_stops: 'Breakdowns', k_planned: 'Planned', slogin: 'Login', slogout: 'Logout', sLoginBtn: 'Log in', sLogoutBtn: 'Log out', loginDone: 'Login saved', logoutDone: 'Logout saved',
       pctDone: '% done', pctCol: '% done', itemsPlanned: 'Planned at login', noItems: 'Nothing planned at login.', comments: 'Comments', readOnly: 'Read only.',
       pmPlanned: 'Preventive planned for this shift', bdAttend: 'Breakdowns to attend to', bdAdd: 'One more breakdown', mill: 'Mill', millC: 'Mill C', millD: 'Mill D',
+      // v2.24.0
+      pmToDateTitle: 'Preventive planned to date', pmOverduePct: 'Overdue', pmDonePct: 'Done', pmShowList: 'Show the preventive list', bdTitle: 'BREAKDOWNS TO ATTEND', bdNone: 'No breakdowns to attend.',
+      rfBig: 'RE-FLUTING', rcBig: 'ROLL CHANGE', invTitle: 'Consumables inventory', inStock: 'In stock', required: 'Required', heldPct: '% of required', addQty: 'Add (+)', subQty: 'Remove (−)',
+      moveQty: 'Quantity', ordersT: 'Orders', newOrder: 'New order', ordName: 'Name', ordDescr: 'Description', glose: 'Glose no.', invNone: 'Catalogue empty: add items in the Catalogue (below).', reqOnlyTop: 'Required: only with a Supervisor-or-above PIN.',
       techs: 'No. of technicians', eta: 'Estimated finish time', consUsed: 'Consumables', overdueTitle: 'Overdue preventive', intervention: 'Intervention done',
       rfTitle: 'Roll fluting', rcTitle: 'Roll change', rfAwait: 'Rolls awaiting fluting', rfFluting: 'Rolls being fluted', rfTest: 'Test after fluting', rfDone: 'Tested',
       rollId: 'Roll ID', spec: 'Specification', diameter: 'Diameter (mm)', rollState: 'State', rs_normal: 'Normal', rs_bad: 'Bad', rs_discard: 'Discard', rfAdd: 'Add roll',
@@ -235,7 +243,7 @@ window.MaintUI = function (C) {
         ${fld(t('period'), `<select id="mPeriod">${opt('D', s.period, t('p_D'))}${opt('N', s.period, t('p_N'))}</select>`)}</div>
         <p class="mt-sub">${esc(t('crew'))} ${esc(C.crewOf(s.day, s.period) || '—')}</p>`}</section>`;
     const ex = extra.find(x => x.id === st.tab);
-    const body = ex ? ex.view() : { shift: vShift2, stops: vStops, rolls: vRolls2, rollset: vRollSet, cons: () => vCons() + vCatalog() }[st.tab]();
+    const body = ex ? ex.view() : { shift: vShift2, stops: vStops, rolls: vRolls2, rollset: vRollSet, cons: () => vInventory() + vCons() + vCatalog() }[st.tab]();
     return banners() + head + body;
   }
   function voidBox(uid) {
@@ -338,18 +346,23 @@ window.MaintUI = function (C) {
     const CAT = pmCat();
     const loginForm = f => `<div class="mt-req">${esc(t('pmPlanned'))}</div>${CAT.filter(c => c.pickable || c.overdue).map(c =>
         `<label class="mt-chk"><input type="checkbox" data-mact="secpick" data-v="pm" data-uid="${esc(c.id)}" ${f.pm.indexOf(c.id) >= 0 ? 'checked' : ''}> ${esc(c.task.code + ' · ' + pmName(c.task.asset) + ' — ' + pmName(c.task.task))}${c.overdue ? ' ⏰' : ''}</label>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}
-      <div class="mt-req">${esc(t('bdAttend'))}</div>${f.bds.map((b, i) => `<div class="mt-box"><div class="grid2">
+      <div class="mt-box" style="border:2px solid var(--rej,#b00020)"><h3 style="margin:0 0 6px">🔧 ${esc(t('bdTitle'))}</h3>${f.bds.map((b, i) => `<div class="mt-box"><div class="grid2">
         ${fld(t('mill'), `<select data-mbd="${i}|mill"><option value="">—</option>${['C', 'D'].map(m => opt(m, b.mill, t('mill' + m))).join('')}</select>`, 1)}
         ${fld(t('techs'), `<input data-mbd="${i}|techs" inputmode="numeric" value="${esc(b.techs || '')}">`)}
         ${fld(t('eta'), `<input data-mbd="${i}|eta" type="time" value="${esc(b.eta || '')}">`)}</div>
         ${fld(t('breakdownDesc'), `<textarea rows="2" data-mbd="${i}|description">${esc(b.description || '')}</textarea>`, 1)}
         ${fld(t('consUsed'), `<textarea rows="2" data-mbd="${i}|consumables">${esc(b.consumables || '')}</textarea>`)}
         <button type="button" class="btn small" data-mact="bdrm" data-v="${i}">✕</button></div>`).join('')}
-      <button type="button" class="btn small" data-mact="bdadd">＋ ${esc(t('bdAdd'))}</button>`;
+      <button type="button" class="btn primary small" data-mact="bdadd">＋ ${esc(t('bdAdd'))}</button></div>`;
     const extra = li => `${(li.pm || []).length ? `<div><b>${esc(t('pmPlanned'))}:</b> ${esc(li.pm.map(x => x.label).join(' | '))}</div>` : ''}
-      ${(li.bds || []).map(b => `<div><b>${esc(t('mill' + b.mill))}</b>: ${esc(b.description)}${b.consumables ? ' · ' + esc(t('consUsed')) + ': ' + esc(b.consumables) : ''}${isNum(b.techs) ? ' · ' + esc(t('techs')) + ' ' + b.techs : ''}${b.eta ? ' · ' + esc(t('eta')) + ' ' + esc(b.eta) : ''}</div>`).join('')}`;
+      <div class="mt-box" style="border:2px solid var(--rej,#b00020)"><h3 style="margin:0 0 6px">🔧 ${esc(t('bdTitle'))} (${(li.bds || []).length})</h3>${(li.bds || []).length ? '' : `<p class="mt-sub">${esc(t('bdNone'))}</p>`}
+      ${(li.bds || []).map(b => `<div><b>${esc(t('mill' + b.mill))}</b>: ${esc(b.description)}${b.consumables ? ' · ' + esc(t('consUsed')) + ': ' + esc(b.consumables) : ''}${isNum(b.techs) ? ' · ' + esc(t('techs')) + ' ' + b.techs : ''}${b.eta ? ' · ' + esc(t('eta')) + ' ' + esc(b.eta) : ''}</div>`).join('')}</div>`;
     if (!st.pmFilter) st.pmFilter = 'late';
-    return secBlock('shift', extra, loginForm) + `<section class="card"><h3>${esc(t('overdueTitle'))}</h3></section>` + pmListCard(CAT, week());
+    const P2 = M.pmToDate(st.entries, today()), pc = v => v === null ? '—' : nf(v) + ' %';
+    return secBlock('shift', extra, loginForm) + `<section class="card"><h3>${esc(t('pmToDateTitle'))} (${P2.planned})</h3>
+        <div class="grid2"><div><b style="font-size:1.4em;color:${P2.overdue ? 'var(--rej,#b00020)' : 'inherit'}">${esc(pc(P2.overduePct))}</b><br><span class="mt-sub">${esc(t('pmOverduePct'))}</span></div>
+        <div><b style="font-size:1.4em">${esc(pc(P2.donePct))}</b><br><span class="mt-sub">${esc(t('pmDonePct'))}</span></div></div>
+        <details><summary>${esc(t('pmShowList'))}</summary>${pmListCard(CAT, week())}</details></section>`;
   }
   // ----- rolos: reestriagem e troca -----
   function vRolls2() {
@@ -361,10 +374,10 @@ window.MaintUI = function (C) {
     const fl = `<datalist id="mtSpecs">${Array.from(new Set(PS.map(p => p.fluteSpec).filter(Boolean))).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
     const flute = secBlock('flute', itemsRO, pickF(RF.awaiting.filter(a => a.state !== 'discard'), 'rolls', a => a.rollId + (a.spec ? ' · ' + a.spec : ''))) +
       `<section class="card"><h3>${esc(t('rfAwait'))}</h3>
-        <table class="mt-t"><tr><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('spec'))}</b></td><td><b>${esc(t('diameter'))}</b></td><td><b>${esc(t('rollState'))}</b></td><td></td></tr>
-        ${RF.awaiting.map(a => `<tr><td>${esc(a.rollId)}${a.redo ? ' ↻' : ''}</td><td>${esc(a.spec || '—')}</td><td>${a.diameter !== null && a.diameter !== undefined && a.diameter !== '' ? esc(nf(a.diameter)) : '—'}</td><td>${esc(t('rs_' + a.state))}</td>
-          <td>${a.state !== 'discard' ? rowBtn('rfstart', a.uid, t('rfStart')) : ''}</td></tr>${f && f.kind === 'rollFlute' && f.awaitUid === a.uid ? `<tr><td colspan="5">${form('rollFlute', fld(t('startedAt'), inp('startTime', f.startTime, 'type="time"'), 1), 'saverfstart')}</td></tr>` : ''}`).join('')}</table>
-        ${form('rollAwait', `<div class="grid2">${fld(t('rollId'), inp('rollId', f && f.rollId), 1)}${fld(t('diameter'), inp('diameter', f && f.diameter, 'inputmode="decimal"'))}
+        <table class="mt-t"><tr><td><b>${esc(t('passage'))}</b></td><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('spec'))}</b></td><td><b>${esc(t('diameter'))}</b></td><td><b>${esc(t('rollState'))}</b></td><td></td></tr>
+        ${RF.awaiting.map(a => `<tr><td>${esc(a.passage || '—')}</td><td>${esc(a.rollId)}${a.redo ? ' ↻' : ''}</td><td>${esc(a.spec || '—')}</td><td>${a.diameter !== null && a.diameter !== undefined && a.diameter !== '' ? esc(nf(a.diameter)) : '—'}</td><td>${esc(t('rs_' + a.state))}</td>
+          <td>${a.state !== 'discard' ? rowBtn('rfstart', a.uid, t('rfStart')) : ''}</td></tr>${f && f.kind === 'rollFlute' && f.awaitUid === a.uid ? `<tr><td colspan="6">${form('rollFlute', fld(t('startedAt'), inp('startTime', f.startTime, 'type="time"'), 1), 'saverfstart')}</td></tr>` : ''}`).join('')}</table>
+        ${form('rollAwait', `${fld(t('passage'), `<select data-mf="passage"><option value="">—</option>${PS.map(p => opt(p.lineId + ' ' + p.name, f && f.passage, p.lineId + ' · ' + pmName(p.name))).join('')}</select>`, 1)}<div class="grid2">${fld(t('rollId'), inp('rollId', f && f.rollId), 1)}${fld(t('diameter'), inp('diameter', f && f.diameter, 'inputmode="decimal"'))}
           ${fld(t('rollState'), `<select data-mf="state">${M.ROLL_STATE.map(x => opt(x, f && f.state, t('rs_' + x))).join('')}</select>`, 1)}</div>${fld(t('spec'), inp('spec', f && f.spec, 'list="mtSpecs"'))}${fl}${fld(t('comments'), area('note', f && f.note))}`, 'saverfawait')}
         ${st.form ? '' : `<button type="button" class="btn primary" data-mact="new" data-v="rollAwait">＋ ${esc(t('rfAdd'))}</button>`}</section>
       <section class="card"><h3>${esc(t('rfFluting'))}</h3><table class="mt-t"><tr><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('startedAt'))}</b></td><td></td></tr>
@@ -383,10 +396,11 @@ window.MaintUI = function (C) {
         ${CF.working.map(w => `<tr><td>${esc(w.plan.passage)}</td><td>${esc(nf(w.people))}</td><td>${esc(w.eta || '—')}</td><td>${esc(w.note || '')}</td><td>${rowBtn('rcdone', w.uid, t('rcDoneBtn'))}</td></tr>
           ${f && f.kind === 'rcDone' && f.workUid === w.uid ? `<tr><td colspan="5">${form('rcDone', '', 'savercdone')}</td></tr>` : ''}`).join('') || `<tr><td colspan="5">—</td></tr>`}</table>
         <h4>${esc(t('rcResolved'))}</h4><table class="mt-t">${CF.resolved.slice(0, 10).map(w => `<tr><td>${esc(w.plan.passage)}</td><td>${esc(hhmm(w.doneT))}</td></tr>`).join('') || '<tr><td>—</td></tr>'}</table></section>`;
+    const big = k => `<h2 style="margin:18px 4px 6px;font-weight:800">${esc(t(k))}</h2>`;
     const wrap = h => h.replace(/<table class="mt-t">/g, '<div style="overflow-x:auto"><table class="mt-t">').replace(/<\/table>/g, '</table></div>');   // tabelas largas deslizam
-    return wrap(flute + change) + `<section class="card"><details><summary>${esc(t('rollHoursOld'))}</summary>${vRolls()}</details></section>`;
+    return big('rfBig') + wrap(flute) + big('rcBig') + wrap(change) + `<section class="card"><details><summary>${esc(t('rollHoursOld'))}</summary>${vRolls()}</details></section>`;
   }
-  async function saveRfAwait() { const f = st.form; if (errs(M.validateRollAwait(f))) return; await save({ kind: 'rollAwait', rollId: f.rollId.trim(), spec: String(f.spec || '').trim(), diameter: M.num(f.diameter), state: f.state, note: String(f.note || '').trim(), by: f.by }); }
+  async function saveRfAwait() { const f = st.form; if (errs(M.validateRollAwait(f).concat(String(f.passage || '').trim() ? [] : ['passage']))) return; await save({ kind: 'rollAwait', passage: f.passage, rollId: f.rollId.trim(), spec: String(f.spec || '').trim(), diameter: M.num(f.diameter), state: f.state, note: String(f.note || '').trim(), by: f.by }); }
   async function saveRfStart() { const f = st.form, s = sh(), a = M.rollFlow(st.entries).awaiting.find(x => x.uid === f.awaitUid); const startT = shiftMs(s.day, s.period, f.startTime); if (!a || startT === null) return errs(['startTime']); await save({ kind: 'rollFlute', awaitUid: a.uid, rollId: a.rollId, startT, by: f.by }); }
   async function saveRfEnd() { const f = st.form, s = sh(), endT = shiftMs(s.day, s.period, f.endTime); if (endT === null) return errs(['endTime']); await save({ kind: 'rollFluteEnd', fluteUid: f.fluteUid, endT, by: f.by }); }
   async function saveRfCare() { const f = st.form; if (M.CARE_RESULTS.indexOf(f.result) < 0) return errs(['careResult']); await save({ kind: 'rollCare', fluteUid: f.fluteUid, result: f.result, note: String(f.note || '').trim(), by: f.by }); }
@@ -409,13 +423,13 @@ window.MaintUI = function (C) {
         ${fld(t('line'), lineSel(f.lineId))}${fld(t('equipment'), inp('equipment', f.equipment))}
         ${fld(t('startTime'), inp('startTime', f.startTime, 'type="time"'), 1)}${fld(t('endTime'), inp('endTime', f.endTime, 'type="time"'), 1)}</div>
         <p class="mt-sub">${esc(dur !== null ? t('durCalc', { m: dur }) : t('durHint'))}</p>
-        ${fld(t('description'), area('description', f.description), 1)}${fld(t('intervention'), area('action', f.action))}${fld(t('consUsed'), area('consumables', f.consumables))}${fld(t('comments'), area('comments', f.comments))}${byF(f)}${saveBtns('savestop')}</div>`;
+        ${fld(t('description'), area('description', f.description), 1)}${fld(t('intervention'), area('action', f.action))}${fld(t('consUsed'), area('consumables', f.consumables))}${byF(f)}${saveBtns('savestop')}</div>`;
     }
     return `<section class="card">${C.kpiNote ? `` : ''}${f ? form : newBtn('stop', t('newStop'))}</section>
       <section class="card"><h3>${esc(t('t_stops'))} · ${sm.stopMin} min</h3>${sm.stops.map(r => `<div class="mt-item">
         <div><b>${esc(r.code || '')} ${esc((r.codeInfo && r.codeInfo.name) || '')}</b> <span class="mt-c">${esc(t('c_' + (M.CATEGORIES.indexOf(r.category) >= 0 ? r.category : 'Other')))}</span>
-        · <b>${esc(nf(r.durationMin))} min</b>${r.startT ? ' · ' + esc(hhmm(r.startT)) : ''}${r.lineId ? ' · ' + esc(lineName(r.lineId)) : ''}${r.equipment ? ' · ' + esc(r.equipment) : ''}</div>
-        <div>${r.stopKind ? '<b>' + esc(t('k_' + r.stopKind)) + ':</b> ' : ''}${esc(r.description)}</div>${r.action ? `<div class="mt-sub">${esc(t('intervention'))}: ${esc(r.action)}</div>` : ''}${r.consumables ? `<div class="mt-sub">${esc(t('consUsed'))}: ${esc(r.consumables)}</div>` : ''}${r.comments ? `<div class="mt-sub">${esc(r.comments)}</div>` : ''}${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
+        · <b>${esc(nf(r.durationMin))} min</b>${r.lineId ? ' · ' + esc(lineName(r.lineId)) : ''}${r.equipment ? ' · ' + esc(r.equipment) : ''}</div>
+        <div>${r.stopKind ? '<b>' + esc(t('k_' + r.stopKind)) + ':</b> ' : ''}${esc(r.description)}</div>${r.action ? `<div class="mt-sub">${esc(t('intervention'))}: ${esc(r.action)}</div>` : ''}${r.consumables ? `<div class="mt-sub">${esc(t('consUsed'))}: ${esc(r.consumables)}</div>` : ''}${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
   }
   async function saveStop() {
     const f = st.form;
@@ -451,7 +465,7 @@ window.MaintUI = function (C) {
     return `<section class="card">${f ? form : newBtn('work', t('newWork'))}</section>
       <section class="card"><h3>${esc(t('t_work'))}</h3>${sm.works.map(r => `<div class="mt-item">
         <div><b>${esc(r.equipment)}</b> <span class="mt-c">${esc(t('w_' + (M.WORK_TYPES.indexOf(r.workType) >= 0 ? r.workType : 'other')))}</span>
-        ${r.startT ? ' · ' + esc(hhmm(r.startT)) + (r.endT ? '–' + esc(hhmm(r.endT)) : '') : ''}${isNum(r.durationMin) ? ' · ' + r.durationMin + ' min' : ''}${r.lineId ? ' · ' + esc(lineName(r.lineId)) : ''}</div>
+        ${isNum(r.durationMin) ? ' · <b>' + r.durationMin + ' min</b>' : ''}${r.lineId ? ' · ' + esc(lineName(r.lineId)) : ''}</div>
         <div>${esc(r.description)}</div>
         ${(r.parts || []).length ? `<div class="mt-sub">${esc(t('parts'))}: ${r.parts.map(p => esc(p.item) + ' ' + esc(nf(p.qty)) + ' ' + esc(t('u_' + p.unit))).join('; ')}</div>` : ''}
         <div class="mt-sub">${esc(t('doneBy'))}: ${esc(r.doneBy)}</div>${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
@@ -722,6 +736,30 @@ window.MaintUI = function (C) {
   }
 
   // ----- consumíveis -----
+  // v2.24.0 (Zhax, 26-11-2026): inventário (entradas e saídas mudam o stock; % do necessário) e encomendas (nome, descrição, quantidade, n.º Glose, comentário)
+  function vInventory() {
+    const I = M.consStock(st.entries), f = st.form, fm = f && f.kind === 'stockMove' ? f : null, fo = f && f.kind === 'consOrder' ? f : null, O = M.orders(st.entries);
+    const pc = v => v === null ? '—' : nf(v) + ' %', col = v => v === null ? '' : v < 50 ? 'color:var(--rej,#b00020)' : v < 100 ? 'color:#b26a00' : 'color:var(--ok,#1b7f3b)';
+    const inv = I.length ? `<div style="overflow-x:auto"><table class="mt-t"><tr><td><b>${esc(t('item'))}</b></td><td><b>${esc(t('inStock'))}</b></td><td><b>${esc(t('required'))}</b></td><td><b>${esc(t('heldPct'))}</b></td><td></td></tr>
+      ${I.map(x => `<tr><td>${esc(x.item.name)}${x.item.dims ? ' <span class="mt-sub">' + esc(x.item.dims) + '</span>' : ''}</td><td class="mt-n">${esc(nf(x.stock))} ${esc(t('u_' + x.item.unit))}</td><td class="mt-n">${x.required === null ? '—' : esc(nf(x.required))}</td>
+        <td><b style="${col(x.pct)}">${esc(pc(x.pct))}</b></td><td>${st.form ? '' : `<button type="button" class="btn small" data-mact="new" data-v="stockMove" data-uid="${esc(x.itemId)}">± </button>`}</td></tr>
+        ${fm && fm.itemId === x.itemId ? `<tr><td colspan="5"><div class="mt-box"><div class="grid2">${fld(t('moveQty'), `<select data-mf="dir"><option value="+" ${fm.dir === '+' ? 'selected' : ''}>${esc(t('addQty'))}</option><option value="-" ${fm.dir === '-' ? 'selected' : ''}>${esc(t('subQty'))}</option></select>`, 1)}
+          ${fld(t('qty'), inp('qty', fm.qty, 'inputmode="decimal"'), 1)}</div>${fld(t('comments'), inp('note', fm.note))}${byF(fm)}${saveBtns('savemove')}</div></td></tr>` : ''}`).join('')}</table></div>` : `<p class="mt-sub">${esc(t('invNone'))}</p>`;
+    const ord = `${fo ? `<div class="mt-box"><div class="grid2">${fld(t('ordName'), inp('name', fo.name, 'list="mtItems"'), 1)}${fld(t('qty'), inp('qty', fo.qty, 'inputmode="decimal"'), 1)}${fld(t('glose'), inp('glose', fo.glose))}</div>
+        ${fld(t('ordDescr'), area('descr', fo.descr))}${fld(t('comments'), area('comment', fo.comment))}${byF(fo)}${saveBtns('saveorder')}</div>` : st.form ? '' : `<button type="button" class="btn primary" data-mact="new" data-v="consOrder">＋ ${esc(t('newOrder'))}</button>`}
+      <div style="overflow-x:auto"><table class="mt-t"><tr><td><b>${esc(t('ordName'))}</b></td><td><b>${esc(t('ordDescr'))}</b></td><td><b>${esc(t('qty'))}</b></td><td><b>${esc(t('glose'))}</b></td><td><b>${esc(t('comments'))}</b></td></tr>
+        ${O.map(o => `<tr><td>${esc(o.name)}<div class="mt-sub">${esc(ddmm(o.date))}</div></td><td>${esc(o.descr || '')}</td><td class="mt-n">${esc(nf(o.qty))}</td><td>${esc(o.glose || '—')}</td><td>${esc(o.comment || '')}<div>${voidBox(o.uid)}</div></td></tr>`).join('') || `<tr><td colspan="5">—</td></tr>`}</table></div>`;
+    return `<section class="card"><h3>${esc(t('invTitle'))}</h3>${inv}</section><section class="card"><h3>${esc(t('ordersT'))}</h3>${ord}</section>`;
+  }
+  async function saveMove() {
+    const f = st.form, q = M.num(f.qty), d = q === null || isNaN(q) ? null : (f.dir === '-' ? -Math.abs(q) : Math.abs(q));
+    if (errs(M.validateStockMove({ itemId: f.itemId, delta: d }))) return;
+    await save({ kind: 'stockMove', itemId: f.itemId, delta: d, note: String(f.note || '').trim(), by: f.by });
+  }
+  async function saveOrder() {
+    const f = st.form; if (errs(M.validateOrder(f))) return;
+    await save({ kind: 'consOrder', name: f.name.trim(), descr: String(f.descr || '').trim(), qty: M.num(f.qty), glose: String(f.glose || '').trim(), comment: String(f.comment || '').trim(), by: f.by });
+  }
   function vCons() {
     const sm = shiftSum(), day = M.shiftSummary(st.entries, sh().day), f = st.form && st.form.kind === 'consumable' ? st.form : null;
     const tot = list => list.length ? `<table class="mt-t">${list.map(x => `<tr><td>${esc(x.item)}</td><td class="mt-n">${esc(nf(x.qty))}</td><td>${esc(t('u_' + x.unit))}</td></tr>`).join('')}</table>` : `<p class="mt-sub">—</p>`;
@@ -747,16 +785,19 @@ window.MaintUI = function (C) {
   function vCatalog() {
     const CAT = M.consCatalog(st.entries), f = st.form && st.form.kind === 'consItem' ? st.form : null;
     return `<section class="card">${f ? `<div class="mt-box"><div class="grid2">${fld(t('item'), inp('name', f.name), 1)}${fld(t('dims'), inp('dims', f.dims))}
-        ${fld(t('unit'), `<select data-mf="unit">${M.UNITS.map(u => opt(u, f.unit, t('u_' + u))).join('')}</select>`, 1)}</div>
+        ${fld(t('unit'), `<select data-mf="unit">${M.UNITS.map(u => opt(u, f.unit, t('u_' + u))).join('')}</select>`, 1)}${fld(t('required'), inp('required', f.required, 'inputmode="decimal"'))}</div>
         ${fld(t('descr'), area('descr', f.descr))}${byF(f)}${saveBtns('saveitem')}</div>` : newBtn('consItem', t('newItem'))}</section>
-      <section class="card"><h3>${esc(t('t_catalog'))}</h3>${CAT.length ? `<table class="mt-t"><tr><td><b>${esc(t('item'))}</b></td><td><b>${esc(t('dims'))}</b></td><td><b>${esc(t('unit'))}</b></td><td></td></tr>${CAT.map(x => `<tr><td>${esc(x.name)}${x.descr ? `<br><small class="mt-sub">${esc(x.descr)}</small>` : ''}</td><td>${esc(x.dims || '—')}</td><td>${esc(t('u_' + x.unit))}</td>
-        <td><button type="button" class="btn small" data-mact="itemedit" data-uid="${esc(x.itemId)}">${esc(t('editItem'))}</button> <button type="button" class="btn small" data-mact="itemrm" data-uid="${esc(x.itemId)}">${esc(t('removeItem'))}</button></td></tr>`).join('')}</table>` : `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
+      <section class="card"><h3>${esc(t('t_catalog'))}</h3>${CAT.length ? `<div style="overflow-x:auto"><table class="mt-t"><tr><td><b>${esc(t('item'))}</b></td><td><b>${esc(t('dims'))}</b></td><td><b>${esc(t('unit'))}</b></td><td></td></tr>${CAT.map(x => `<tr><td>${esc(x.name)}${x.descr ? `<br><small class="mt-sub">${esc(x.descr)}</small>` : ''}</td><td>${esc(x.dims || '—')}</td><td>${esc(t('u_' + x.unit))}</td>
+        <td><button type="button" class="btn small" data-mact="itemedit" data-uid="${esc(x.itemId)}">${esc(t('editItem'))}</button> <button type="button" class="btn small" data-mact="itemrm" data-uid="${esc(x.itemId)}">${esc(t('removeItem'))}</button></td></tr>`).join('')}</table></div>` : `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
   }
   async function saveItem() {
     const f = st.form;
     if (errs(M.validateConsItem(f))) return;
     const id = f.itemId || ('ci-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
-    await save({ kind: 'consItem', itemId: id, name: f.name.trim(), dims: String(f.dims || '').trim(), descr: String(f.descr || '').trim(), unit: f.unit, by: f.by.trim() });
+    const old = M.consCatalog(st.entries).find(x => x.itemId === f.itemId), req = String(f.required || '').trim() === '' ? null : M.num(f.required);
+    if (req !== null && (isNaN(req) || req < 0)) return errs(['qty']);
+    if ((old ? (old.required === undefined ? null : old.required) : null) !== req && ['pm', 'head', 'chief', 'sup'].indexOf(f.byRole) < 0 && C.who) return C.toast(t('reqOnlyTop'));
+    await save({ kind: 'consItem', itemId: id, name: f.name.trim(), dims: String(f.dims || '').trim(), descr: String(f.descr || '').trim(), unit: f.unit, required: req, by: f.by.trim() });
   }
 
   // ---------- formulários novos ----------
@@ -767,7 +808,9 @@ window.MaintUI = function (C) {
       stop: { stopKind: '', code: '', lineId: '', equipment: '', startTime: '', endTime: '', description: '', action: '', consumables: '', comments: '' },
       secLogin: { sec: ref, pm: [], bds: [], rolls: [], plans: [], notes: '' },
       secLogout: { sec: ref, pcts: [], comments: '' },
-      rollAwait: { rollId: '', spec: '', diameter: '', state: 'normal', note: '' },
+      rollAwait: { passage: '', rollId: '', spec: '', diameter: '', state: 'normal', note: '' },
+      stockMove: { itemId: ref || '', qty: '', dir: '+', note: '' },
+      consOrder: { name: '', descr: '', qty: '', glose: '', comment: '' },
       rollFlute: { awaitUid: ref, startTime: '' },
       rollFluteEnd: { fluteUid: ref, endTime: '' },
       rollCare: { fluteUid: ref, result: '', note: '' },
@@ -784,7 +827,7 @@ window.MaintUI = function (C) {
       rollHours: { kind: 'rollConfig', scope: 'hours', group: 'B1', hours: '', reason: '', pin: '' },
       rollIds: { kind: 'rollConfig', scope: 'rollIds', passageId: ref, rollFast: (M.rollIdsOf(ref, st.entries) || {}).fast || '', rollSlow: (M.rollIdsOf(ref, st.entries) || {}).slow || '', reason: '', pin: '' },
       consumable: { item: '', itemId: '', qty: '', unit: 'un', lineId: '', purpose: '' },
-      consItem: { itemId: '', name: '', dims: '', descr: '', unit: 'un' },
+      consItem: { itemId: '', name: '', dims: '', descr: '', unit: 'un', required: '' },
       note: { topic: '', lineId: '', equipment: '', text: '' }
     }[kind];
     st.form = Object.assign({ kind, by }, F); st.act = null;
@@ -810,7 +853,7 @@ window.MaintUI = function (C) {
     } catch (e) { C.toast(t('saveFailed')); return; }
     await save({ kind: 'shift', tasks, notes: f.notes.trim(), by: f.by.trim() }, jobs.length ? t('saved') + ' ' + t('pmJobsPlanned', { n: jobs.length }) : null);
   }
-  const SAVE = { savesecin: saveSecIn, savesecout: saveSecOut, saverfawait: saveRfAwait, saverfstart: saveRfStart, saverfend: saveRfEnd, saverfcare: saveRfCare,
+  const SAVE = { savemove: saveMove, saveorder: saveOrder, savesecin: saveSecIn, savesecout: saveSecOut, saverfawait: saveRfAwait, saverfstart: saveRfStart, saverfend: saveRfEnd, saverfcare: saveRfCare,
     savercplan: saveRcPlan, savercwork: saveRcWork, savercdone: saveRcDone, saveshift: saveShift, saveitem: saveItem,
     savestop: saveStop, savework: saveWork, savepm: savePm, savepmup: savePmUp, saverchk: saveRollCheck, saverchg: saveRollChange, savecons: saveCons,
     savebrush: saveBrush, savemeas: saveMeasure, saverset: saveRollSet, savenote: saveNote, savepmdone: savePmDone };
@@ -819,7 +862,7 @@ window.MaintUI = function (C) {
     if (!el) return;
     const a = el.dataset.mact, v = el.dataset.v, uid = el.dataset.uid;
     if (a === 'tab') { st.tab = v; st.form = null; st.act = null; if (C.open) C.open(); keep(); return; }
-    if (a === 'new') { newForm(v); keep(); return; }
+    if (a === 'new') { newForm(v, uid); keep(); return; }
     if (a === 'secin') { newForm('secLogin', v); keep(); return; }
     if (a === 'secout') { newForm('secLogout', v); keep(); return; }
     if (a === 'secpick' && st.form && st.form.kind === 'secLogin') { const L = st.form[v], i = L.indexOf(uid); if (el.checked && i < 0) L.push(uid); if (!el.checked && i >= 0) L.splice(i, 1); return; }
@@ -851,8 +894,8 @@ window.MaintUI = function (C) {
     if (a === 'cancel') { st.form = null; st.act = null; keep(); return; }
     if (a === 'taskadd' && st.form && st.form.tasks) { st.form.tasks.push({ type: v || '', description: '' }); keep(); return; }
     if (a === 'taskrm' && st.form && st.form.tasks) { st.form.tasks.splice(Number(v), 1); keep(); return; }
-    if (a === 'itemedit') { const it = M.consCatalog(st.entries).find(x => x.itemId === uid); if (it) { st.form = { kind: 'consItem', itemId: it.itemId, name: it.name, dims: it.dims || '', descr: it.descr || '', unit: it.unit, by: C.operator() || '' }; st.act = null; } keep(); return; }
-    if (a === 'itemrm') { const it = M.consCatalog(st.entries).find(x => x.itemId === uid); if (it) await save({ kind: 'consItem', itemId: it.itemId, name: it.name, dims: it.dims || '', descr: it.descr || '', unit: it.unit, removed: true, by: C.operator() || it.by }, t('removed')); return; }
+    if (a === 'itemedit') { const it = M.consCatalog(st.entries).find(x => x.itemId === uid); if (it) { st.form = { kind: 'consItem', itemId: it.itemId, name: it.name, dims: it.dims || '', descr: it.descr || '', unit: it.unit, required: it.required === null || it.required === undefined ? '' : String(it.required), by: C.operator() || '' }; st.act = null; } keep(); return; }
+    if (a === 'itemrm') { const it = M.consCatalog(st.entries).find(x => x.itemId === uid); if (it) await save({ kind: 'consItem', itemId: it.itemId, name: it.name, dims: it.dims || '', descr: it.descr || '', unit: it.unit, required: it.required === undefined ? null : it.required, removed: true, by: C.operator() || it.by }, t('removed')); return; }
     if (a === 'addpart' && st.form && st.form.parts) { st.form.parts.push({ item: '', qty: '', unit: 'un' }); keep(); return; }
     if (a === 'wk') { const r = M.weekRange(week()); if (r) st.week = M.weekOf(M.addDays(r[0], 7 * Number(v))); keep(); return; }
     if (a === 'voidask') { st.act = { uid, reason: '', by: C.operator() || '' }; keep(); return; }
