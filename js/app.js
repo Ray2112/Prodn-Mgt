@@ -7,7 +7,7 @@
   let FU = null;   // módulo de conformidade FSSC 22000 (js/fssc-ui.js, igual na Grain-Mgt)
   const $ = s => document.querySelector(s);
   const S = {
-    view: 'home', lang: 'pt', cfg: null, crew: null, operator: '', lineState: {},
+    view: 'prod', lang: 'pt', cfg: null, crew: null, operator: '', lineState: {},
     samples: [], holds: [], alerts: [], limitChanges: [], reports: [],
     form: null, limitsProduct: null, limitsDraft: null, recDay: null, recLine: '', repDay: null, repShift: '',
     detailId: null, modal: null, notified: {}, pinLock: { fails: 0, until: 0 }
@@ -63,17 +63,25 @@
   // v2.16.0 (Zhax, 17-11-2026): um PIN de 4 caracteres por função. Os PIN antigos foram apagados uma vez; um PIN ainda não definido
   // grava-se livremente; mudar um PIN já definido exige o PIN do Chief Miller. Aprovações da app (limites, definições, retenções,
   // FSSC): PIN do Supervisor ou do Chief Miller (assumido). Os chefes de turno A–D usam o seu PIN no login e logout.
-  const PIN_ROLES = ['pm', 'head', 'chief', 'sup', 'A', 'B', 'C', 'D'];
+  // v2.18.0 (Zhax, 26-11-2026): cada separador só se altera com um PIN de quem tem direito; sem PIN é só leitura.
+  // PM, Head Miller, Chief Miller e Supervisor alteram tudo; chefes de turno da produção (A–D) só Produção e CQ;
+  // chefes de turno da manutenção (A–D) só Manutenção; FSSC 1 e 2 só FSSC; Definições só os quatro de cima; Relatórios ninguém.
+  const TOP_ROLES = ['pm', 'head', 'chief', 'sup'];
+  const LEAD_ROLES = ['A', 'B', 'C', 'D'], MLEAD_ROLES = ['MA', 'MB', 'MC', 'MD'], FSSC_ROLES = ['F1', 'F2'];
+  const PIN_ROLES = TOP_ROLES.concat(LEAD_ROLES, MLEAD_ROLES, FSSC_ROLES);
+  const SCOPE_ROLES = { prod: TOP_ROLES.concat(LEAD_ROLES), sample: TOP_ROLES.concat(LEAD_ROLES), maint: TOP_ROLES.concat(MLEAD_ROLES),
+    fssc: TOP_ROLES.concat(FSSC_ROLES), settings: TOP_ROLES, report: [] };
+  const inScope = (roles, scope) => scope && SCOPE_ROLES[scope] ? roles.filter(k => SCOPE_ROLES[scope].indexOf(k) >= 0) : roles;
   const PIN_RE = /^[A-Za-z0-9]{4}$/;
   async function makePin(pin) {
     const salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x => x.toString(16).padStart(2, '0')).join('');
     return { salt, hash: await sha(salt + pin), setAt: new Date().toISOString() };
   }
   const pinOk = async (p, pin) => !!p && (await sha(p.salt + String(pin || ''))) === p.hash;
-  async function checkPin(pin, roles) {
+  async function checkPin(pin, roles, scope) {
     const now = Date.now();
     if (S.pinLock.until > now) return { ok: false, locked: Math.ceil((S.pinLock.until - now) / 60000) };
-    const R = (roles || ['sup', 'chief']).map(k => (S.rolePins || {})[k]).filter(Boolean);
+    const R = inScope(roles || TOP_ROLES, scope).map(k => (S.rolePins || {})[k]).filter(Boolean);
     if (!R.length) return { ok: false, noPin: true };
     let ok = false;
     for (const p of R) if (await pinOk(p, pin)) ok = true;
@@ -83,18 +91,22 @@
     return { ok, left: 5 - S.pinLock.fails, locked: S.pinLock.until > now ? 5 : 0 };
   }
   // v2.17.0 (Zhax, 17-11-2026): sem nomes — cada registo pede só o PIN; a app grava o título da função (ex.: «Chefe de turno B»)
-  const roleTitle = k => t('role_' + (['A', 'B', 'C', 'D'].indexOf(k) >= 0 ? 'leader' : k), { c: k });
-  async function who(pin, roles) {
+  const roleTitle = k => LEAD_ROLES.indexOf(k) >= 0 ? t('role_leader', { c: k }) : MLEAD_ROLES.indexOf(k) >= 0 ? t('role_mleader', { c: k.slice(1) })
+    : FSSC_ROLES.indexOf(k) >= 0 ? t('role_fssc', { c: k.slice(1) }) : t('role_' + k);
+  async function who(pin, roles, scope) {
     const now = Date.now();
     if (S.pinLock.until > now) return { err: t('pinLocked', { m: Math.ceil((S.pinLock.until - now) / 60000) }) };
     if (!PIN_RE.test(String(pin || ''))) return { err: t('pinNeed') };
-    for (const k of (roles || PIN_ROLES)) {
+    const allowed = inScope(roles || PIN_ROLES, scope);
+    for (const k of allowed) {
       if (await pinOk(S.rolePins[k], pin)) {
         S.pinLock = { fails: 0, until: 0 }; await DB.setConfig('pinLock', S.pinLock);
         const title = roleTitle(k); S.operator = title; await DB.setConfig('operator', title);
         return { role: k, title };
       }
     }
+    // PIN certo mas de uma função sem direito aqui: não conta como tentativa falhada
+    for (const k of PIN_ROLES) if (allowed.indexOf(k) < 0 && await pinOk(S.rolePins[k], pin)) return { err: t('pinNoRight', { r: roleTitle(k) }) };
     S.pinLock.fails++; if (S.pinLock.fails >= 5) S.pinLock = { fails: 0, until: now + 5 * 60000 };
     await DB.setConfig('pinLock', S.pinLock);
     return { err: PIN_ROLES.some(k => S.rolePins[k]) ? pinMsg({ left: 5 - S.pinLock.fails, locked: S.pinLock.until > now ? 5 : 0 }) : t('pinNotSet') };
@@ -281,7 +293,7 @@
       </header>
       <main id="main">${view()}</main>
       <nav class="bottom">
-        ${navBtn('home', '⌂')}${navBtn('sample', '＋', secN('sample'))}${navBtn('prod', '▶', secN('prod'))}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('report', '▤', secN('report'))}${navBtn('settings', '⚙', secN('settings'))}
+        ${navBtn('prod', '▶', secN('prod'))}${navBtn('sample', '＋', secN('sample'))}${navBtn('maint', '🔧', MU.warnings().length)}${navBtn('fssc', '✔', FU.warnings().length)}${navBtn('report', '▤', secN('report'))}${navBtn('settings', '⚙', secN('settings'))}
       </nav>
       ${S.modal ? modal() : ''}`;
   }
@@ -290,7 +302,7 @@
   }
   // v2.17.0 (Zhax, 17-11-2026): sem separador Avisos — cada aviso aparece na sua secção (e o número no botão da secção)
   const secOf = i => i.nav || (i.repday ? 'report' : 'sample');
-  function secIssues(v, ptab) { return (S._iss || issues()).filter(i => secOf(i) === v && (v !== 'prod' || !ptab || (i.ptab || 'jobs') === ptab)); }
+  function secIssues(v, ptab) { return (S._iss || issues()).filter(i => secOf(i) === v && (v !== 'prod' || !ptab || ({ jobs: 'shift', log: 'shift', maize: 'grain' }[i.ptab || 'jobs'] || i.ptab) === ({ jobs: 'shift', log: 'shift', maize: 'grain' }[ptab] || ptab))); }
   const secN = v => ['maint', 'fssc'].indexOf(v) >= 0 ? 0 : secIssues(v).length;
   function secWarnings(v) {
     if (['sample', 'prod', 'settings', 'report'].indexOf(v) < 0) return '';
@@ -298,7 +310,7 @@
     return L0.length ? `<section class="card">${L0.map(i => i.key && !/^gen:/.test(i.key) ? warnCard(i) : issueRow(i)).join('')}</section>` : '';
   }
   function view() {
-    if (S.view === 'holds' || S.view === 'records') S.view = 'home';
+    if (['home', 'holds', 'records'].indexOf(S.view) >= 0) S.view = 'prod';   // v2.18.0: sem Início
     return secWarnings(S.view) + view0();
   }
   function view0() {
@@ -313,7 +325,7 @@
       case 'prodset': return PU.viewProdSet();
       case 'codes': return PU.viewCodes();
       case 'waimport': return viewWaImport();
-      default: return viewHome();
+      default: return PU.view();
     }
   }
 
@@ -458,7 +470,7 @@
     const f = S.form, prod = product(f.productId);
     const ev = formEval();
     const tms = new Date(f.time).getTime();
-    const w0 = await who(($('#f_pin') || {}).value); if (w0.err) return toast(w0.err); f.operator = w0.title;
+    const w0 = await who(($('#f_pin') || {}).value, null, 'sample'); if (w0.err) return toast(w0.err); f.operator = w0.title;
     if (!isFinite(tms)) return toast(t('badTime'));
     if (tms > Date.now() + 5 * 60000) return toast(t('futureTime'));
     if (tms < Date.now() - L.MAX_BACK_DAYS * 24 * 3600000) return toast(t('tooOld'));   // v2.6.0: resultados entram mais tarde, com a hora da amostragem
@@ -486,7 +498,7 @@
     if (alertObj) raiseAlert(sample);
     else toast(t('saved') + (after && after.status === 'closed' ? ' — ' + t('holdClosed') : ''));
     if (after && after.status === 'closed' && alertObj) S.modal.holdClosed = true;
-    S.view = 'home'; render();
+    S.view = 'sample'; render();
   }
 
   // ----- Importação do WhatsApp (v2.3.0) -----
@@ -548,7 +560,7 @@
   }
   async function waImport() {
     const w = waState();
-    const w0 = await who(($('#waPin') || {}).value); if (w0.err) return toast(w0.err); w.operator = w0.title;
+    const w0 = await who(($('#waPin') || {}).value, null, 'sample'); if (w0.err) return toast(w0.err); w.operator = w0.title;
     waAnalyse();                                         // revalida com os dados actuais (evita duplicados)
     const ok = w.rows.filter(r => r.ok);
     let nS = 0, nM = 0, lastBad = null;
@@ -588,7 +600,7 @@
     S.wa = null;
     if (lastBad) raiseAlert(lastBad);
     toast(t('waDone', { s: nS, m: nM }));
-    S.view = 'home'; render();
+    S.view = 'sample'; render();
   }
 
   // ----- Retenções -----
@@ -653,7 +665,7 @@
     const h = S.holds.find(x => x.id === id);
     const text = document.querySelector(`[data-htext="${id}"]`).value, pin = document.querySelector(`[data-hpin="${id}"]`).value;
     if (!text.trim()) return toast(t('needActionBy'));
-    const wh = await who(pin, ['sup', 'chief']); if (wh.err) return toast(wh.err); const by = wh.title;
+    const wh = await who(pin, TOP_ROLES); if (wh.err) return toast(wh.err); const by = wh.title;
     let nh;
     try { nh = L.addHoldAction(h, { at: Date.now(), by, text }); } catch (e) { return toast(t('saveFailed')); }
     await DB.put('holds', nh); await reloadData();
@@ -733,7 +745,7 @@
       <div class="grid2"><label class="fld">${esc(t('prodDay'))}<input type="date" id="repDay" value="${esc(day)}"></label>
         <label class="fld">${esc(t('shift'))}<select id="repShift"><option value="">${esc(t('wholeDay'))}</option><option value="D" ${S.repShift === 'D' ? 'selected' : ''}>${esc(t('shift_D'))} 07–19</option><option value="N" ${S.repShift === 'N' ? 'selected' : ''}>${esc(t('shift_N'))} 19–07</option></select></label></div>
       <p class="sub">${esc(t('periodFromTo', { a: fmtDT(r.start), b: fmtDT(r.end) }))}</p>
-      ${repType() === 'qc' || repType() === 'daily' ? `<div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
+      ${repType() === 'qc' ? `<div class="kpis"><div><b>${r.totals.n}</b><span>${esc(t('samples'))}</span></div><div class="d-accept"><b>${r.totals.accept}</b><span>${esc(t('dec_accept'))}</span></div>
       <div class="d-warn"><b>${r.totals.warn}</b><span>${esc(t('dec_warn'))}</span></div><div class="d-reject"><b>${r.totals.reject}</b><span>${esc(t('dec_reject'))}</span></div><div><b>${r.holds.length}</b><span>${esc(t('holds'))}</span></div></div>` : ''}
       ${r.end > Date.now() ? `<p class="banner b-warn">${esc(t('dayNotFinished'))}</p>` : ''}
       <label class="fld">${esc(t('repType'))}<select id="repType">${REP_TYPES.map(k => `<option value="${k}" ${repType() === k ? 'selected' : ''}>${esc(t('rt_' + k))}</option>`).join('')}</select></label>
@@ -741,9 +753,7 @@
       <button class="btn" id="genXlsx">${esc(t('genExcel'))}</button>
       <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a></section>
       ${repSummary(repType(), r, bk, day)}
-      ${repType() === 'qc' || repType() === 'daily' ? `<section class="card"><h3>${esc(t('summary'))}</h3><div class="tablewrap"><table><thead><tr><th>${esc(t('line'))}</th><th>${esc(t('product'))}</th><th>${esc(t('shift'))}</th><th>${esc(t('crew'))}</th><th>n</th><th>✓</th><th>!</th><th>✗</th><th>${esc(t('p_moisture'))} ${esc(t('avg'))}</th><th>${esc(t('p_fat'))} ${esc(t('avg'))}</th><th>${esc(t('hoursChecked'))}</th></tr></thead><tbody>
-      ${r.summary.map(g => `<tr><td>${esc(lineName(g.lineId))}</td><td>${esc(prodName(g.productId))}</td><td>${esc(t('shift_' + g.period))}</td><td>${esc(g.crews)}</td><td>${g.n}</td><td>${g.accept}</td><td>${g.warn}</td><td>${g.reject}</td><td>${esc(fmtNum(g.moisture.avg))}</td><td>${esc(fmtNum(g.fat.avg))}</td><td>${g.hoursWithMoisture}/12</td></tr>`).join('') || `<tr><td colspan="11">${esc(t('noRecords'))}</td></tr>`}
-      </tbody></table></div></section>` : ''}`;
+      `;
   }
   // v2.17.0 (Zhax, 17-11-2026): cada relatório com um resumo de alto nível (como o CQ) e exportação para Excel
   function repSummary(ty, r, bk, day) {
@@ -759,13 +769,15 @@
       const of = x => E.filter(e => e.kind === x), stopMin = of('stop').reduce((a, e) => a + (Number(e.durationMin) || 0), 0), mt = MU.t;
       return `<section class="card"><h3>${esc(t('rt_maint'))}</h3><div class="kpis">${k(of('stop').length + ' · ' + stopMin + ' min', mt('t_stops'))}${k(of('work').length, mt('t_work'))}
         ${k(of('pmJob').length + ' / ' + of('pmUpdate').filter(e => e.status === 'done').length, mt('t_pm'))}${k(of('consumable').length, mt('t_cons'))}</div>
-        ${of('shift').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || '—')}</div></div>`).join('')}</section>`; };
+        ${of('shift').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || '—')}</div></div>`).join('')}
+        ${of('mLogin').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.pm || []).map(x => x.label).concat((e.bds || []).map(b => mt('mill' + b.mill) + ': ' + b.description)).join(' | ') || '—')}</div></div>`).join('')}
+        ${of('mLogout').map(e => `<div class="rowitem"><small>${esc(mt('slogout'))} · ${esc(t('shift_' + e.period))}</small><div>${esc((e.items || []).map(x => x.label + ': ' + x.pct + ' %').join(' | ') || '—')}</div></div>`).join('')}</section>`; };   // v2.20.0: login/logout do turno de manutenção
     const fssc = () => { const F = window.Fssc, R = (window.FsscReqs || {}).REQS || [], E = FU.entries ? FU.entries() : [], mo = day.slice(0, 7), today = L.prodDay(Date.now());
       const sc = F.score(R, 'mill', F.grades(E, mo)), tr = F.trainingMonth(F.trainings(E, today), mo);
       return `<section class="card"><h3>${esc(t('rt_fssc'))} · ${esc(mo)}</h3><div class="kpis">${k(pc(sc.score), t('fs_score'))}${k(sc.graded + '/' + sc.applicable, t('fs_graded'))}
         ${k(F.monthState(E, mo).closed ? t('yes') : t('no'), t('fs_closed'))}${k(F.actions(E, today).filter(a => !a.done).length, t('fs_actions'))}
         ${k(F.complaints(E, today).filter(c => c.open).length, t('fs_complaints'))}${k(tr.held + '/' + tr.planned, t('fs_training'))}</div></section>`; };
-    return ty === 'prod' || ty === 'daily' ? prod() : ty === 'maint' ? maint() : ty === 'fssc' ? fssc() : '';
+    return ty === 'prod' ? prod() : ty === 'maint' ? maint() : ty === 'fssc' ? fssc() : '';
   }
   // v2.9.0: secções do relatório além do CQ (Zhax, 14-11-2026)
   function bookReport(bk) {
@@ -821,8 +833,8 @@
     return wb;
   }
   // v2.15.0 (Zhax, 16-11-2026): escolher o relatório; enviar = menu de partilha do telemóvel + cópia no Dropbox
-  const REP_TYPES = ['daily', 'qc', 'prod', 'maint', 'fssc'];
-  const repType = () => REP_TYPES.indexOf(S.repType) >= 0 ? S.repType : 'daily';
+  const REP_TYPES = ['prod', 'qc', 'maint', 'fssc'];   // v2.18.0 (Zhax, 26-11-2026): sem «Diário completo»
+  const repType = () => REP_TYPES.indexOf(S.repType) >= 0 ? S.repType : 'prod';
   function maintSheets(wb, day, per) {
     const XL = window.XLSX, add = (n, rows) => XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet(rows), n.slice(0, 31)), mt = MU.t;
     const E = window.Maint.effective(MU.entries()).filter(e => e.prodDay === day && (!per || e.period === per)).sort((a, b) => a.t - b.t);
@@ -855,8 +867,8 @@
     const r = L.shiftReport(L.dayReport(day, S.samples, S.holds, S.cfg), S.repShift);
     const XL = window.XLSX;
     let wb;
-    if (ty === 'qc' || ty === 'daily') wb = buildWorkbook(r); else wb = XL.utils.book_new();
-    if (ty === 'daily' || ty === 'prod') prodSheets(wb, r, day);
+    if (ty === 'qc') wb = buildWorkbook(r); else wb = XL.utils.book_new();
+    if (ty === 'prod') prodSheets(wb, r, day);
     if (ty === 'maint') maintSheets(wb, day, S.repShift);
     if (ty === 'fssc') await fsscSheets(wb, day);
     const sh = S.repShift && ty !== 'fssc' ? '_' + (S.lang === 'en' ? (S.repShift === 'D' ? 'Day' : 'Night') : (S.repShift === 'D' ? 'Dia' : 'Noite')) : '';
@@ -909,6 +921,7 @@
     return `<section class="card"><h2>${esc(t('nav_settings'))}</h2>
       <label class="fld">${esc(t('language'))}<select id="langSel"><option value="pt" ${S.lang === 'pt' ? 'selected' : ''}>Português</option><option value="en" ${S.lang === 'en' ? 'selected' : ''}>English</option></select></label>
       <label class="fld">${esc(t('millType'))}<select id="millSel">${L.MILL_TYPES.map(m => `<option value="${m}" ${S.cfg.millType === m ? 'selected' : ''}>${esc(t('mill_' + m))}${S.cfg.products[m] && S.cfg.products[m].length ? '' : ' — ' + esc(t('notConfiguredShort'))}</option>`).join('')}</select></label>
+      <label class="fld">${esc(t('pin'))} (${esc(t('millType'))})<input type="password" autocomplete="off" maxlength="4" id="millPin" style="max-width:110px"></label>
       </section>
       <section class="card"><h3>${esc(t('rollSet'))}</h3>
         <button class="btn" data-nav="maint" data-mact="tab" data-v="rollset">${esc(t('rollSet'))}</button></section>
@@ -997,7 +1010,7 @@
     const pid = S.limitsDraft.pid, prod = product(pid);
     const reason = $('#limReason').value.trim();
     if (!reason) return toast(t('needByReason'));
-    const wl = await who($('#limPin').value, ['sup', 'chief']); if (wl.err) return toast(wl.err); const by = wl.title;
+    const wl = await who($('#limPin').value, TOP_ROLES); if (wl.err) return toast(wl.err); const by = wl.title;
     const newLim = JSON.parse(JSON.stringify(prod.limits));
     const errs = [];
     document.querySelectorAll('[data-lim]').forEach(el => {
@@ -1100,16 +1113,20 @@
     if (el.id === 'repType') { S.repType = el.value; render(); return; }
     if (el.id === 'limProd') { S.limitsProduct = el.value; S.limitsDraft = null; render(); return; }
     if (el.id === 'langSel') { S.lang = el.value; await DB.setConfig('lang', S.lang); render(); return; }
-    if (el.id === 'millSel') { const cfg = Object.assign({}, S.cfg, { millType: el.value }); await DB.setConfig('cfg', cfg); S.cfg = cfg; S.form = null; render(); return; }
+    if (el.id === 'millSel') { const r = await checkPin(($('#millPin') || {}).value); if (!r.ok) { toast(r.noPin ? t('pinNotSet') : pinMsg(r)); render(); return; }   // v2.18.0: Definições só com PIN
+      const cfg = Object.assign({}, S.cfg, { millType: el.value }); await DB.setConfig('cfg', cfg); S.cfg = cfg; S.form = null; render(); return; }
     if (el.id === 'importBk') return importBackup(el.files[0]);
     if (el.id === 'importLim') { const f = el.files[0]; el.value = ''; return importLimitsMaster(f); }   // limpa para poder escolher o mesmo ficheiro de novo (ex.: após PIN errado)
   });
 
-  function roleName(k) { return ['A', 'B', 'C', 'D'].indexOf(k) >= 0 ? t('role_leader', { c: k }) + ((S.cfgP && S.cfgP.leaders && S.cfgP.leaders[k]) ? ' · ' + S.cfgP.leaders[k] : '') : t('role_' + k); }
+  function roleName(k) { return roleTitle(k) + (LEAD_ROLES.indexOf(k) >= 0 && S.cfgP && S.cfgP.leaders && S.cfgP.leaders[k] ? ' · ' + S.cfgP.leaders[k] : ''); }
   async function savePin() {
     const nw = [...document.querySelectorAll('[data-rpin]')].filter(el => el.value !== '').map(el => ({ role: el.dataset.rpin, pin: el.value }));
     if (!nw.length) return toast(t('noChanges'));
     if (nw.some(x => !PIN_RE.test(x.pin))) return toast(t('pinFormat'));
+    // v2.18.0: um PIN por função — o mesmo PIN em duas funções daria direitos errados
+    if (new Set(nw.map(x => x.pin)).size < nw.length) return toast(t('pinDup'));
+    for (const x of nw) for (const k of PIN_ROLES) if (k !== x.role && !nw.some(y => y.role === k) && await pinOk(S.rolePins[k], x.pin)) return toast(t('pinDup'));
     if (nw.some(x => S.rolePins[x.role])) {   // mudar um PIN já definido: PIN do Chief Miller
       const r = await checkPin(($('#pinChief') || {}).value, ['chief']);
       if (!r.ok) return toast(r.noPin ? t('pinChiefNone') : pinMsg(r));
@@ -1149,9 +1166,13 @@
     await load(); toast(t('imported')); render();
   }
 
+  // v2.18.0: who / checkPin limitados às funções com direito a alterar o separador
+  const whoIn = scope => (pin, roles) => who(pin, roles, scope);
+  const checkIn = scope => (pin, roles) => checkPin(pin, roles, scope);
+
   // ---------- arranque ----------
   async function start() {
-    PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin, pinMsg, who, pinFld, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
+    PU = window.ProdUI({ S, t, esc, DB, L, render, toast, checkPin: checkIn('prod'), pinMsg, who: whoIn('prod'), pinFld, fmtDT, fmtTime, fmtNum, localInput, products, product, prodName,
       lineName, lineStatus, anyLabel, decLabel, decCls, waLink, plan: () => S.plan });
     // Manutenção: registos na loja 'maint'; passagens de rolos = dados mestre js/roll-passages.js (tabelas de estriagem C e D)
     const crewOf = (day, period) => L.crewOfTime(L.prodDayRange(day)[0] + (period === 'N' ? 12 : 0) * 3600000 + 60000);
@@ -1163,12 +1184,12 @@
       operator: () => S.operator, setOperator: n => { S.operator = n; DB.setConfig('operator', n); },
       pmTasks: () => (window.PmList && window.PmList.TASKS) || [],   // lista de preventiva da Linha C (Mill C - Preventative.xlsx)
       rollDefaults: () => (window.RollPassages && window.RollPassages.DEFAULT_HOURS) || {}, rollHours: () => S.rollHours, rollHoursRefresh: refreshRollHours,
-      checkPin, pinMsg, who });
+      checkPin: checkIn('maint'), pinMsg, who: whoIn('maint') });
     // Conformidade FSSC 22000: área da moagem; scores separados da Grain-Mgt (Zhax, 28-10-2026)
     FU = window.FsscUI({ lang: () => S.lang, esc, toast, render, area: 'mill', training: true,
       load: () => DB.all('fssc'), add: rec => DB.add('fssc', Object.assign({ uid: mUid(), deviceId: S.deviceId || null }, rec)),
-      operator: () => S.operator, pin: pin => checkPin(pin).then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })),
-      complaints: true, products: () => products().map(p => prodName(p.id)), who, roleTitles: () => PIN_ROLES.map(roleTitle) });
+      operator: () => S.operator, pin: pin => checkPin(pin, null, 'fssc').then(r => ({ ok: !!r.ok, msg: r.ok ? '' : pinMsg(r) })),
+      complaints: true, products: () => products().map(p => prodName(p.id)), who: whoIn('fssc'), roleTitles: () => PIN_ROLES.map(roleTitle) });
     S.rollHours = readRollHours(); S.plan = readPlan();
     await load(); render();
     refreshRollHours().then(ok => { if (ok) render(); });

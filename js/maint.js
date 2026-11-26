@@ -19,7 +19,9 @@
  * os minutos aqui NÃO entram no indicador de paragens de 72 min/dia. */
 (function (root) {
   'use strict';
-  const KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'sensorAck', 'consumable', 'consItem', 'note', 'void'];
+  const KINDS = ['shift', 'stop', 'work', 'pmJob', 'pmUpdate', 'rollCheck', 'rollChange', 'rollMeasure', 'brushCheck', 'rollConfig', 'sensorAck', 'consumable', 'consItem', 'note', 'void',
+    // v2.20.0 (Zhax, 26-11-2026): login/logout do turno de manutenção, da reestriagem e da troca de rolos; fluxo dos rolos
+    'mLogin', 'mLogout', 'rfLogin', 'rfLogout', 'rcLogin', 'rcLogout', 'rollAwait', 'rollFlute', 'rollFluteEnd', 'rollCare', 'rcPlan', 'rcWork', 'rcDone'];
   // v2.15.0 / v0.18.0 (Zhax, 16-11-2026): o turno de manutenção regista as tarefas (avarias a atender com descrição; preventiva)
   // v2.16.0 / v0.19.0 (Zhax, 17-11-2026): lista de tarefas de manutenção; preventiva escolhida da lista de preventiva (várias, «juntar trabalho»)
   const SHIFT_TASKS = ['breakdown', 'inspection', 'cleaning', 'lubrication', 'preventive', 'other'];
@@ -28,8 +30,12 @@
   // como no diário de turno. Códigos sem P/A/O ficam em Other.
   const CATEGORIES = ['Process', 'Breakdown', 'Other'];
   // v2.8.3 / v0.12.0 (Zhax, 13-11-2026): paragem como na Prodn-Mgt — tipo (mecânica e eléctrica são avarias), código v3, início e fim
-  const STOP_KINDS = ['mechanical', 'electrical', 'process', 'other'];
-  const KIND_CAT = { mechanical: 'Breakdown', electrical: 'Breakdown', process: 'Process', other: 'Other' };
+  // v2.20.0 (Zhax, 26-11-2026): como nas paragens da Produção — Pxx Processo, Oxx Planeada, Axx Mecânica/Eléctrica; «Outra» = P50, A50, O50 (Assumido)
+  const STOP_KINDS = ['mechanical', 'electrical', 'process', 'planned', 'other'];
+  const KIND_CAT = { mechanical: 'Breakdown', electrical: 'Breakdown', process: 'Process', planned: 'Other', other: 'Other' };
+  const KIND_PREFIX = { mechanical: 'A', electrical: 'A', process: 'P', planned: 'O' };
+  const codeInKind = (code, kind) => kind === 'other' ? /^[APO]50$/.test(String(code || '')) : !!KIND_PREFIX[kind] && String(code || '').charAt(0) === KIND_PREFIX[kind];
+  const codesForKind = (kind, codes) => (codes || []).filter(c => c.active !== false && codeInKind(c.code, kind));
   const PREFIX_CAT = { P: 'Process', A: 'Breakdown', O: 'Other' };
   const WORK_TYPES = ['corrective', 'preventive', 'inspection', 'other'];
   const PM_STATUS = ['planned', 'in_progress', 'done', 'postponed', 'cancelled'];
@@ -113,10 +119,10 @@
   function validateStop(o, codes) {
     const e = [];
     if (o.stopKind !== undefined && STOP_KINDS.indexOf(o.stopKind) < 0) e.push('stopKind');
-    const cat = o.stopKind !== undefined ? KIND_CAT[o.stopKind] : o.category;
+    const cat = o.category;
     if (o.stopKind === undefined && CATEGORIES.indexOf(o.category) < 0) e.push('category');
     const c = o.code ? findCode(o.code, codes) : null;
-    if (!c || c.active === false || catOfCode(c.code) !== cat) e.push('code');
+    if (!c || c.active === false || (o.stopKind !== undefined ? !codeInKind(c.code, o.stopKind) : catOfCode(c.code) !== cat)) e.push('code');
     const d = o.endTime !== undefined ? minsBetween(o.startTime, o.endTime) : num(o.durationMin);
     if (o.endTime !== undefined && !o.startTime) e.push('startTime');
     if (d === null || isNaN(d) || d <= 0 || d > 24 * 60) e.push(o.endTime !== undefined ? 'endTime' : 'durationMin');
@@ -461,7 +467,62 @@
     return out;
   }
 
-  const api = { validatePmDone, pmDoneRecords, KINDS, CATEGORIES, WORK_TYPES, PM_STATUS, PM_UPDATES, ROLL_COND, ROLL_REASONS, BRUSH_STATES, NOTE_TOPICS, UNITS,
+  // ---------- v2.20.0: login / logout de secção (turno de manutenção, reestriagem, troca de rolos) ----------
+  const SEC_KINDS = { shift: ['mLogin', 'mLogout'], flute: ['rfLogin', 'rfLogout'], change: ['rcLogin', 'rcLogout'] };
+  function secLog(entries, sec, day, period) {
+    const K = SEC_KINDS[sec], eff = effective(entries).filter(e => e.prodDay === day && e.period === period);
+    const last = k => eff.filter(e => e.kind === k).sort((a, b) => b.t - a.t)[0] || null;
+    const login = last(K[0]), logout = login ? eff.filter(e => e.kind === K[1] && e.loginUid === login.uid).sort((a, b) => b.t - a.t)[0] || null : null;
+    return { login, logout };
+  }
+  // % feito no logout: 0–100 por item (todos obrigatórios)
+  function validateLogout(pcts, n) {
+    const e = [];
+    if ((pcts || []).length !== n || (pcts || []).some(p => { const v = num(p); return v === null || isNaN(v) || v < 0 || v > 100; })) e.push('pctDone');
+    return e;
+  }
+  // ---------- v2.20.0: reestriagem — à espera → em reestriagem → teste (excelente / ok / mau / refazer; refazer volta à espera) ----------
+  const ROLL_STATE = ['normal', 'bad', 'discard'];
+  const CARE_RESULTS = ['excellent', 'ok', 'bad', 'redo'];
+  function validateRollAwait(o) {
+    const e = [];
+    if (!txt(o.rollId)) e.push('rollId');
+    if (ROLL_STATE.indexOf(o.state) < 0) e.push('rollState');
+    const d = num(o.diameter); if (txt(o.diameter) && (d === null || isNaN(d) || d <= 0)) e.push('diameter');
+    return e;
+  }
+  function rollFlow(entries) {
+    const eff = effective(entries).slice().sort(byTime);
+    const flutes = eff.filter(e => e.kind === 'rollFlute'), ends = eff.filter(e => e.kind === 'rollFluteEnd'), cares = eff.filter(e => e.kind === 'rollCare');
+    const awaiting = [], fluting = [], toTest = [], done = [];
+    eff.filter(e => e.kind === 'rollAwait').forEach(a => {
+      const fl = flutes.filter(f => f.awaitUid === a.uid);
+      const lastF = fl[fl.length - 1];
+      if (!lastF) { awaiting.push(a); return; }
+      const end = ends.find(x => x.fluteUid === lastF.uid);
+      if (!end) { fluting.push(Object.assign({}, lastF, { roll: a })); return; }
+      const care = cares.filter(c => c.fluteUid === lastF.uid).pop();
+      if (!care) { toTest.push(Object.assign({}, lastF, { roll: a, endT: end.endT })); return; }
+      if (care.result === 'redo') { awaiting.push(Object.assign({}, a, { redo: true })); return; }
+      done.push(Object.assign({}, lastF, { roll: a, endT: end.endT, result: care.result, careT: care.t }));
+    });
+    return { awaiting, fluting, toTest, done: done.sort((x, y) => y.careT - x.careT) };
+  }
+  // ---------- v2.20.0: troca de rolos — planeadas (até resolvidas) → em troca → feita ----------
+  function changeFlow(entries) {
+    const eff = effective(entries).slice().sort(byTime);
+    const works = eff.filter(e => e.kind === 'rcWork'), dones = eff.filter(e => e.kind === 'rcDone');
+    const planned = [], working = [], resolved = [];
+    eff.filter(e => e.kind === 'rcPlan').forEach(p => {
+      const w = works.filter(x => x.planUid === p.uid).pop();
+      if (!w) { planned.push(p); return; }
+      const d = dones.find(x => x.workUid === w.uid);
+      if (!d) working.push(Object.assign({}, w, { plan: p })); else resolved.push(Object.assign({}, w, { plan: p, doneT: d.t }));
+    });
+    return { planned, working, resolved: resolved.sort((a, b) => b.doneT - a.doneT) };
+  }
+
+  const api = { secLog, validateLogout, ROLL_STATE, CARE_RESULTS, validateRollAwait, rollFlow, changeFlow, KIND_PREFIX, codeInKind, codesForKind, validatePmDone, pmDoneRecords, KINDS, CATEGORIES, WORK_TYPES, PM_STATUS, PM_UPDATES, ROLL_COND, ROLL_REASONS, BRUSH_STATES, NOTE_TOPICS, UNITS,
     num, addDays, daysBetween, weekOf, weekRange, validWeek, catOfCode, codesFor, findCode, effective, cleanParts,
     STOP_KINDS, KIND_CAT, SHIFT_TASKS, TASK_NEEDS_DESC, validateConsItem, consCatalog, minsBetween, validateShift, validateStop, validateWork, validatePmJob, validatePmUpdate, validateRollCheck, validateRollChange, validateRollMeasure,
     validateBrushCheck, validateRollConfig, validateNote, validateConsumable,

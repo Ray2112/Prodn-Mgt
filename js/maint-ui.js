@@ -20,7 +20,17 @@ window.MaintUI = function (C) {
 
   const T = {
     pt: {
-      title: 'Manutenção', t_shift: 'Turno', t_stops: 'Paragens', t_work: 'Intervenções', t_pm: 'Preventiva', t_rolls: 'Rolos', t_cons: 'Consumíveis',
+      // v2.20.0 (Zhax, 26-11-2026)
+      t_stops: 'Avarias', k_planned: 'Planeada', slogin: 'Login', slogout: 'Logout', sLoginBtn: 'Fazer login', sLogoutBtn: 'Fazer logout', loginDone: 'Login gravado', logoutDone: 'Logout gravado',
+      pctDone: '% feito', pctCol: '% feito', itemsPlanned: 'Planeado no login', noItems: 'Nada planeado no login.', comments: 'Comentários', readOnly: 'Só leitura.',
+      pmPlanned: 'Preventiva planeada para este turno', bdAttend: 'Avarias a atender', bdAdd: 'Mais uma avaria', mill: 'Moagem', millC: 'Moagem C', millD: 'Moagem D',
+      techs: 'N.º de técnicos', eta: 'Hora prevista de fim', consUsed: 'Consumíveis', overdueTitle: 'Preventiva em atraso', intervention: 'Intervenção feita',
+      rfTitle: 'Reestriagem de rolos', rcTitle: 'Troca de rolos', rfAwait: 'Rolos à espera de reestriagem', rfFluting: 'Rolos em reestriagem', rfTest: 'Teste depois da reestriagem', rfDone: 'Testados',
+      rollId: 'ID do rolo', spec: 'Especificação', diameter: 'Diâmetro (mm)', rollState: 'Estado', rs_normal: 'Normal', rs_bad: 'Mau', rs_discard: 'Abater', rfAdd: 'Juntar rolo',
+      rfStart: 'Iniciar', rfEnd: 'Terminar', startedAt: 'Início', finishedAt: 'Fim', careResult: 'Resultado', cr_excellent: 'Excelente', cr_ok: 'OK', cr_bad: 'Mau', cr_redo: 'Refazer', rfTestBtn: 'Registar teste',
+      rfPick: 'Rolos a reestriar neste turno', rcPick: 'Trocas a fazer neste turno', rcPlanned: 'Trocas planeadas', rcWorking: 'Em troca', rcResolved: 'Feitas', rcAdd: 'Planear troca', passage: 'Passagem',
+      enteredOn: 'Data registada', people: 'N.º de pessoas', rcStart: 'Iniciar troca', rcDoneBtn: 'Troca feita', rollHoursOld: 'Horas dos rolos (registo anterior)',
+      title: 'Manutenção', t_shift: 'Turno', t_work: 'Intervenções', t_pm: 'Preventiva', t_rolls: 'Rolos', t_cons: 'Consumíveis',
       prodDay: 'Dia de produção', period: 'Turno', p_D: 'Dia 07–19', p_N: 'Noite 19–07', crew: 'Turma', week: 'Semana',
       save: 'Gravar', cancel: 'Cancelar', saved: 'Gravado.', saveFailed: 'Não foi possível gravar.', fill: 'Falta ou inválido', none: 'Sem registos.',
       void: 'Anular', voidReason: 'Motivo da anulação', voided: 'Anulado.', name: 'Nome', by: 'Registado por', loading: 'A carregar…',
@@ -71,7 +81,17 @@ window.MaintUI = function (C) {
       u_un: 'un', u_kg: 'kg', u_l: 'l', u_m: 'm', u_par: 'par', u_cx: 'cx'
     },
     en: {
-      title: 'Maintenance', t_shift: 'Shift', t_stops: 'Stoppages', t_work: 'Interventions', t_pm: 'Preventive', t_rolls: 'Rolls', t_cons: 'Consumables',
+      // v2.20.0 (Zhax, 26-11-2026)
+      t_stops: 'Breakdowns', k_planned: 'Planned', slogin: 'Login', slogout: 'Logout', sLoginBtn: 'Log in', sLogoutBtn: 'Log out', loginDone: 'Login saved', logoutDone: 'Logout saved',
+      pctDone: '% done', pctCol: '% done', itemsPlanned: 'Planned at login', noItems: 'Nothing planned at login.', comments: 'Comments', readOnly: 'Read only.',
+      pmPlanned: 'Preventive planned for this shift', bdAttend: 'Breakdowns to attend to', bdAdd: 'One more breakdown', mill: 'Mill', millC: 'Mill C', millD: 'Mill D',
+      techs: 'No. of technicians', eta: 'Estimated finish time', consUsed: 'Consumables', overdueTitle: 'Overdue preventive', intervention: 'Intervention done',
+      rfTitle: 'Roll fluting', rcTitle: 'Roll change', rfAwait: 'Rolls awaiting fluting', rfFluting: 'Rolls being fluted', rfTest: 'Test after fluting', rfDone: 'Tested',
+      rollId: 'Roll ID', spec: 'Specification', diameter: 'Diameter (mm)', rollState: 'State', rs_normal: 'Normal', rs_bad: 'Bad', rs_discard: 'Discard', rfAdd: 'Add roll',
+      rfStart: 'Start', rfEnd: 'Finish', startedAt: 'Started', finishedAt: 'Finished', careResult: 'Result', cr_excellent: 'Excellent', cr_ok: 'OK', cr_bad: 'Bad', cr_redo: 'Re-do', rfTestBtn: 'Record test',
+      rfPick: 'Rolls to flute this shift', rcPick: 'Changes to do this shift', rcPlanned: 'Planned changes', rcWorking: 'Being changed', rcResolved: 'Done', rcAdd: 'Plan a change', passage: 'Passage',
+      enteredOn: 'Date entered', people: 'No. of people', rcStart: 'Start change', rcDoneBtn: 'Change done', rollHoursOld: 'Roll hours (previous register)',
+      title: 'Maintenance', t_shift: 'Shift', t_work: 'Interventions', t_pm: 'Preventive', t_rolls: 'Rolls', t_cons: 'Consumables',
       prodDay: 'Production day', period: 'Shift', p_D: 'Day 07–19', p_N: 'Night 19–07', crew: 'Crew', week: 'Week',
       save: 'Save', cancel: 'Cancel', saved: 'Saved.', saveFailed: 'Could not save.', fill: 'Missing or invalid', none: 'No records.',
       void: 'Void', voidReason: 'Reason for voiding', voided: 'Voided.', name: 'Name', by: 'Recorded by', loading: 'Loading…',
@@ -195,7 +215,7 @@ window.MaintUI = function (C) {
     return (w.hours === null || w.hours === undefined ? s.replace(/, [^,]*— de [^)]*\)/, ')').replace(/, [^,]*— of [^)]*\)/, ')') : s) + (w.note ? ' — ' + w.note : '');
   }
   function banners() {
-    return warnings().map(w => `<div class="mt-bn ${w.level === 'warn' ? 'mt-amb' : 'mt-bad'}" data-mact="tab" data-v="${w.type === 'pm_overdue' ? 'pm' : 'rolls'}">${w.type === 'pm_overdue' ? '⏰' : '⚙'} ${esc(warnText(w))}</div>`).join('');
+    return warnings().map(w => `<div class="mt-bn ${w.level === 'warn' ? 'mt-amb' : 'mt-bad'}" data-mact="tab" data-v="${w.type === 'pm_overdue' || w.type === 'pm_tasks_overdue' ? 'shift' : 'rolls'}">${w.type === 'pm_overdue' ? '⏰' : '⚙'} ${esc(warnText(w))}</div>`).join('');
   }
 
   // ---------- vista ----------
@@ -203,16 +223,19 @@ window.MaintUI = function (C) {
     if (!st.loaded) { reload().then(C.render); return `<section class="card"><p>${esc(t('loading'))}</p></section>`; }
     const extra = C.extraTabs || [];   // separadores próprios da app (ex.: Sensores na Grain-Mgt): [{id, label(), view()}]
     // v2.9.0 / v0.14.0: intervenções dentro de Paragens
-    const tabs = ['shift', 'stops', 'pm'].concat(C.rolls ? ['rolls'] : []).concat(extra.map(x => x.id)).concat(['cons', 'catalog', 'notes']);
+    // v2.20.0 (Zhax, 26-11-2026): Turno, Avarias, Rolos, Consumíveis (com o Catálogo); a preventiva em atraso aparece no Turno
+    const OLD = { pm: 'shift', notes: 'shift', work: 'stops', catalog: 'cons' };
+    if (OLD[st.tab]) st.tab = OLD[st.tab];
+    const tabs = ['shift', 'stops'].concat(C.rolls ? ['rolls'] : []).concat(extra.map(x => x.id)).concat(['cons']);
     if (tabs.indexOf(st.tab) < 0 && !(st.tab === 'rollset' && C.rolls)) st.tab = 'shift';
     const s = sh();
     const head = `<section class="card"><h2>${esc(t('title'))}</h2>
       <div class="mt-tabs">${tabs.map(k => { const x = extra.find(y => y.id === k); return `<button type="button" class="btn small ${st.tab === k ? 'primary' : ''}" data-mact="tab" data-v="${esc(k)}">${esc(x ? x.label() : t('t_' + k))}</button>`; }).join('')}</div>
-      ${st.tab === 'pm' || st.tab === 'rolls' || st.tab === 'rollset' || st.tab === 'catalog' || extra.some(x => x.id === st.tab) ? '' : `<div class="grid2">${fld(t('prodDay'), `<input type="date" id="mDay" value="${esc(s.day)}">`)}
+      ${st.tab === 'rollset' || extra.some(x => x.id === st.tab) ? '' : `<div class="grid2">${fld(t('prodDay'), `<input type="date" id="mDay" value="${esc(s.day)}">`)}
         ${fld(t('period'), `<select id="mPeriod">${opt('D', s.period, t('p_D'))}${opt('N', s.period, t('p_N'))}</select>`)}</div>
         <p class="mt-sub">${esc(t('crew'))} ${esc(C.crewOf(s.day, s.period) || '—')}</p>`}</section>`;
     const ex = extra.find(x => x.id === st.tab);
-    const body = ex ? ex.view() : { shift: vShift, stops: () => vStops() + vWork(), work: () => vStops() + vWork(), pm: vPm, rolls: vRolls, rollset: vRollSet, cons: vCons, catalog: vCatalog, notes: vNotes }[st.tab]();
+    const body = ex ? ex.view() : { shift: vShift2, stops: vStops, rolls: vRolls2, rollset: vRollSet, cons: () => vCons() + vCatalog() }[st.tab]();
     return banners() + head + body;
   }
   function voidBox(uid) {
@@ -248,14 +271,137 @@ window.MaintUI = function (C) {
         ${r.notes ? `<div>${esc(r.notes)}</div>` : ''}${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
   }
 
+  // ===== v2.20.0 (Zhax, 26-11-2026): login e logout por secção (turno, reestriagem, troca de rolos) =====
+  // Login gravado fica só de leitura; logout pede o % feito de cada item planeado no login, comentários e PIN.
+  const pctInputs = items => items.length ? `<table class="mt-t"><tr><td><b>${esc(t('itemsPlanned'))}</b></td><td><b>${esc(t('pctCol'))}</b></td></tr>${items.map((x, i) =>
+    `<tr><td>${esc(x)}</td><td><input data-mpct="${i}" inputmode="decimal" placeholder="0–100" style="max-width:80px" value="${esc((st.form.pcts || [])[i] || '')}"></td></tr>`).join('')}</table>` : `<p class="mt-sub">${esc(t('noItems'))}</p>`;
+  function secItems(sec, li) {
+    if (!li) return [];
+    if (sec === 'shift') return (li.pm || []).map(x => x.label).concat((li.bds || []).map(b => t('mill' + b.mill) + ': ' + b.description));
+    return (li.items || []).map(x => x.label);
+  }
+  function secBlock(sec, loginExtra, loginForm) {
+    const s = sh(), L = M.secLog(st.entries, sec, s.day, s.period), f = st.form;
+    const title = `<h3>${esc(sec === 'shift' ? t('t_shift') : sec === 'flute' ? t('rfTitle') : t('rcTitle'))}</h3>`;
+    if (!L.login) {
+      if (f && f.kind === 'secLogin' && f.sec === sec) return `<section class="card">${title}<div class="mt-box"><h4>${esc(t('slogin'))}</h4>${loginForm(f)}${fld(t('notes'), area('notes', f.notes))}${byF(f)}${saveBtns('savesecin')}</div></section>`;
+      return `<section class="card">${title}${st.form ? '' : `<button type="button" class="btn primary" data-mact="secin" data-v="${sec}">${esc(t('sLoginBtn'))}</button>`}</section>`;
+    }
+    const items = secItems(sec, L.login), li = L.login, lo = L.logout;
+    const loginRO = `<div class="mt-box"><h4>${esc(t('slogin'))} · ${esc(hhmm(li.t))} · ${esc(li.by || '')}</h4>${loginExtra(li)}${li.notes ? `<div>${esc(li.notes)}</div>` : ''}</div>`;
+    if (lo) return `<section class="card">${title}${loginRO}<div class="mt-box"><h4>${esc(t('slogout'))} · ${esc(hhmm(lo.t))} · ${esc(lo.by || '')}</h4>
+      ${(lo.items || []).map(x => `<div>${esc(x.label)}: <b>${esc(nf(x.pct))} %</b></div>`).join('') || `<p class="mt-sub">${esc(t('noItems'))}</p>`}${lo.comments ? `<div>${esc(lo.comments)}</div>` : ''}<p class="mt-sub">${esc(t('readOnly'))}</p></div></section>`;
+    const lf = f && f.kind === 'secLogout' && f.sec === sec;
+    return `<section class="card">${title}${loginRO}${lf ? `<div class="mt-box"><h4>${esc(t('slogout'))}</h4>${pctInputs(items)}${fld(t('comments'), area('comments', f.comments))}${byF(f)}${saveBtns('savesecout')}</div>`
+      : st.form ? '' : `<button type="button" class="btn" data-mact="secout" data-v="${sec}">${esc(t('sLogoutBtn'))}</button>`}</section>`;
+  }
+  async function saveSecIn() {
+    const f = st.form, s = sh(), now = Date.now(), K = { shift: 'mLogin', flute: 'rfLogin', change: 'rcLogin' }[f.sec];
+    if (f.sec === 'shift') {
+      const CAT = pmCat(), pm = f.pm.map(id => CAT.find(c => c.id === id)).filter(Boolean);
+      const bds = f.bds.filter(b => b.mill || String(b.description || '').trim());
+      if (bds.some(b => ['C', 'D'].indexOf(b.mill) < 0 || !String(b.description || '').trim())) return errs(['mill', 'breakdownDesc']);
+      if (bds.some(b => { const n = M.num(b.techs); return String(b.techs || '').trim() !== '' && (n === null || isNaN(n) || n < 0 || Math.round(n) !== n); })) return errs(['techs']);
+      // cada preventiva escolhida fica planeada para esta semana (se ainda não tiver trabalho em aberto), como no registo anterior
+      const w = week(), due = (M.weekRange(w) || [])[1] || today();
+      try {
+        for (const c of pm.filter(c => !c.openJob)) await C.add({ kind: 'pmJob', prodDay: s.day, period: s.period, shift: s.day + '/' + s.period, crew: C.crewOf(s.day, s.period), t: now, date: today(), time: hhmm(now),
+          week: w, dueDate: due, lineId: null, equipment: c.task.code + ' ' + c.task.asset, task: c.task.task + ' — ' + t('fq_' + c.task.freq), taskId: c.id, taskFreq: c.task.freq, responsible: f.by, by: f.by });
+      } catch (e) { C.toast(t('saveFailed')); return; }
+      return save({ kind: K, pm: pm.map(c => ({ taskId: c.id, label: c.task.code + ' · ' + pmName(c.task.asset) + ' — ' + pmName(c.task.task) })),
+        bds: bds.map(b => ({ mill: b.mill, description: String(b.description).trim(), consumables: String(b.consumables || '').trim(), techs: M.num(b.techs), eta: b.eta || '' })), notes: f.notes.trim(), by: f.by, byRole: f.byRole }, t('loginDone'));
+    }
+    const items = f.sec === 'flute' ? M.rollFlow(st.entries).awaiting.filter(a => f.rolls.indexOf(a.uid) >= 0).map(a => ({ ref: a.uid, label: a.rollId }))
+      : M.changeFlow(st.entries).planned.filter(p => f.plans.indexOf(p.uid) >= 0).map(p => ({ ref: p.uid, label: p.passage }));
+    return save({ kind: K, items, notes: f.notes.trim(), by: f.by, byRole: f.byRole }, t('loginDone'));
+  }
+  async function saveSecOut() {
+    const f = st.form, s = sh(), L = M.secLog(st.entries, f.sec, s.day, s.period), K = { shift: 'mLogout', flute: 'rfLogout', change: 'rcLogout' }[f.sec];
+    if (!L.login) return;
+    const items = secItems(f.sec, L.login), pcts = items.map((x, i) => (f.pcts || [])[i]);
+    if (errs(M.validateLogout(pcts, items.length))) return;
+    // preventiva a 100 % no logout → registada como feita (trabalho da semana em aberto)
+    if (f.sec === 'shift') {
+      const open = M.pmState(st.entries, today()).filter(x => x.open), now = Date.now();
+      try {
+        for (const [i, x] of (L.login.pm || []).entries()) {
+          const j = M.num(pcts[i]) === 100 ? open.find(o => o.job.taskId === x.taskId) : null;
+          if (j) await C.add({ kind: 'pmUpdate', prodDay: s.day, period: s.period, shift: s.day + '/' + s.period, crew: C.crewOf(s.day, s.period), t: now, date: today(), time: hhmm(now),
+            jobUid: j.uid, status: 'done', progressPct: null, newDue: null, doneBy: f.by, doneOn: today(), note: t('slogout'), by: f.by });
+        }
+      } catch (e) { C.toast(t('saveFailed')); return; }
+    }
+    return save({ kind: K, loginUid: L.login.uid, items: items.map((label, i) => ({ label, pct: M.num(pcts[i]) })), comments: f.comments.trim(), by: f.by, byRole: f.byRole }, t('logoutDone'));
+  }
+  // ----- turno de manutenção -----
+  function vShift2() {
+    const CAT = pmCat();
+    const loginForm = f => `<div class="mt-req">${esc(t('pmPlanned'))}</div>${CAT.filter(c => c.pickable || c.overdue).map(c =>
+        `<label class="mt-chk"><input type="checkbox" data-mact="secpick" data-v="pm" data-uid="${esc(c.id)}" ${f.pm.indexOf(c.id) >= 0 ? 'checked' : ''}> ${esc(c.task.code + ' · ' + pmName(c.task.asset) + ' — ' + pmName(c.task.task))}${c.overdue ? ' ⏰' : ''}</label>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}
+      <div class="mt-req">${esc(t('bdAttend'))}</div>${f.bds.map((b, i) => `<div class="mt-box"><div class="grid2">
+        ${fld(t('mill'), `<select data-mbd="${i}|mill"><option value="">—</option>${['C', 'D'].map(m => opt(m, b.mill, t('mill' + m))).join('')}</select>`, 1)}
+        ${fld(t('techs'), `<input data-mbd="${i}|techs" inputmode="numeric" value="${esc(b.techs || '')}">`)}
+        ${fld(t('eta'), `<input data-mbd="${i}|eta" type="time" value="${esc(b.eta || '')}">`)}</div>
+        ${fld(t('breakdownDesc'), `<textarea rows="2" data-mbd="${i}|description">${esc(b.description || '')}</textarea>`, 1)}
+        ${fld(t('consUsed'), `<textarea rows="2" data-mbd="${i}|consumables">${esc(b.consumables || '')}</textarea>`)}
+        <button type="button" class="btn small" data-mact="bdrm" data-v="${i}">✕</button></div>`).join('')}
+      <button type="button" class="btn small" data-mact="bdadd">＋ ${esc(t('bdAdd'))}</button>`;
+    const extra = li => `${(li.pm || []).length ? `<div><b>${esc(t('pmPlanned'))}:</b> ${esc(li.pm.map(x => x.label).join(' | '))}</div>` : ''}
+      ${(li.bds || []).map(b => `<div><b>${esc(t('mill' + b.mill))}</b>: ${esc(b.description)}${b.consumables ? ' · ' + esc(t('consUsed')) + ': ' + esc(b.consumables) : ''}${isNum(b.techs) ? ' · ' + esc(t('techs')) + ' ' + b.techs : ''}${b.eta ? ' · ' + esc(t('eta')) + ' ' + esc(b.eta) : ''}</div>`).join('')}`;
+    if (!st.pmFilter) st.pmFilter = 'late';
+    return secBlock('shift', extra, loginForm) + `<section class="card"><h3>${esc(t('overdueTitle'))}</h3></section>` + pmListCard(CAT, week());
+  }
+  // ----- rolos: reestriagem e troca -----
+  function vRolls2() {
+    const RF = M.rollFlow(st.entries), CF = M.changeFlow(st.entries), f = st.form, PS = C.passages() || [];
+    const pickF = (list, key, lab) => fo => list.map(x => `<label class="mt-chk"><input type="checkbox" data-mact="secpick" data-v="${key}" data-uid="${esc(x.uid)}" ${fo[key].indexOf(x.uid) >= 0 ? 'checked' : ''}> ${esc(lab(x))}</label>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`;
+    const itemsRO = li => (li.items || []).length ? `<div>${esc(li.items.map(x => x.label).join(' | '))}</div>` : `<p class="mt-sub">${esc(t('noItems'))}</p>`;
+    const form = (kind, inner, act) => f && f.kind === kind ? `<div class="mt-box">${inner}${byF(f)}${saveBtns(act)}</div>` : '';
+    const rowBtn = (act, uid, lab) => st.form ? '' : `<button type="button" class="btn small" data-mact="${act}" data-uid="${esc(uid)}">${esc(lab)}</button>`;
+    const fl = `<datalist id="mtSpecs">${Array.from(new Set(PS.map(p => p.fluteSpec).filter(Boolean))).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+    const flute = secBlock('flute', itemsRO, pickF(RF.awaiting.filter(a => a.state !== 'discard'), 'rolls', a => a.rollId + (a.spec ? ' · ' + a.spec : ''))) +
+      `<section class="card"><h3>${esc(t('rfAwait'))}</h3>
+        <table class="mt-t"><tr><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('spec'))}</b></td><td><b>${esc(t('diameter'))}</b></td><td><b>${esc(t('rollState'))}</b></td><td></td></tr>
+        ${RF.awaiting.map(a => `<tr><td>${esc(a.rollId)}${a.redo ? ' ↻' : ''}</td><td>${esc(a.spec || '—')}</td><td>${a.diameter !== null && a.diameter !== undefined && a.diameter !== '' ? esc(nf(a.diameter)) : '—'}</td><td>${esc(t('rs_' + a.state))}</td>
+          <td>${a.state !== 'discard' ? rowBtn('rfstart', a.uid, t('rfStart')) : ''}</td></tr>${f && f.kind === 'rollFlute' && f.awaitUid === a.uid ? `<tr><td colspan="5">${form('rollFlute', fld(t('startedAt'), inp('startTime', f.startTime, 'type="time"'), 1), 'saverfstart')}</td></tr>` : ''}`).join('')}</table>
+        ${form('rollAwait', `<div class="grid2">${fld(t('rollId'), inp('rollId', f && f.rollId), 1)}${fld(t('diameter'), inp('diameter', f && f.diameter, 'inputmode="decimal"'))}
+          ${fld(t('rollState'), `<select data-mf="state">${M.ROLL_STATE.map(x => opt(x, f && f.state, t('rs_' + x))).join('')}</select>`, 1)}</div>${fld(t('spec'), inp('spec', f && f.spec, 'list="mtSpecs"'))}${fl}${fld(t('comments'), area('note', f && f.note))}`, 'saverfawait')}
+        ${st.form ? '' : `<button type="button" class="btn primary" data-mact="new" data-v="rollAwait">＋ ${esc(t('rfAdd'))}</button>`}</section>
+      <section class="card"><h3>${esc(t('rfFluting'))}</h3><table class="mt-t"><tr><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('startedAt'))}</b></td><td></td></tr>
+        ${RF.fluting.map(x => `<tr><td>${esc(x.roll.rollId)}</td><td>${esc(ddmm(x.prodDay))} ${esc(hhmm(x.startT || x.t))}</td><td>${rowBtn('rfend', x.uid, t('rfEnd'))}</td></tr>${f && f.kind === 'rollFluteEnd' && f.fluteUid === x.uid ? `<tr><td colspan="3">${form('rollFluteEnd', fld(t('finishedAt'), inp('endTime', f.endTime, 'type="time"'), 1), 'saverfend')}</td></tr>` : ''}`).join('') || `<tr><td colspan="3">—</td></tr>`}</table></section>
+      <section class="card"><h3>${esc(t('rfTest'))}</h3><table class="mt-t"><tr><td><b>${esc(t('rollId'))}</b></td><td><b>${esc(t('startedAt'))}</b></td><td><b>${esc(t('finishedAt'))}</b></td><td></td></tr>
+        ${RF.toTest.map(x => `<tr><td>${esc(x.roll.rollId)}</td><td>${esc(hhmm(x.startT || x.t))}</td><td>${x.endT ? esc(ddmm(new Date(x.endT).toISOString().slice(0, 10))) + ' ' + esc(hhmm(x.endT)) : '—'}</td><td>${rowBtn('rfcare', x.uid, t('rfTestBtn'))}</td></tr>
+          ${f && f.kind === 'rollCare' && f.fluteUid === x.uid ? `<tr><td colspan="4">${form('rollCare', fld(t('careResult'), `<select data-mf="result"><option value="">—</option>${M.CARE_RESULTS.map(r => opt(r, f.result, t('cr_' + r))).join('')}</select>`, 1) + fld(t('comments'), area('note', f.note)), 'saverfcare')}</td></tr>` : ''}`).join('') || `<tr><td colspan="4">—</td></tr>`}</table>
+        <h4>${esc(t('rfDone'))}</h4><table class="mt-t">${RF.done.slice(0, 10).map(x => `<tr><td>${esc(x.roll.rollId)}</td><td>${esc(t('cr_' + x.result))}</td><td>${esc(hhmm(x.careT))}</td></tr>`).join('') || '<tr><td>—</td></tr>'}</table></section>`;
+    const change = secBlock('change', itemsRO, pickF(CF.planned, 'plans', p => p.passage)) +
+      `<section class="card"><h3>${esc(t('rcPlanned'))}</h3><table class="mt-t"><tr><td><b>${esc(t('passage'))}</b></td><td><b>${esc(t('enteredOn'))}</b></td><td><b>${esc(t('comments'))}</b></td><td></td></tr>
+        ${CF.planned.map(p => `<tr><td>${esc(p.passage)}</td><td>${esc(ddmm(p.date))}</td><td>${esc(p.note || '')}</td><td>${rowBtn('rcstart', p.uid, t('rcStart'))}</td></tr>
+          ${f && f.kind === 'rcWork' && f.planUid === p.uid ? `<tr><td colspan="4">${form('rcWork', `<div class="grid2">${fld(t('people'), inp('people', f.people, 'inputmode="numeric"'), 1)}${fld(t('eta'), inp('eta', f.eta, 'type="time"'))}</div>${fld(t('comments'), area('note', f.note))}`, 'savercwork')}</td></tr>` : ''}`).join('') || `<tr><td colspan="4">—</td></tr>`}</table>
+        ${form('rcPlan', fld(t('passage'), `<select data-mf="passage"><option value="">—</option>${PS.map(p => opt(p.lineId + ' ' + p.name, f && f.passage, p.lineId + ' · ' + pmName(p.name))).join('')}</select>`, 1) + fld(t('comments'), area('note', f && f.note)), 'savercplan')}
+        ${st.form ? '' : `<button type="button" class="btn primary" data-mact="new" data-v="rcPlan">＋ ${esc(t('rcAdd'))}</button>`}</section>
+      <section class="card"><h3>${esc(t('rcWorking'))}</h3><table class="mt-t"><tr><td><b>${esc(t('passage'))}</b></td><td><b>${esc(t('people'))}</b></td><td><b>${esc(t('eta'))}</b></td><td><b>${esc(t('comments'))}</b></td><td></td></tr>
+        ${CF.working.map(w => `<tr><td>${esc(w.plan.passage)}</td><td>${esc(nf(w.people))}</td><td>${esc(w.eta || '—')}</td><td>${esc(w.note || '')}</td><td>${rowBtn('rcdone', w.uid, t('rcDoneBtn'))}</td></tr>
+          ${f && f.kind === 'rcDone' && f.workUid === w.uid ? `<tr><td colspan="5">${form('rcDone', '', 'savercdone')}</td></tr>` : ''}`).join('') || `<tr><td colspan="5">—</td></tr>`}</table>
+        <h4>${esc(t('rcResolved'))}</h4><table class="mt-t">${CF.resolved.slice(0, 10).map(w => `<tr><td>${esc(w.plan.passage)}</td><td>${esc(hhmm(w.doneT))}</td></tr>`).join('') || '<tr><td>—</td></tr>'}</table></section>`;
+    const wrap = h => h.replace(/<table class="mt-t">/g, '<div style="overflow-x:auto"><table class="mt-t">').replace(/<\/table>/g, '</table></div>');   // tabelas largas deslizam
+    return wrap(flute + change) + `<section class="card"><details><summary>${esc(t('rollHoursOld'))}</summary>${vRolls()}</details></section>`;
+  }
+  async function saveRfAwait() { const f = st.form; if (errs(M.validateRollAwait(f))) return; await save({ kind: 'rollAwait', rollId: f.rollId.trim(), spec: String(f.spec || '').trim(), diameter: M.num(f.diameter), state: f.state, note: String(f.note || '').trim(), by: f.by }); }
+  async function saveRfStart() { const f = st.form, s = sh(), a = M.rollFlow(st.entries).awaiting.find(x => x.uid === f.awaitUid); const startT = shiftMs(s.day, s.period, f.startTime); if (!a || startT === null) return errs(['startTime']); await save({ kind: 'rollFlute', awaitUid: a.uid, rollId: a.rollId, startT, by: f.by }); }
+  async function saveRfEnd() { const f = st.form, s = sh(), endT = shiftMs(s.day, s.period, f.endTime); if (endT === null) return errs(['endTime']); await save({ kind: 'rollFluteEnd', fluteUid: f.fluteUid, endT, by: f.by }); }
+  async function saveRfCare() { const f = st.form; if (M.CARE_RESULTS.indexOf(f.result) < 0) return errs(['careResult']); await save({ kind: 'rollCare', fluteUid: f.fluteUid, result: f.result, note: String(f.note || '').trim(), by: f.by }); }
+  async function saveRcPlan() { const f = st.form; if (!String(f.passage || '').trim()) return errs(['passage']); await save({ kind: 'rcPlan', passage: f.passage, note: String(f.note || '').trim(), by: f.by }); }
+  async function saveRcWork() { const f = st.form, n = M.num(f.people); if (n === null || isNaN(n) || n <= 0 || Math.round(n) !== n) return errs(['people']); await save({ kind: 'rcWork', planUid: f.planUid, people: n, eta: f.eta || '', note: String(f.note || '').trim(), by: f.by }); }
+  async function saveRcDone() { await save({ kind: 'rcDone', workUid: st.form.workUid, by: st.form.by }); }
+
   // ----- paragens -----
   function vStops() {
     const sm = shiftSum(), f = st.form && st.form.kind === 'stop' ? st.form : null;
     let form = '';
     if (f) {
       // v2.8.3 / v0.12.0: tipo → código v3 → início e fim (duração calculada) → falha → acção (como na Prodn-Mgt)
-      const cat = M.KIND_CAT[f.stopKind] || '';
-      const codes = cat ? M.codesFor(cat, C.codes()) : [];
+      const cat = f.stopKind || '';
+      const codes = cat ? M.codesForKind(cat, C.codes()) : [];
       const dur = M.minsBetween(f.startTime, f.endTime);
       form = `<div class="mt-box"><div class="grid2">
         ${fld(t('stopKind'), `<select data-mf="stopKind"><option value="">—</option>${M.STOP_KINDS.map(k => opt(k, f.stopKind, t('k_' + k))).join('')}</select>`, 1)}
@@ -263,13 +409,13 @@ window.MaintUI = function (C) {
         ${fld(t('line'), lineSel(f.lineId))}${fld(t('equipment'), inp('equipment', f.equipment))}
         ${fld(t('startTime'), inp('startTime', f.startTime, 'type="time"'), 1)}${fld(t('endTime'), inp('endTime', f.endTime, 'type="time"'), 1)}</div>
         <p class="mt-sub">${esc(dur !== null ? t('durCalc', { m: dur }) : t('durHint'))}</p>
-        ${fld(t('description'), area('description', f.description), 1)}${fld(t('stopAction'), area('action', f.action))}${byF(f)}${saveBtns('savestop')}</div>`;
+        ${fld(t('description'), area('description', f.description), 1)}${fld(t('intervention'), area('action', f.action))}${fld(t('consUsed'), area('consumables', f.consumables))}${fld(t('comments'), area('comments', f.comments))}${byF(f)}${saveBtns('savestop')}</div>`;
     }
     return `<section class="card">${C.kpiNote ? `` : ''}${f ? form : newBtn('stop', t('newStop'))}</section>
       <section class="card"><h3>${esc(t('t_stops'))} · ${sm.stopMin} min</h3>${sm.stops.map(r => `<div class="mt-item">
         <div><b>${esc(r.code || '')} ${esc((r.codeInfo && r.codeInfo.name) || '')}</b> <span class="mt-c">${esc(t('c_' + (M.CATEGORIES.indexOf(r.category) >= 0 ? r.category : 'Other')))}</span>
         · <b>${esc(nf(r.durationMin))} min</b>${r.startT ? ' · ' + esc(hhmm(r.startT)) : ''}${r.lineId ? ' · ' + esc(lineName(r.lineId)) : ''}${r.equipment ? ' · ' + esc(r.equipment) : ''}</div>
-        <div>${r.stopKind ? '<b>' + esc(t('k_' + r.stopKind)) + ':</b> ' : ''}${esc(r.description)}</div>${r.action ? `<div class="mt-sub">${esc(t('stopAction'))}: ${esc(r.action)}</div>` : ''}${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
+        <div>${r.stopKind ? '<b>' + esc(t('k_' + r.stopKind)) + ':</b> ' : ''}${esc(r.description)}</div>${r.action ? `<div class="mt-sub">${esc(t('intervention'))}: ${esc(r.action)}</div>` : ''}${r.consumables ? `<div class="mt-sub">${esc(t('consUsed'))}: ${esc(r.consumables)}</div>` : ''}${r.comments ? `<div class="mt-sub">${esc(r.comments)}</div>` : ''}${meta(r)}<div>${voidBox(r.uid)}</div></div>`).join('') || `<p class="mt-sub">${esc(t('none'))}</p>`}</section>`;
   }
   async function saveStop() {
     const f = st.form;
@@ -278,7 +424,7 @@ window.MaintUI = function (C) {
     if (f.startTime && startT === null) e.push('startTime');
     if (errs(e)) return;
     const c = M.findCode(f.code, C.codes()), dur = M.minsBetween(f.startTime, f.endTime);
-    await save({ kind: 'stop', stopKind: f.stopKind, category: M.KIND_CAT[f.stopKind], code: f.code, codeInfo: { code: c.code, name: c.name, tier3: c.tier3 || null, oee: c.oee || null, source: C.codesSource ? C.codesSource() : null },
+    await save({ kind: 'stop', stopKind: f.stopKind, category: M.catOfCode(f.code), consumables: String(f.consumables || '').trim(), comments: String(f.comments || '').trim(), code: f.code, codeInfo: { code: c.code, name: c.name, tier3: c.tier3 || null, oee: c.oee || null, source: C.codesSource ? C.codesSource() : null },
       lineId: f.lineId || null, equipment: f.equipment.trim(), startT, endT: isNum(startT) ? startT + dur * 60000 : null, durationMin: dur,
       description: f.description.trim(), action: (f.action || '').trim(), by: f.by.trim() });
   }
@@ -618,7 +764,16 @@ window.MaintUI = function (C) {
     const by = C.operator() || '';
     const F = {
       shift: { tasks: [{ type: '', description: '' }], notes: '' },
-      stop: { stopKind: '', code: '', lineId: '', equipment: '', startTime: '', endTime: '', description: '', action: '' },
+      stop: { stopKind: '', code: '', lineId: '', equipment: '', startTime: '', endTime: '', description: '', action: '', consumables: '', comments: '' },
+      secLogin: { sec: ref, pm: [], bds: [], rolls: [], plans: [], notes: '' },
+      secLogout: { sec: ref, pcts: [], comments: '' },
+      rollAwait: { rollId: '', spec: '', diameter: '', state: 'normal', note: '' },
+      rollFlute: { awaitUid: ref, startTime: '' },
+      rollFluteEnd: { fluteUid: ref, endTime: '' },
+      rollCare: { fluteUid: ref, result: '', note: '' },
+      rcPlan: { passage: '', note: '' },
+      rcWork: { planUid: ref, people: '', eta: '', note: '' },
+      rcDone: { workUid: ref },
       work: { workType: '', stopUid: '', pmJobUid: '', lineId: '', equipment: '', startTime: '', endTime: '', description: '', parts: [{ item: '', qty: '', unit: 'un' }], doneBy: '' },
       pmJob: { week: week(), dueDate: (M.weekRange(week()) || [])[1] || '', lineId: '', equipment: '', task: '', responsible: '', taskId: '' },
       pmUpdate: { jobUid: ref, status: '', progressPct: '', newDue: '', doneBy: '', note: '' },
@@ -655,7 +810,8 @@ window.MaintUI = function (C) {
     } catch (e) { C.toast(t('saveFailed')); return; }
     await save({ kind: 'shift', tasks, notes: f.notes.trim(), by: f.by.trim() }, jobs.length ? t('saved') + ' ' + t('pmJobsPlanned', { n: jobs.length }) : null);
   }
-  const SAVE = { saveshift: saveShift, saveitem: saveItem,
+  const SAVE = { savesecin: saveSecIn, savesecout: saveSecOut, saverfawait: saveRfAwait, saverfstart: saveRfStart, saverfend: saveRfEnd, saverfcare: saveRfCare,
+    savercplan: saveRcPlan, savercwork: saveRcWork, savercdone: saveRcDone, saveshift: saveShift, saveitem: saveItem,
     savestop: saveStop, savework: saveWork, savepm: savePm, savepmup: savePmUp, saverchk: saveRollCheck, saverchg: saveRollChange, savecons: saveCons,
     savebrush: saveBrush, savemeas: saveMeasure, saverset: saveRollSet, savenote: saveNote, savepmdone: savePmDone };
   document.addEventListener('click', async e => {
@@ -664,6 +820,16 @@ window.MaintUI = function (C) {
     const a = el.dataset.mact, v = el.dataset.v, uid = el.dataset.uid;
     if (a === 'tab') { st.tab = v; st.form = null; st.act = null; if (C.open) C.open(); keep(); return; }
     if (a === 'new') { newForm(v); keep(); return; }
+    if (a === 'secin') { newForm('secLogin', v); keep(); return; }
+    if (a === 'secout') { newForm('secLogout', v); keep(); return; }
+    if (a === 'secpick' && st.form && st.form.kind === 'secLogin') { const L = st.form[v], i = L.indexOf(uid); if (el.checked && i < 0) L.push(uid); if (!el.checked && i >= 0) L.splice(i, 1); return; }
+    if (a === 'bdadd' && st.form && st.form.bds) { st.form.bds.push({ mill: '', description: '', consumables: '', techs: '', eta: '' }); keep(); return; }
+    if (a === 'bdrm' && st.form && st.form.bds) { st.form.bds.splice(Number(v), 1); keep(); return; }
+    if (a === 'rfstart') { newForm('rollFlute', uid); keep(); return; }
+    if (a === 'rfend') { newForm('rollFluteEnd', uid); keep(); return; }
+    if (a === 'rfcare') { newForm('rollCare', uid); keep(); return; }
+    if (a === 'rcstart') { newForm('rcWork', uid); keep(); return; }
+    if (a === 'rcdone') { newForm('rcDone', uid); keep(); return; }
     if (a === 'pmup') { newForm('pmUpdate', uid); keep(); return; }
     if (a === 'rchk') { newForm('rollCheck', uid); keep(); return; }
     if (a === 'rline') { st.rollLine = v; st.form = null; keep(); return; }
@@ -731,14 +897,16 @@ window.MaintUI = function (C) {
       return;
     }
     if (el.dataset.mtask && st.form && st.form.tasks) { const [i, k] = el.dataset.mtask.split('|'); if (st.form.tasks[+i]) st.form.tasks[+i][k] = el.value; if (isChange && (k === 'type' || k === 'taskId')) keep(); return; }
+    if (el.dataset.mbd && st.form && st.form.bds) { const [i, k] = el.dataset.mbd.split('|'); if (st.form.bds[+i]) st.form.bds[+i][k] = el.value; return; }
+    if (el.dataset.mpct !== undefined && st.form && st.form.pcts) { st.form.pcts[+el.dataset.mpct] = el.value; return; }
     if (el.dataset.mp && st.form && st.form.parts) { const [i, k] = el.dataset.mp.split('|'); if (st.form.parts[+i]) st.form.parts[+i][k] = el.value; return; }
     if (!isChange) return;
     if (el.id === 'mDay' && /^\d{4}-\d{2}-\d{2}$/.test(el.value)) { st.sh = Object.assign({}, sh(), { day: el.value }); st.form = null; keep(); }
     if (el.id === 'mPeriod') { st.sh = Object.assign({}, sh(), { period: el.value === 'N' ? 'N' : 'D' }); st.form = null; keep(); }
     if (el.id === 'mWeek' && M.validWeek(el.value.trim().toUpperCase())) { st.week = el.value.trim().toUpperCase(); keep(); }
   }
-  document.addEventListener('input', e => { if (e.target.closest && e.target.closest('[data-mf],[data-mp],[data-mtask]')) onField(e.target, false); });
-  document.addEventListener('change', e => { if (e.target.dataset && (e.target.dataset.mf !== undefined || e.target.dataset.mp !== undefined || e.target.dataset.mtask !== undefined || /^m(Day|Period|Week)$/.test(e.target.id))) onField(e.target, true); });
+  document.addEventListener('input', e => { if (e.target.closest && e.target.closest('[data-mf],[data-mp],[data-mtask],[data-mbd],[data-mpct]')) onField(e.target, false); });
+  document.addEventListener('change', e => { if (e.target.dataset && (e.target.dataset.mf !== undefined || e.target.dataset.mp !== undefined || e.target.dataset.mtask !== undefined || e.target.dataset.mbd !== undefined || e.target.dataset.mpct !== undefined || /^m(Day|Period|Week)$/.test(e.target.id))) onField(e.target, true); });
 
   // Estilos próprios (prefixo mt-), para ficar igual nas duas apps
   if (!document.getElementById('mt-css')) {
