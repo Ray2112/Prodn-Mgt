@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.21.0';
+  const VERSION = '2.22.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
@@ -1114,7 +1114,9 @@
   // v2.15.0 (Zhax, 16-11-2026): manutenção de processo pela equipa de produção, no separador Turno.
   // Grupos fixos; secções e tarefas editáveis em Definições → Produção. Tarefa '@código' = texto da app (traduzido); outra = texto escrito.
   // 'X*n' na lista de secções = n secções X-1 … X-n (1C*4 → 1C-1 … 1C-4).
-  const PROC_GROUPS = ['plansifter', 'filter', 'separator', 'exhaust'];
+  // v2.22.0 (Zhax, 26-11-2026): filtros CF01–CF07, condutas de exaustão CF01–CF07, separadores CS01/CS02, despedregadores CT01/CT02, turbo-peneiro CT-P
+  const PROC_GROUPS = ['plansifter', 'filter', 'exhaust', 'separator', 'stoner', 'turbo'];
+  const CF = ['CF01', 'CF02', 'CF03', 'CF04', 'CF05', 'CF06', 'CF07'];
   const PROC_TASK_CODES = ['service', 'cleanSleeves', 'changeSleeves', 'cleanScreens', 'repairScreens', 'cleanTrunking'];
   function expandSections(text) {
     const out = [];
@@ -1127,11 +1129,13 @@
   }
   const PROC_MAINT_DEFAULT = {
     plansifter: { sections: expandSections('1C*4, 2C, B1*3, B2*2, B3, B4, G1*2, G2, G3, Div.1, Div.2&3, R1*2, R2*2, R3, R4, R5, R6/R7'), tasks: ['@service'] },
-    filter: { sections: [], tasks: ['@cleanSleeves', '@changeSleeves'] },
-    separator: { sections: [], tasks: ['@cleanScreens', '@repairScreens'] },
-    exhaust: { sections: [], tasks: ['@cleanTrunking'] }
+    filter: { sections: CF.slice(), tasks: ['@cleanSleeves', '@changeSleeves'] },
+    exhaust: { sections: CF.slice(), tasks: ['@cleanTrunking'] },
+    separator: { sections: ['CS01', 'CS02'], tasks: ['@cleanScreens', '@repairScreens'] },
+    stoner: { sections: ['CT01', 'CT02'], tasks: ['@service'] },     // tarefa: Assumido (serviço)
+    turbo: { sections: ['CT-P'], tasks: ['@service'] }
   };
-  const procMaintCfg = cfgP => { const c = (cfgP && cfgP.procMaint) || {}; const o = {}; PROC_GROUPS.forEach(g => { o[g] = c[g] && Array.isArray(c[g].sections) && Array.isArray(c[g].tasks) && c[g].tasks.length ? c[g] : PROC_MAINT_DEFAULT[g]; }); return o; };
+  const procMaintCfg = cfgP => { const c = (cfgP && cfgP.procMaint) || {}; const o = {}; PROC_GROUPS.forEach(g => { o[g] = c[g] && Array.isArray(c[g].sections) && Array.isArray(c[g].tasks) && c[g].tasks.length ? (c[g].sections.length ? c[g] : Object.assign({}, c[g], { sections: PROC_MAINT_DEFAULT[g].sections.slice() })) : PROC_MAINT_DEFAULT[g]; }); return o; };
   function validateProcMaint(o, cfg) {
     const e = [], g = cfg && cfg[o.group];
     if (!g) e.push('procGroup');

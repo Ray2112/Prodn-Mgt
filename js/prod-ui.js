@@ -413,16 +413,20 @@ window.ProdUI = function (C) {
     return `<section class="card"><h3>${esc(t('handoverFrom', { s: t('shift_' + pv.period), d: pv.day }))}</h3>
       ${lo.handover ? `<p>${esc(lo.handover)}</p>` : ''}${lo.comments ? `<p>${esc(lo.comments)}</p>` : ''}</section>`;
   }
+  // v2.22.0 (Zhax, 26-11-2026): plansifter com secções; filtros, condutas, separadores, despedregadores e turbo-peneiro com lista (dropdown) do equipamento
   function procPlanHtml() {
     const cfg = P.procMaintCfg(S.cfgP), secs = (cfg.plansifter && cfg.plansifter.sections) || [];
     return P.PROC_GROUPS.map(g => `<label class="chk"><input type="checkbox" class="lg_proc" data-g="${g}"> ${esc(t('pg_' + g))}</label>` +
-      (g === 'plansifter' ? `<div id="lg_psecs" hidden>${secs.length ? secs.map(x => `<label class="chk"><input type="checkbox" class="lg_psec" value="${esc(x)}"> ${esc(x)}</label>`).join('') : `<p class="sub">—</p>`}</div>` : '')).join('');
+      (g === 'plansifter' ? `<div id="lg_psecs" hidden>${secs.length ? secs.map(x => `<label class="chk"><input type="checkbox" class="lg_psec" value="${esc(x)}"> ${esc(x)}</label>`).join('') : `<p class="sub">—</p>`}</div>`
+        : `<div id="lg_pu_${g}" hidden><select multiple class="lg_punit" data-g="${g}" size="${Math.min(7, (cfg[g].sections || []).length || 1)}">${(cfg[g].sections || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></div>`)).join('');
   }
   function readProcPlan() {
     const groups = [...document.querySelectorAll('.lg_proc')].filter(x => x.checked).map(x => x.dataset.g);
     const secs = [...document.querySelectorAll('.lg_psec')].filter(x => x.checked).map(x => x.value);
+    const units = g => { const el = document.querySelector('.lg_punit[data-g="' + g + '"]'); return el ? [...el.selectedOptions].map(o => o.value) : []; };
     if (groups.indexOf('plansifter') >= 0 && !secs.length) return { err: true };
-    return { plan: groups.map(g => ({ group: g, sections: g === 'plansifter' ? secs : [] })) };
+    if (groups.some(g => g !== 'plansifter' && !units(g).length)) return { err: 'units' };
+    return { plan: groups.map(g => ({ group: g, sections: g === 'plansifter' ? secs : units(g) })) };
   }
   function viewShiftTop() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
@@ -484,7 +488,7 @@ window.ProdUI = function (C) {
     const run = readRun('lg', sel);
     if (run.err) return C.toast(t('runTimeNeed', { a: t('ra_' + run.err) }));
     const pp = readProcPlan();
-    if (pp.err) return C.toast(t('procSecsNeed'));
+    if (pp.err) return C.toast(t(pp.err === 'units' ? 'procUnitsNeed' : 'procSecsNeed'));
     const rows = planRows(sel.day), picks = [...document.querySelectorAll('.lg_plan')].filter(x => x.checked).map(x => Number(x.dataset.i));
     const tms = now(), start = shiftRange(sel.day, sel.period)[0];
     const rec = Object.assign(base(tms), { kind: 'login', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: crewOfRole(w.role, sel.day, sel.period),
@@ -637,10 +641,10 @@ window.ProdUI = function (C) {
   }
   async function saveMaize() {
     const f = S.mzForm, w = await whoP('mz_pin'); if (!w) return; const by = w.title;
-    const changedTG = dmIds().some(id => { const x = f.levels[id] || {}, r = maizeRow(id, 'dm');
+    const changedTG = dmIds().map(id => [id, 'dm']).concat(cmIds().map(id => [id, 'cm'])).some(([id, k]) => { const x = f.levels[id] || {}, r = maizeRow(id, k);
       return (x.colour !== undefined && (x.colour || '') !== (r.colour || '')) || (x.grade !== undefined && (x.grade || '') !== (r.grade || '')); });
     if (changedTG && TOP.indexOf(w.role) < 0) return C.toast(t('tgSupOnly'));
-    cmIds().forEach(id => { const r = maizeRow(id, 'cm'); f.levels[id] = Object.assign(f.levels[id] || {}, { colour: r.colour || '', grade: r.grade || '' }); });
+    cmIds().forEach(id => { const r = maizeRow(id, 'cm'), x = f.levels[id] || {}; f.levels[id] = Object.assign(x, { colour: x.colour !== undefined ? x.colour : r.colour || '', grade: x.grade !== undefined ? x.grade : r.grade || '' }); });
     dmIds().forEach(id => { const r = maizeRow(id, 'dm'), x = f.levels[id] || {}; f.levels[id] = Object.assign(x, { colour: x.colour !== undefined ? x.colour : r.colour || '', grade: x.grade !== undefined ? x.grade : r.grade || '' }); });
     const ids = dmIds().concat(cmIds()), levels = {};
     ids.forEach(id => { const x = f.levels[id] || {}; if (String(x.dipM || '').trim() || String(x.kg || '').trim()) levels[id] = { dipM: x.dipM, kg: x.kg }; });
@@ -662,7 +666,7 @@ window.ProdUI = function (C) {
   function runFields(p, cur) {
     return `<div class="tablewrap"><table class="tbl">${P.RUN_AREAS.map(a => { const on = cur ? cur[a].on : false, show = on || p === 'rc'; return `<tr><td><b>${esc(t('ra_' + a))}</b></td>
       <td><select id="${p}_on_${a}" data-runsel="${p}|${a}"><option value="0" ${on ? '' : 'selected'}>${esc(t('no'))}</option><option value="1" ${on ? 'selected' : ''}>${esc(t('yes'))}</option></select></td>
-      <td><div id="${p}_box_${a}" ${show ? '' : 'hidden'}><label class="fld">${esc(t(p === 'rc' ? 'runTime' : 'runStart'))}<input type="time" id="${p}_t_${a}" value="${esc(hmNow())}"></label>
+      <td><div id="${p}_box_${a}" ${show ? '' : 'hidden'}><input type="hidden" id="${p}_t_${a}" value="${esc(hmNow())}">
       <label class="fld">${esc(t('comments'))}<input id="${p}_c_${a}"></label>${p === 'rc' && a === 'reproc' && on ? `<label class="fld">${esc(t('reprocBagsOff'))}<input inputmode="numeric" id="rc_bags_reproc"></label>` : ''}</div></td></tr>`; }).join('')}</table></div>`;
   }
   function readRun(p, sel, only) {
@@ -680,7 +684,7 @@ window.ProdUI = function (C) {
     const rs = P.runState(S.shiftLog, day, per, now() + 24 * 3600000);
     return `<section class="card"><h3>${esc(t('runTitle'))}</h3>
       <div class="tablewrap"><table class="tbl">${P.RUN_AREAS.map(a => { const x = rs.areas[a]; return `<tr><td><b>${esc(t('ra_' + a))}</b></td>
-        <td><span class="chip ${x.on ? 'd-accept' : ''}">${esc(x.on ? t('yes') : t('no'))}</span>${x.at ? ' <small>' + esc(t('runSince', { h: C.fmtTime(x.at) })) + '</small>' : ''}${x.comment ? '<br><small>' + esc(x.comment) + '</small>' : ''}</td></tr>`; }).join('')}</table></div>
+        <td><span class="chip ${x.on ? 'd-accept' : ''}">${esc(x.on ? t('yes') : t('no'))}</span>${x.comment ? '<br><small>' + esc(x.comment) + '</small>' : ''}</td></tr>`; }).join('')}</table></div>
       <h4>${esc(t('runChange'))}</h4>${runFields('rc', rs.areas)}${C.pinFld('rc_pin')}
       <button class="btn primary" data-pact="saverun">${esc(t('save'))}</button></section>`;
   }
@@ -738,12 +742,11 @@ window.ProdUI = function (C) {
       <label class="fld req">${esc(t('stopStart'))}<input type="datetime-local" id="st_start" value="${esc(nowIn)}"></label>
       <label class="fld req">${esc(t('stopEnd'))}<input type="datetime-local" id="st_end" value="${esc(nowIn)}"></label>
       <label class="fld">${esc(t('line'))}<select id="st_line">${lineOpts('C')}</select></label>
-      ${C.pinFld('st_pin')}</div>
+      <div class="req">${C.pinFld('st_pin')}</div></div>
       <p class="sub" id="st_dur">${esc(t('stopDurHint'))}</p>
       <label class="fld req">${esc(t('stopFault'))}<textarea rows="2" id="st_fault"></textarea></label>
       <label class="fld">${esc(t('stopIntervention'))}<textarea rows="2" id="st_action"></textarea></label>
       <label class="fld">${esc(t('stopConsumables'))}<textarea rows="2" id="st_cons"></textarea></label>
-      <label class="fld">${esc(t('comments'))}<textarea rows="2" id="st_comments"></textarea></label>
       <button class="btn primary big" data-pact="savestop">${esc(t('save'))}</button></section>
       <section class="card"><h3>${esc(t('ptab_stops'))} · ${esc(sel.day)} ${esc(t('shift_' + sel.period))} · ${sm.downtimeMin} min</h3>${sm.issues.map(issueItem).join('') || '<p class="sub">—</p>'}</section>`;
   }
@@ -762,7 +765,7 @@ window.ProdUI = function (C) {
     const rec = Object.assign(base(f.start), { kind: 'issue', t: f.start, startT: f.start, endT: f.end, category: f.category, lineId: $('#st_line').value, code: f.code,
       codeInfo: Object.assign({ source: S.cfgP.codesSource || P.DOWNTIME_SOURCE }, P.findCode(f.code, codes())), equipment: cName(P.findCode(f.code, codes()) || {}),
       description: String(f.fault).trim(), downtimeMin: r.downtimeMin, action, consumables: (($('#st_cons') || {}).value || '').trim(),
-      comments: (($('#st_comments') || {}).value || '').trim(), by, status: action ? 'closed' : 'open' });
+      by, status: action ? 'closed' : 'open' });
     if (rec.status === 'closed') { rec.closedAt = f.end; rec.closedBy = by; rec.resolution = action; }
     try { await DB.add('shiftLog', rec); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by; await DB.setConfig('operator', S.operator);
@@ -811,7 +814,8 @@ window.ProdUI = function (C) {
   }
   function maizeRow(id, kind) {
     const lv = lastLevel(id) || {}, cm = kind === 'cm' ? cmFromJob(id) : null, H = holds()[id];
-    return { id, kind, dipM: lv.dipM, kg: lv.kg, colour: cm ? cm.colour : lv.colour, grade: cm ? cm.grade : lv.grade, filled: kind === 'cm' ? (cm && cm.t) : dmFilled(id), hold: H || null, cm };
+    const fromJob = cm && !((lv.colour || lv.grade) && lv.t > cm.t) ? cm : null;   // v2.22.0: C/M — o tipo/grau gravados ganham; senão os da ordem
+    return { id, kind, dipM: lv.dipM, kg: lv.kg, colour: fromJob ? fromJob.colour : lv.colour, grade: fromJob ? fromJob.grade : lv.grade, filled: kind === 'cm' ? (cm && cm.t) : dmFilled(id), hold: H || null, cm };
   }
   const dash = v => v === undefined || v === null || v === '' ? '—' : esc(String(v));
   function maizeTable(rows, edit) {
@@ -819,8 +823,8 @@ window.ProdUI = function (C) {
     return `<div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('emptySpace'))}</th><th>${esc(t('quantityKg'))}</th><th>${esc(t('mzType'))}</th><th>${esc(t('mzGrade'))}</th><th>${esc(t('dateFilled'))}</th><th>${esc(t('holdCol'))}</th></tr>
       ${rows.map(r => { const x = edit ? (f.levels[r.id] || {}) : {};
         const dip = edit ? `<input inputmode="decimal" data-mz="${esc(r.id)}|dipM" value="${esc(x.dipM !== undefined ? x.dipM : '')}" style="max-width:80px">` : isNum(Number(r.dipM)) && String(r.dipM || '').trim() !== '' ? esc(String(r.dipM).replace('.', ',')) : '—';
-        const ty = edit && r.kind === 'dm' ? `<select data-mz="${esc(r.id)}|colour">${opt(P.MZ_TYPES, x.colour !== undefined ? x.colour : r.colour, typeName)}</select>` : esc(typeName(r.colour));
-        const gr = edit && r.kind === 'dm' ? `<select data-mz="${esc(r.id)}|grade">${opt(P.SILO_GRADES, x.grade !== undefined ? x.grade : r.grade)}</select>` : dash(r.grade);
+        const ty = edit ? `<select data-mz="${esc(r.id)}|colour">${opt(P.MZ_TYPES, x.colour !== undefined ? x.colour : r.colour, typeName)}</select>` : esc(typeName(r.colour));
+        const gr = edit ? `<select data-mz="${esc(r.id)}|grade">${opt(P.SILO_GRADES, x.grade !== undefined ? x.grade : r.grade)}</select>` : dash(r.grade);
         return `<tr><td><b>${esc(r.id)}</b></td><td>${dip}</td><td>${isNum(r.kg) ? fmtKg(r.kg) : '—'}</td><td>${ty}</td><td>${gr}</td><td>${r.filled ? esc(C.fmtDT(r.filled).slice(0, 10)) : '—'}</td>
           <td>${r.hold ? `<span class="chip d-reject">${esc(t('onHold'))}</span>` : '—'}</td></tr>`; }).join('')}</table></div>`;
   }
@@ -854,8 +858,7 @@ window.ProdUI = function (C) {
     const recent = (S.moves || []).slice().sort((a, b) => b.t - a.t).slice(0, 10);
     return snapCard() +
       (feedAuto() ? `<section class="card"></section>` : S.trForm ? transferFormView() : `<section class="card"><button class="btn primary big" data-pact="newtransfer">＋ ${esc(t('newTransfer'))}</button></section>`) +
-      `<section class="card"><h3>${esc(t('recentMoves'))}</h3>${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || '<p class="sub">—</p>'}</section>
-      <section class="card"></section>`;
+      (false ? `${recent.map(m => `<div class="rowitem"><b>${esc(C.fmtDT(m.t))}</b> · ${esc(m.binId)}${m.source === 'grain-mgt' ? ' · <small>' + esc(t('srdFromGm')) + '</small>' : ''} · ${m.type === 'EMPTY' ? esc(t('binEmptied', { kg: fmtKg(m.bookKg) })) : esc((m.parts || []).map(p => p.silo + ' ' + fmtKg(p.kg) + ' kg').join(' → '))}<br><small>${esc(t('crew'))} ${esc(m.crew || '—')} · ${esc(m.by || '')}</small></div>`).join('') || ''}` : '');   // v2.22.0: movimentos nos Relatórios
   }
   function dirtyCard(b) {
     const st = dirtyState(b.id);
@@ -944,7 +947,7 @@ window.ProdUI = function (C) {
 
   function viewJobs() {
     const running = (S.jobs || []).filter(j => j.status === 'running').sort((a, b) => a.lineId < b.lineId ? -1 : 1);
-    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 10);
+    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 3);   // v2.22.0: só as últimas 3; as restantes nos Relatórios
     return (S.jobForm ? jobFormView() : `<section class="card"><button class="btn primary big" data-pact="newjob">＋ ${esc(t('newJob'))}</button></section>`) +
       `<section class="card"><h3>${esc(t('jobsRunning'))}</h3>${running.length ? running.map(jobCard).join('') : `<p class="sub">${esc(t('noJobs'))}</p>`}</section>
       <section class="card"><h3>${esc(t('jobsClosed'))}</h3>${closed.length ? closed.map(jobCard).join('') : '<p class="sub">—</p>'}</section>`;
@@ -1476,11 +1479,11 @@ window.ProdUI = function (C) {
     const open = i.status !== 'closed';
     const act = S.logAct && S.logAct.uid === i.uid ? S.logAct.mode : null;
     return `<div class="rowitem">
-      <div class="row between"><span><b>${esc(C.fmtTime(i.t))}</b>${i.code ? ' · <b>' + esc(codeLabel(i.code, cd)) + '</b> <small>(' + esc(tierLabel(cd && cd.tier3)) + ')</small>' : ' · ' + esc(t('noStopCode'))}${i.lineId ? ' · ' + esc(C.lineName(i.lineId)) : ''}${i.equipment ? ' · ' + esc(i.equipment) : ''}</span>
+      <div class="row between"><span><b>${isNum(i.downtimeMin) ? esc(i.downtimeMin + ' min') : '—'}</b>${i.code ? ' · <b>' + esc(codeLabel(i.code, cd)) + '</b> <small>(' + esc(tierLabel(cd && cd.tier3)) + ')</small>' : ' · ' + esc(t('noStopCode'))}${i.lineId ? ' · ' + esc(C.lineName(i.lineId)) : ''}${i.equipment ? ' · ' + esc(i.equipment) : ''}</span>
         <span class="chip ${open ? 'd-warn' : 'd-accept'}">${esc(open ? t('is_open') : t('is_closed'))}</span></div>
       <div>${esc(i.description)}</div>
-      ${i.consumables ? `<div><small><b>${esc(t('stopConsumables'))}:</b> ${esc(i.consumables)}</small></div>` : ''}${i.comments ? `<div><small>${esc(i.comments)}</small></div>` : ''}
-      <small>${isNum(i.downtimeMin) ? esc(t('downtimeMin')) + ': ' + i.downtimeMin + ' · ' : ''}${esc(t('crew'))} ${esc(i.crew)} · ${esc(i.by)}</small>
+      ${i.consumables ? `<div><small><b>${esc(t('stopConsumables'))}:</b> ${esc(i.consumables)}</small></div>` : ''}
+      <small>${esc(t('crew'))} ${esc(i.crew)} · ${esc(i.by)}</small>
       ${i.resolution ? `<div class="act"><small>${esc(i.closedAt ? C.fmtDT(i.closedAt) : '')} · ${esc(i.closedBy || '')}: ${esc(i.resolution)}</small></div>` : ''}
       ${act ? `<div class="holdform"><label class="fld req">${esc(act === 'close' ? t('resolution') : t('voidReason'))}<textarea rows="2" id="la_text"></textarea></label>
         ${C.pinFld('la_pin')}
@@ -1614,7 +1617,8 @@ window.ProdUI = function (C) {
     const qtyTbl = productsCard() + `<!-- v2.17 -->` + (false ? `<section class="card"><h3>${esc(t('binQtyTitle'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('bin'))}</th><th>${esc(t('product'))}</th><th>kg</th><th>%</th></tr>${S.cfgP.bins.map(b => {
       const st = P.binState(b.id, S.binEvents), lv = levelOf(b.id) || {};
       return `<tr><td><b>${esc(b.id)}</b></td><td>${esc(st.productId ? C.prodName(st.productId) : t('binEmpty'))}</td><td>${isNum(lv.kg) ? fmtKg(lv.kg) : '—'}</td><td>${isNum(lv.pct) ? esc(String(lv.pct).replace('.', ',')) + ' %' : '—'}</td></tr>`; }).join('')}</table></div></section>` : '');
-    return qtyTbl + holdsCard() + totalsCard() + `<section class="card"><h3>${esc(t('ptab_bins'))}</h3>
+    return qtyTbl + totalsCard() +   // v2.22.0: retenções no Controlo de Qualidade
+      `<section class="card"><h3>${esc(t('ptab_bins'))}</h3>
       ${S.cfgP.bins.map(b => {
         const st = P.binState(b.id, S.binEvents);
         const job = st.jobUid ? S.jobs.find(j => j.uid === st.jobUid) : null;
@@ -2050,7 +2054,7 @@ window.ProdUI = function (C) {
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset && el.dataset.runsel) { const [p, ar] = el.dataset.runsel.split('|'); const b = $('#' + p + '_box_' + ar); if (b && p !== 'rc') b.hidden = el.value !== '1'; return true; }
     if (el.id === 'mzDay') { if (el.value) S.mzDay = el.value; keepScroll(); return true; }
-    if (el.classList && el.classList.contains('lg_proc') && el.dataset.g === 'plansifter') { const d = $('#lg_psecs'); if (d) d.hidden = !el.checked; return true; }
+    if (el.classList && el.classList.contains('lg_proc')) { const d = el.dataset.g === 'plansifter' ? $('#lg_psecs') : $('#lg_pu_' + el.dataset.g); if (d) d.hidden = !el.checked; return true; }
     if (el.dataset && el.dataset.pq && S.pqForm) { const [id, k] = el.dataset.pq.split('|'); S.pqForm[id] = Object.assign(S.pqForm[id] || {}, { [k]: el.value }); return true; }
     if (el.dataset && el.dataset.mz && S.mzForm) { const [id, k] = el.dataset.mz.split('|'); if (k === undefined) S.mzForm[id] = el.value; else { S.mzForm.levels[id] = Object.assign(S.mzForm.levels[id] || {}, { [k]: el.value }); if (k === 'dipM') { const o = $('#mzkg_' + id); if (o) { const v = el.value; o.innerHTML = dipKgText(v, String(v).trim() ? P.dipKg(v, P.dipSpec(id, S.cfgP)) : null); } } } return true; }
     if (el.id === 'pm_group') { S.procForm = { group: el.value }; keepScroll(); return true; }
