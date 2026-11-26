@@ -769,7 +769,9 @@
       const of = x => E.filter(e => e.kind === x), stopMin = of('stop').reduce((a, e) => a + (Number(e.durationMin) || 0), 0), mt = MU.t;
       return `<section class="card"><h3>${esc(t('rt_maint'))}</h3><div class="kpis">${k(of('stop').length + ' · ' + stopMin + ' min', mt('t_stops'))}${k(of('work').length, mt('t_work'))}
         ${k(of('pmJob').length + ' / ' + of('pmUpdate').filter(e => e.status === 'done').length, mt('t_pm'))}${k(of('consumable').length, mt('t_cons'))}</div>
-        ${of('shift').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || '—')}</div></div>`).join('')}</section>`; };
+        ${of('shift').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.tasks || []).map(x => mt('tk_' + x.type) + (x.description ? ': ' + x.description : '')).join(' | ') || '—')}</div></div>`).join('')}
+        ${of('mLogin').map(e => `<div class="rowitem"><small>${esc(t('shift_' + e.period))} · ${esc(e.by || '')}</small><div>${esc((e.pm || []).map(x => x.label).concat((e.bds || []).map(b => mt('mill' + b.mill) + ': ' + b.description)).join(' | ') || '—')}</div></div>`).join('')}
+        ${of('mLogout').map(e => `<div class="rowitem"><small>${esc(mt('slogout'))} · ${esc(t('shift_' + e.period))}</small><div>${esc((e.items || []).map(x => x.label + ': ' + x.pct + ' %').join(' | ') || '—')}</div></div>`).join('')}</section>`; };   // v2.20.0: login/logout do turno de manutenção
     const fssc = () => { const F = window.Fssc, R = (window.FsscReqs || {}).REQS || [], E = FU.entries ? FU.entries() : [], mo = day.slice(0, 7), today = L.prodDay(Date.now());
       const sc = F.score(R, 'mill', F.grades(E, mo)), tr = F.trainingMonth(F.trainings(E, today), mo);
       return `<section class="card"><h3>${esc(t('rt_fssc'))} · ${esc(mo)}</h3><div class="kpis">${k(pc(sc.score), t('fs_score'))}${k(sc.graded + '/' + sc.applicable, t('fs_graded'))}

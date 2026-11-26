@@ -266,3 +266,37 @@ console.log('maint: ' + n + ' testes OK');
   assert.deepStrictEqual(cat.map(c => c.id + ':' + c.lastDone + ':' + c.nextDue + ':' + c.overdue), ['T1:2026-11-02:2026-12-02:false', 'T2:2026-11-02:2027-02-02:false'], 'feita em = doneOn');
   console.log('preventiva feita: OK');
 }
+
+// v2.20.0 (Zhax, 26-11-2026): tipos de avaria pelo prefixo, login/logout por secção, reestriagem e troca de rolos
+{
+  assert.deepStrictEqual(M.codesForKind('planned', CODES).map(c => c.code), ['O03']);
+  assert.deepStrictEqual(M.codesForKind('process', CODES).map(c => c.code), ['P04', 'P16'], 'P16 é Processo pelo prefixo');
+  assert.deepStrictEqual(M.codesForKind('mechanical', CODES).map(c => c.code), ['A07']);
+  assert.deepStrictEqual(M.validateStop({ stopKind: 'planned', code: 'O03', startTime: '08:00', endTime: '09:00', description: 'x', by: 'y' }, CODES), []);
+  assert.deepStrictEqual(M.validateStop({ stopKind: 'planned', code: 'P04', startTime: '08:00', endTime: '09:00', description: 'x', by: 'y' }, CODES), ['code']);
+  const d = '2026-11-26', base = { prodDay: d, period: 'D' };
+  const E = [Object.assign({ uid: 'L1', kind: 'rfLogin', t: 1, items: [{ ref: 'a1', label: 'R-01' }] }, base)];
+  let L = M.secLog(E, 'flute', d, 'D');
+  assert.ok(L.login && !L.logout);
+  L = M.secLog(E.concat([Object.assign({ uid: 'O1', kind: 'rfLogout', t: 2, loginUid: 'L1' }, base)]), 'flute', d, 'D');
+  assert.ok(L.logout && L.logout.uid === 'O1');
+  assert.deepStrictEqual(M.secLog(E, 'flute', d, 'N'), { login: null, logout: null });
+  assert.deepStrictEqual(M.validateLogout(['100', '50'], 2), []);
+  assert.deepStrictEqual(M.validateLogout(['100', ''], 2), ['pctDone']);
+  assert.deepStrictEqual(M.validateLogout(['101'], 1), ['pctDone']);
+  assert.deepStrictEqual(M.validateRollAwait({ rollId: '', state: 'x', diameter: '-1' }), ['rollId', 'rollState', 'diameter']);
+  const R = [{ uid: 'a1', kind: 'rollAwait', t: 1, rollId: 'R-01', state: 'normal' }, { uid: 'a2', kind: 'rollAwait', t: 2, rollId: 'R-02', state: 'bad' },
+    { uid: 'f1', kind: 'rollFlute', t: 3, awaitUid: 'a1' }, { uid: 'e1', kind: 'rollFluteEnd', t: 4, fluteUid: 'f1', endT: 4 }];
+  let F = M.rollFlow(R);
+  assert.deepStrictEqual([F.awaiting.map(x => x.uid), F.fluting.length, F.toTest.map(x => x.uid)], [['a2'], 0, ['f1']]);
+  F = M.rollFlow(R.concat([{ uid: 'c1', kind: 'rollCare', t: 5, fluteUid: 'f1', result: 'redo' }]));
+  assert.deepStrictEqual(F.awaiting.map(x => x.uid + (x.redo ? '*' : '')), ['a1*', 'a2'], 'refazer volta à espera');
+  F = M.rollFlow(R.concat([{ uid: 'c1', kind: 'rollCare', t: 5, fluteUid: 'f1', result: 'ok' }]));
+  assert.deepStrictEqual([F.awaiting.length, F.done.map(x => x.result)], [1, ['ok']]);
+  const P = [{ uid: 'p1', kind: 'rcPlan', t: 1, passage: 'C B1' }, { uid: 'p2', kind: 'rcPlan', t: 2, passage: 'C B2' }, { uid: 'w1', kind: 'rcWork', t: 3, planUid: 'p1', people: 2 }];
+  let G = M.changeFlow(P);
+  assert.deepStrictEqual([G.planned.map(x => x.uid), G.working.map(x => x.uid)], [['p2'], ['w1']]);
+  G = M.changeFlow(P.concat([{ uid: 'd1', kind: 'rcDone', t: 4, workUid: 'w1' }]));
+  assert.deepStrictEqual([G.working.length, G.resolved.map(x => x.plan.passage)], [0, ['C B1']], 'planeada fica até resolvida');
+  console.log('secções e rolos (v2.20.0): OK');
+}
