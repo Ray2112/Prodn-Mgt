@@ -956,22 +956,33 @@ window.ProdUI = function (C) {
     const day = L.prodDay(now()), Q = P.maizeQcDay(S.shiftLog, day), fmt = v => typeof v === 'number' && isFinite(v) ? C.fmtNum(v) : '—';
     const LIM = P.maizeQcLimits(S.cfgP), dcls = d => d === 'reject' ? 'd-reject' : d === 'warn' ? 'd-warn' : d === 'accept' ? 'd-accept' : '';
     const tables = Object.keys(P.MZQC_STAGES).filter(s => Q[s].rows.length).map(s => { const X = P.MZQC_STAGES[s], cols = X.ids.concat(X.nums, X.flags);
-      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}${s === 'cm_b1' ? `<th>${esc(t('mqDev'))}</th>` : ''}<th>${esc(t('mqDecision'))}</th></tr>
+      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}${s === 'cm_b1' ? `<th>${esc(t('mqDev'))}</th>` : ''}<th>${esc(t('mqDecision'))}</th><th>${esc(t('holdCol'))}</th></tr>
         ${Q[s].rows.map(r => { const D = P.maizeQcDecide(r, S.cfgP), fc = k => { const x = D.fails.find(f => f.param === k); return x ? dcls(x.decision) : ''; };
           return `<tr><td>${esc(C.fmtTime(r.t))}</td>${cols.map(k => `<td class="${fc(k)}">${X.nums.indexOf(k) >= 0 ? esc(fmt(r[k])) : X.flags.indexOf(k) >= 0 ? esc(r[k] ? t(r[k]) : '—') : esc(r[k] || '—')}</td>`).join('')}
-            ${s === 'cm_b1' ? `<td>${D.target ? esc((D.target.dev > 0 ? '+' : '') + C.fmtNum(D.target.dev)) : '—'}</td>` : ''}<td><span class="chip ${dcls(D.decision)}">${esc(t('mqd_' + D.decision))}</span></td></tr>`; }).join('')}
-        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}${s === 'cm_b1' ? '<td></td>' : ''}<td></td></tr></table></div>`; }).join('');
+            ${s === 'cm_b1' ? `<td>${D.target ? esc((D.target.dev > 0 ? '+' : '') + C.fmtNum(D.target.dev)) : '—'}</td>` : ''}<td><span class="chip ${dcls(D.decision)}">${esc(t('mqd_' + D.decision))}</span></td><td>${mqHoldCell(r, D, s)}</td></tr>`; }).join('')}
+        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}${s === 'cm_b1' ? '<td></td>' : ''}<td></td><td></td></tr></table></div>`; }).join('');
     const limTxt = k => { const m = LIM[st][k]; if (!m) return ''; const p = []; if (isNum(m.warnLo)) p.push('⚠ < ' + C.fmtNum(m.warnLo)); if (isNum(m.warnHi)) p.push('⚠ > ' + C.fmtNum(m.warnHi)); if (isNum(m.rejLo)) p.push('✖ < ' + C.fmtNum(m.rejLo)); if (isNum(m.rejHi)) p.push('✖ > ' + C.fmtNum(m.rejHi)); return p.join(' · '); };
     const TG = P.b1Target(S.cfgP), tgNote = st === 'cm_b1' ? `<p class="sub">${esc(t('mqB1Target', { v: C.fmtNum(TG.moisture) }))}${TG.tol !== null ? ' ± ' + esc(C.fmtNum(TG.tol)) : ''}</p>` : '';
     const nc = Object.keys(P.MZQC_STAGES).reduce((a, s) => a + Q[s].rows.filter(r => P.maizeQcDecide(r, S.cfgP).decision === 'reject').length, 0);
     const ncBanner = nc ? `<div class="banner b-warn">⚠ ${esc(t('mqNcToday', { n: nc }))}</div>` : '';
     const limNote = Object.keys(LIM[st]).length || D.flags.length ? `<p class="sub">${D.nums.filter(k => LIM[st][k]).map(k => esc(t('mq_' + k)) + ': ' + esc(limTxt(k))).concat(D.flags.map(k => esc(t('mq_' + k)) + ' ' + esc(t('yes')) + ' = ✖')).join('<br>')}</p>` : `<p class="sub">${esc(t('mqRecordOnly'))}</p>`;
-    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>${ncBanner}
+    const hf = S.holdForm && S.holdForm.mq ? `<div class="banner b-reject"><b>${esc(t(S.holdForm.release ? 'holdReleaseBtn' : 'holdBtn'))}: ${esc(S.holdForm.binId)}</b></div>` + holdFormHtml(S.holdForm) : '';
+    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>${ncBanner}${hf}
       <div class="seg mode">${Object.keys(P.MZQC_STAGES).map(s => `<button data-pact="mqstage" data-v="${s}" class="${s === st ? 'on ok' : ''}">${esc(t('mqs_' + s))}</button>`).join('')}</div>
       <div class="grid2">${D.ids.map(sel).join('')}${D.nums.map(numF).join('')}${D.flags.map(flag).join('')}</div>
       ${limNote}${tgNote}${C.pinFld('mq_pin')}
       <button class="btn primary" data-pact="mqsave">${esc(t('mqSave'))}</button>
       <h3>${esc(t('mqToday'))} · ${esc(day)}</h3>${tables || '<p class="sub">—</p>'}</section>`;
+  }
+  // v2.27.0 (Zhax, 27-11-2026): depois do aviso de não conforme, o Supervisor ou acima retém / liberta a bin D/M com o PIN.
+  // Só as bins D/M (milho sujo) e de produto podem ser retidas (v2.13.0) — as bins C/M não.
+  function mqHoldCell(r, D, s) {
+    const id = r.dmBin, H = holds(), h = id && H[id];
+    if (!id || !P.holdableBins(S.cfgP).some(b => b.id === id)) return '—';
+    if (h) return `<span class="chip d-reject">${esc(id)} ${esc(t('holdOn'))}</span>${S.holdForm ? '' : ` <button class="btn small" data-hold="${esc(id)}" data-release="1" data-mqhold="1">${esc(t('holdReleaseBtn'))}</button>`}`;
+    if (D.decision !== 'reject' || S.holdForm) return '—';
+    const p = D.fails.filter(f => f.decision === 'reject').map(f => t('mq_' + f.param)).join(', ');
+    return `<button class="btn small" data-hold="${esc(id)}" data-mqhold="1" data-suid="${esc(r.uid || '')}" data-reason="${esc(t('mqHoldReason', { s: t('mqs_' + s), p }))}">${esc(t('holdBtn'))} ${esc(id)}</button>`;
   }
   async function saveMaizeQc() {
     const st = S.mqStage && P.MZQC_STAGES[S.mqStage] ? S.mqStage : 'silo_dm', D = P.MZQC_STAGES[st];
@@ -1652,23 +1663,24 @@ window.ProdUI = function (C) {
     return `<section class="card"><h3>${esc(t('prodTotals'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('product'))}</th><th>${esc(t('bins'))}</th><th>kg</th><th>${esc(t('loadPct'))}</th></tr>
       ${T.map(p => `<tr><td>${esc(C.prodName(p.productId))}</td><td>${esc(p.bins.join(', '))}</td><td>${fmtKg(p.kg)}${p.unknown ? ' <small>(' + esc(t('binsNoReading', { n: p.unknown })) + ')</small>' : ''}</td><td>${p.pct == null ? '—' : esc(String(p.pct).replace('.', ',')) + ' %'}</td></tr>`).join('')}</table></div></section>`;
   }
+  const holdFormHtml = f => `<div class="holdform"><label class="fld req">${esc(t(f.release ? 'holdReleaseReason' : 'holdReason'))}<textarea rows="2" id="hd_reason">${esc(f.reason || '')}</textarea></label>
+          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="hd_pin"></label>
+          <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`;
   function holdsCard() {
     const H = holds(), f = S.holdForm, B = P.holdableBins(S.cfgP);
     const row = b => {
-      const h = H[b.id], open = f && f.binId === b.id;
+      const h = H[b.id], open = f && f.binId === b.id && !f.mq;   // v2.27.0: a retenção pedida na amostragem do milho abre o formulário lá
       return `<div class="rowitem"><div class="row between"><span><b>${esc(b.id)}</b> <small>${esc(t(b.kind === 'dirty' ? 'dirtyBins' : 'ptab_bins'))}</small></span>
         <span class="chip ${h ? 'd-reject' : 'd-accept'}">${esc(h ? t('holdOn') : t('holdOff'))}</span></div>
         ${h ? `<small>${esc(C.fmtDT(h.t))} · ${esc(h.by)}: ${esc(h.reason)}</small>` : ''}
-        ${open ? `<div class="holdform"><label class="fld req">${esc(t(f.release ? 'holdReleaseReason' : 'holdReason'))}<textarea rows="2" id="hd_reason"></textarea></label>
-          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="hd_pin"></label>
-          <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`
+        ${open ? holdFormHtml(f)
           : (f ? '' : `<button class="btn small ${h ? '' : 'ghost'}" data-hold="${esc(b.id)}" data-release="${h ? 1 : ''}">${esc(t(h ? 'holdReleaseBtn' : 'holdBtn'))}</button>`)}</div>`;
     };
     const n = Object.keys(H).length, held = B.filter(b => H[b.id]), free = B.filter(b => !H[b.id]);
     // v2.23.0 (Zhax, 26-11-2026): no CQ — bins não conformes primeiro, a pedir autorização do Supervisor (ou acima) para libertar
     return `<section class="card"><h3>${esc(t('ncTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3>
       ${held.length ? `<div class="banner b-reject">${esc(t('ncNeedSup'))}</div>${held.map(row).join('')}` : `<p class="sub">${esc(t('ncNone'))}</p>`}
-      <details ${f && !H[f.binId] ? 'open' : ''}><summary>${esc(t('ncHoldOther'))}</summary>${free.map(row).join('')}</details></section>`;
+      <details ${f && !f.mq && !H[f.binId] ? 'open' : ''}><summary>${esc(t('ncHoldOther'))}</summary>${free.map(row).join('')}</details></section>`;
   }
   // v2.23.0: amostra do CQ «reject» com bin de destino → a bin fica retida automaticamente (libertar só com PIN de Supervisor ou acima)
   async function autoHold(binId, sample) {
@@ -1687,7 +1699,7 @@ window.ProdUI = function (C) {
     const r = await C.checkPin(($('#hd_pin') || {}).value);
     if (!r.ok) return C.toast(C.pinMsg(r));
     const b = P.holdableBins(S.cfgP).find(x => x.id === f.binId), tms = now();
-    try { await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: f.release ? 'binRelease' : 'binHold', binId: b.id, binKind: b.kind, reason: reason.trim(), by: by.trim(), role: 'qc',
+    try { await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: f.release ? 'binRelease' : 'binHold', binId: b.id, binKind: b.kind, reason: reason.trim(), by: by.trim(), role: 'qc', sampleUid: f.sampleUid || null,
       productId: b.kind === 'product' ? P.binState(b.id, S.binEvents).productId || null : null })); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by.trim(); await DB.setConfig('operator', S.operator);
     S.holdForm = null; await reload(); C.toast(t(f.release ? 'holdReleased' : 'holdSaved', { b: b.id })); keepScroll();
@@ -2053,7 +2065,7 @@ window.ProdUI = function (C) {
     if (el.dataset.jmode) { S.jobForm.mode = el.dataset.jmode === 'blend' ? 'blend' : 'seq'; keepScroll(); return; }
     if (el.dataset.logact) { S.logAct = { uid: el.dataset.uid, mode: el.dataset.logact === 'close' ? 'close' : 'void' }; keepScroll(); return; }
     if (el.dataset.shsel) { const [d, p] = el.dataset.shsel.split('|'); S.shiftSel = { day: d, period: p === 'N' ? 'N' : 'D' }; keepScroll(); return; }
-    if (el.dataset.hold) { S.holdForm = { binId: el.dataset.hold, release: !!el.dataset.release }; keepScroll(); return; }
+    if (el.dataset.hold) { S.holdForm = { binId: el.dataset.hold, release: !!el.dataset.release, mq: !!el.dataset.mqhold, sampleUid: el.dataset.suid || null, reason: el.dataset.reason || '' }; keepScroll(); return; }
     if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out', 'qty', 'zero'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
     switch (el.dataset.pact) {
       case 'newjob': newJobForm(); keepScroll(); return;
