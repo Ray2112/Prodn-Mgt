@@ -300,3 +300,38 @@ console.log('maint: ' + n + ' testes OK');
   assert.deepStrictEqual([G.working.length, G.resolved.map(x => x.plan.passage)], [0, ['C B1']], 'planeada fica até resolvida');
   console.log('secções e rolos (v2.20.0): OK');
 }
+
+// v2.24.0 — preventiva até hoje, inventário, encomendas
+{
+  const E = [
+    rec('consItem', { itemId: 'i1', name: 'Rolamento', unit: 'un', required: 10 }),
+    rec('consItem', { itemId: 'i2', name: 'Correia', unit: 'un' }),
+    rec('stockMove', { itemId: 'i1', delta: 12 }), rec('stockMove', { itemId: 'i1', delta: -4 }), rec('stockMove', { itemId: 'i2', delta: 3 })
+  ];
+  const I = M.consStock(E), r = I.find(x => x.itemId === 'i1'), c = I.find(x => x.itemId === 'i2');
+  assert.deepStrictEqual([r.stock, r.required, r.pct], [8, 10, 80]);
+  assert.deepStrictEqual([c.stock, c.required, c.pct], [3, null, null]);
+  assert.deepStrictEqual(M.validateStockMove({ itemId: 'i1', delta: 0 }), ['qty']);
+  assert.deepStrictEqual(M.validateStockMove({ itemId: '', delta: 2 }), ['item']);
+  assert.deepStrictEqual(M.validateOrder({ name: 'X', qty: '0' }), ['qty']);
+  assert.strictEqual(M.orders([rec('consOrder', { name: 'A', qty: 1 }), rec('consOrder', { name: 'B', qty: 2 })])[0].name, 'B');
+  const J = [rec('pmJob', { uid: 'j1', dueDate: '2026-11-20', week: '2026-W47' }), rec('pmJob', { uid: 'j2', dueDate: '2026-11-22', week: '2026-W47' }), rec('pmJob', { uid: 'j3', dueDate: '2026-12-10', week: '2026-W50' }),
+    rec('pmUpdate', { jobUid: 'j1', status: 'done', doneOn: '2026-11-19' })];
+  const T = M.pmToDate(J, '2026-11-26');
+  assert.deepStrictEqual([T.planned, T.done, T.overdue, T.overduePct, T.donePct], [2, 1, 1, 50, 50]);
+  console.log('inventário e preventiva até hoje (v2.24.0): OK');
+}
+
+// v2.26.0 — consumo registado sai do stock automaticamente
+{
+  const E = [
+    rec('consItem', { itemId: 'i1', name: 'Rolamento 6205', unit: 'un', required: 10 }),
+    rec('stockMove', { itemId: 'i1', delta: 12 }),
+    rec('consumable', { itemId: 'i1', item: 'Rolamento 6205', qty: 2, unit: 'un' }),
+    rec('work', { parts: [{ item: ' rolamento  6205 ', qty: 3, unit: 'un' }, { item: 'Rolamento 6205', qty: 1, unit: 'kg' }, { item: 'Outro', qty: 5, unit: 'un' }] }),
+    rec('consumable', { uid: 'cx', itemId: 'i1', item: 'Rolamento 6205', qty: 4, unit: 'un' }), rec('void', { voids: 'cx' })
+  ];
+  const r = M.consStock(E).find(x => x.itemId === 'i1');
+  assert.deepStrictEqual([r.stock, r.used, r.pct], [7, 5, 70], 'consumo e material de trabalho descontam; unidade diferente e anulado não');
+  console.log('consumo sai do stock (v2.26.0): OK');
+}

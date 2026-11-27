@@ -378,7 +378,7 @@
     const lid = lineId || (S.cfg.lines[0] && S.cfg.lines[0].id);
     const st = lineRun(lid);
     S.form = { lineId: lid, productId: st.productId || (products()[0] && products()[0].id), time: localInput(Date.now()),
-      operator: S.operator, values: {}, physical: {}, notes: '', correctsId: correctsId || null, reason: '' };
+      operator: S.operator, values: {}, physical: {}, notes: '', correctsId: correctsId || null, reason: '', fubaType: '', binId: '' };
     if (correctsId) {
       const o = S.samples.find(s => s.id === correctsId);
       if (o) {
@@ -396,9 +396,29 @@
     const day = L.prodDay(Date.now()), [a, b] = L.prodDayRange(day);
     const superseded = new Set(S.samples.filter(x => x.correctsId).map(x => x.correctsId));
     const list = S.samples.filter(x => x.t >= a && x.t < b).sort((x, y) => y.t - x.t);
-    return `<section class="card"><h3>${esc(t('samplesToday'))}</h3>${list.length ? list.map(x => recItem(x, superseded.has(x.id))).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</section>`;
+    return `<details class="card"><summary><b>${esc(t('samplesToday'))} (${list.length})</b></summary>${list.length ? list.map(x => recItem(x, superseded.has(x.id))).join('') : `<p class="sub">${esc(t('noRecords'))}</p>`}</details>`;
   }
-  function viewSample() { return viewSample0() + daySamples(); }
+  // v2.23.0 (Zhax, 26-11-2026): verificações horárias em baixo, a acumular, com a média acumulada de cada parâmetro (por produto)
+  function hourlyTable() {
+    const isNum = x => typeof x === 'number' && isFinite(x);
+    const day = L.prodDay(Date.now()), [a, b] = L.prodDayRange(day);
+    const sup = new Set(S.samples.filter(x => x.correctsId).map(x => x.correctsId));
+    const list = S.samples.filter(x => x.t >= a && x.t < b && !sup.has(x.id)).sort((x, y) => x.t - y.t);
+    const byP = {}; list.forEach(x => { (byP[x.productId] = byP[x.productId] || []).push(x); });
+    const ids = Object.keys(byP);
+    if (!ids.length) return `<section class="card"><h3>${esc(t('hourlyTitle'))}</h3><p class="sub">${esc(t('noRecords'))}</p></section>`;
+    return `<section class="card"><h3>${esc(t('hourlyTitle'))}</h3>${ids.map(pid => {
+      const prod = product(pid), rows = byP[pid];
+      const ps = L.PARAMS.filter(p => rows.some(r => r.values && isNum(r.values[p])));
+      const hasCol = rows.some(r => r.physical && isNum(r.physical.colour));
+      const avg = p => { const v = rows.map(r => r.values && r.values[p]).filter(isNum); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+      const cAvg = (() => { const v = rows.map(r => r.physical && r.physical.colour).filter(isNum); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; })();
+      const f2 = v => v === null ? '—' : fmtNum(Math.round(v * 100) / 100);
+      return `<h4>${esc(prodName(pid))}</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th><th>${esc(t('bin'))}</th><th>${esc(t('fubaType'))}</th>${ps.map(p => `<th>${esc(paramLabel(p, prod))}</th>`).join('')}${hasCol ? `<th>${esc(t('ph_colour'))}</th>` : ''}<th></th></tr>
+        ${rows.map(r => `<tr><td>${esc(fmtTime(r.t))}</td><td>${esc(r.binId || '—')}</td><td>${esc(r.fubaType ? t('ty_' + r.fubaType) : '—')}</td>${ps.map(p => `<td class="${r.results && r.results[p] ? decCls(r.results[p].decision) : ''}">${r.values && isNum(r.values[p]) ? esc(fmtNum(r.values[p])) : '—'}</td>`).join('')}${hasCol ? `<td>${r.physical && isNum(r.physical.colour) ? r.physical.colour : '—'}</td>` : ''}<td><span class="chip ${decCls(r.decision)}">${esc(decLabel(r.decision))}</span></td></tr>`).join('')}
+        <tr><td colspan="3"><b>${esc(t('cumAvg'))} (${rows.length})</b></td>${ps.map(p => `<td><b>${esc(f2(avg(p)))}</b></td>`).join('')}${hasCol ? `<td><b>${esc(f2(cAvg))}</b></td>` : ''}<td></td></tr></table></div>`; }).join('')}</section>`;
+  }
+  function viewSample() { return PU.holdsCard() + viewSample0() + hourlyTable() + daySamples(); }   // v2.23.0
   function viewSample0() {
     if (!products().length) return `<section class="card"><p>${esc(t('notConfigured'))}</p></section>`;
     if (!S.form) newForm();
@@ -417,6 +437,8 @@
         <label class="fld">${esc(t('line'))}<select id="f_line" ${f.correctsId ? 'disabled' : ''}>${S.cfg.lines.map(l => `<option value="${esc(l.id)}" ${l.id === f.lineId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('product'))}<select id="f_prod" ${f.correctsId ? 'disabled' : ''}>${products().map(p => `<option value="${esc(p.id)}" ${p.id === f.productId ? 'selected' : ''}>${esc(prodName(p.id))}</option>`).join('')}</select></label>
         <label class="fld">${esc(t('sampleTime'))}<input type="datetime-local" id="f_time" value="${esc(f.time)}"></label>
+        <label class="fld req">${esc(t('fubaType'))}<select id="f_fcol"><option value="">—</option>${['Branco', 'Amarelo'].map(x => `<option value="${x}" ${f.fubaType === x ? 'selected' : ''}>${esc(t('ty_' + x))}</option>`).join('')}</select></label>
+        <label class="fld req">${esc(t('destBin'))}<select id="f_bin"><option value="">—</option>${PU.productBinIds().map(x => `<option value="${esc(x)}" ${f.binId === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
         ${pinFld('f_pin')}
       </div>
       <div class="sub">${esc(t('crew'))}: <b>${esc(L.crewOfTime(Date.now()))}</b></div>
@@ -475,12 +497,14 @@
     if (tms > Date.now() + 5 * 60000) return toast(t('futureTime'));
     if (tms < Date.now() - L.MAX_BACK_DAYS * 24 * 3600000) return toast(t('tooOld'));   // v2.6.0: resultados entram mais tarde, com a hora da amostragem
     if (f.correctsId && !String(f.reason).trim()) return toast(t('needReason'));
+    if (!f.fubaType || !f.binId) return toast(t('fillFields') + ': ' + [!f.fubaType ? t('fubaType') : '', !f.binId ? t('destBin') : ''].filter(Boolean).join(', '));
     if (ev.errors.length) return toast(ev.errors.some(e => e.code === 'empty') ? t('enterValues') : ev.errors.some(e => e.code === 'incomplete') ? t('physIncomplete') : t('fixInvalid'));
     const sample = {
       t: tms, savedAt: Date.now(), lineId: f.lineId, productId: f.productId, crew: L.crewOfTime(tms), period: L.shiftOf(tms).period,
       prodDay: L.prodDay(tms), operator: String(f.operator).trim(), values: ev.values, physical: ev.physical,
       results: ev.results, decision: ev.decision, failures: ev.failures, notes: String(f.notes || '').trim(),
-      limits: JSON.parse(JSON.stringify(prod.limits)), millType: S.cfg.millType, limitsVersion: S.cfg.limitsVersion || null
+      limits: JSON.parse(JSON.stringify(prod.limits)), millType: S.cfg.millType, limitsVersion: S.cfg.limitsVersion || null,
+      fubaType: f.fubaType, binId: f.binId
     };
     if (f.correctsId) { sample.correctsId = f.correctsId; sample.correctionReason = String(f.reason).trim(); }
     if (L.isLateEntry(tms, sample.savedAt)) sample.late = true;
@@ -492,6 +516,8 @@
       await DB.saveSampleBundle(sample, holdFn, alertObj);
     } catch (e) { return toast(t('saveFailed')); }
     S.operator = sample.operator; await DB.setConfig('operator', S.operator);
+    // v2.23.0: não conforme (rejeitar) → bin de destino retida automaticamente
+    if (sample.decision === 'reject' && sample.binId) { try { await PU.autoHold(sample.binId, sample); } catch (e) { console.warn('autoHold', e); } }
     await reloadData();
     const after = S.holds.find(h => h.openedBySample === sample.id || (h.samples || []).includes(sample.id));
     S.form = null;
@@ -753,7 +779,45 @@
       <button class="btn" id="genXlsx">${esc(t('genExcel'))}</button>
       <a class="btn ghost" target="_blank" rel="noopener" href="${esc(waLink(reportText(r)))}">${esc(t('sendSummaryWa'))}</a></section>
       ${repSummary(repType(), r, bk, day)}
-      `;
+      ${weekSummary(repType(), day)}`;
+  }
+  // v2.25.0 (Zhax, 26-11-2026): no fim de cada relatório, o resumo dos últimos 7 dias de produção (até ao dia escolhido)
+  function weekSummary(ty, day) {
+    const days = []; for (let i = 6; i >= 0; i--) days.push(new Date(Date.parse(day + 'T12:00:00Z') - i * 86400000).toISOString().slice(0, 10));
+    const pc = v => typeof v === 'number' && isFinite(v) ? String(Math.round(v * 10) / 10).replace('.', ',') + ' %' : '—';
+    const tbl = (head, rows, foot) => `<div class="tablewrap"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}${foot ? `<tr>${foot.map(c => `<td><b>${c}</b></td>`).join('')}</tr>` : ''}</tbody></table></div>`;
+    const dd = d => esc(d.slice(8, 10) + '/' + d.slice(5, 7));
+    const tot = (rows, i) => rows.reduce((a, r) => a + (typeof r[i] === 'number' ? r[i] : 0), 0);
+    const title = `<h3>${esc(t('wk7Title'))} · ${dd(days[0])}–${dd(days[6])}</h3>`;
+    if (ty === 'prod') {
+      const R = days.map(d => { const bk = window.DayBook.summary(bookData(), L.prodDayRange(d)), s = f => bk.prod.reduce((a, p) => a + (typeof p[f] === 'number' ? p[f] : 0), 0);
+        return { d, b1: s('b1'), fu: s('flour1') + s('flour2'), stop: bk.stops.min, gr: bk.grain.n, grKg: bk.grain.kg }; });
+      const B = R.reduce((a, x) => a + x.b1, 0), FU = R.reduce((a, x) => a + x.fu, 0);
+      const [a, b] = [L.prodDayRange(days[0])[0], L.prodDayRange(days[6])[1]];
+      const jobs = (S.jobs || []).filter(j => j.closedAt && j.closedAt >= a && j.closedAt < b).sort((x, y) => y.closedAt - x.closedAt);
+      return `<section class="card">${title}${tbl([t('prodDay'), 'B1', 'Fuba 1 + 2', t('srExtraction'), t('rp_stops') + ' (min)', t('wk7Moves')],
+        R.map(x => [dd(x.d), kgS(x.b1), kgS(x.fu), x.b1 ? pc(x.fu / x.b1 * 100) : '—', x.stop, x.gr + (x.gr ? ' · ' + kgS(x.grKg) + ' kg' : '')]),
+        [esc(t('total')), kgS(B), kgS(FU), B ? pc(FU / B * 100) : '—', R.reduce((s, x) => s + x.stop, 0), R.reduce((s, x) => s + x.gr, 0)])}
+        <h4>${esc(t('wk7Jobs'))} (${jobs.length})</h4>${jobs.map(j => `<div class="rowitem"><small>${esc(fmtDT(j.startedAt))} → ${esc(fmtDT(j.closedAt))} · ${esc(lineName(j.lineId))}</small><div>${esc(((j.outputs || []).map(o => prodName(o.productId)).filter(Boolean).join(', ')) || prodName(j.productId) || '—')} · ${esc(j.leader || '')}</div></div>`).join('') || `<p class="sub">—</p>`}</section>`;
+    }
+    if (ty === 'qc') {
+      const R = days.map(d => { const r = L.dayReport(d, S.samples, S.holds, S.cfg); return [dd(d), r.totals.n, r.totals.accept, r.totals.warn, r.totals.reject, r.holds.length]; });
+      return `<section class="card">${title}${tbl([t('prodDay'), t('samples'), t('dec_accept'), t('dec_warn'), t('dec_reject'), t('holds')], R, [esc(t('total')), tot(R, 1), tot(R, 2), tot(R, 3), tot(R, 4), tot(R, 5)])}</section>`;
+    }
+    if (ty === 'maint') {
+      const E = window.Maint.effective(MU.entries()), mt = MU.t;
+      const R = days.map(d => { const x = E.filter(e => e.prodDay === d), of = k => x.filter(e => e.kind === k);
+        return [dd(d), of('stop').length, of('stop').reduce((a, e) => a + (Number(e.durationMin) || 0), 0), of('pmUpdate').filter(e => e.status === 'done').length, of('consumable').length, of('rollCare').length + of('rcDone').length]; });
+      return `<section class="card">${title}${tbl([t('prodDay'), mt('t_stops'), 'min', mt('t_pm') + ' ✔', mt('t_cons'), mt('t_rolls')], R, [esc(t('total')), tot(R, 1), tot(R, 2), tot(R, 3), tot(R, 4), tot(R, 5)])}</section>`;
+    }
+    if (ty === 'fssc') {
+      const F = window.Fssc, E = F.effective(FU.entries ? FU.entries() : []);
+      const R = days.map(d => { const outs = E.filter(e => e.kind === 'oaLogout' && e.day === d), ps = [].concat(...outs.map(o => (o.items || []).map(i => Number(i.pct)).filter(isFinite)));
+        return [dd(d), E.some(e => e.kind === 'oaLogin' && e.day === d) ? '✔' : '—', ps.length ? pc(ps.reduce((a, v) => a + v, 0) / ps.length) : '—', E.filter(e => e.kind === 'actionDone' && String(e.date || e.prodDay || '').slice(0, 10) === d).length,
+          E.filter(e => e.kind === 'complaint' && e.received === d).length, E.filter(e => e.kind === 'trainingAtt' && e.heldOn === d).length]; });
+      return `<section class="card">${title}${tbl([t('prodDay'), t('wk7Login'), t('wk7Done'), t('fs_actions') + ' ✔', t('fs_complaints'), t('fs_training')], R, [esc(t('total')), '', '', tot(R, 3), tot(R, 4), tot(R, 5)])}</section>`;
+    }
+    return '';
   }
   // v2.17.0 (Zhax, 17-11-2026): cada relatório com um resumo de alto nível (como o CQ) e exportação para Excel
   function repSummary(ty, r, bk, day) {
@@ -1104,6 +1168,8 @@
     const el = e.target;
     if (PU.onChange(el)) return;
     if (el.id === 'waLine' || el.id === 'waDay') { const w = waState(); if (el.id === 'waLine') w.lineId = el.value; else if (el.value) w.day = el.value; if (w.rows) waAnalyse(); render(); return; }
+    if (el.id === 'f_fcol') { S.form.fubaType = el.value; return; }
+    if (el.id === 'f_bin') { S.form.binId = el.value; return; }
     if (el.id === 'f_line') { S.form.lineId = el.value; const st = lineRun(el.value); if (st.productId) S.form.productId = st.productId; render(); return; }
     if (el.id === 'f_prod') { S.form.productId = el.value; render(); return; }
     if (el.id === 'recDay') { S.recDay = el.value; render(); return; }
