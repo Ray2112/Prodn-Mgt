@@ -988,6 +988,7 @@
     cmp('floors', a.floors || [], b.floors || []);
     cmp('pneuSections', pneuSections(a), pneuSections(b));
     cmp('maizeLimits', maizeQcLimits(a), maizeQcLimits(b));
+    cmp('b1Target', b1Target(a), b1Target(b));
     const pa = procMaintCfg(a), pb = procMaintCfg(b);
     PROC_GROUPS.forEach(g => { cmp('procMaint.' + g + '.sections', pa[g].sections, pb[g].sections); cmp('procMaint.' + g + '.tasks', pa[g].tasks, pb[g].tasks); });
     ['A', 'B', 'C', 'D'].forEach(k => cmp('leader.' + k, ((a.leaders || {})[k]) || '', ((b.leaders || {})[k]) || ''));
@@ -1195,6 +1196,12 @@
     silo_dm: { moisture: { warnLo: 12.5, warnHi: 14.0, rejHi: 15.0 }, impurities: { warnHi: 2.0, rejHi: 3.0 }, damaged: { warnHi: 1.0, rejHi: 2.0 } },
     dm_cm: {}, cm_b1: {}
   };
+  // v2.27.0 (Zhax, 27-11-2026): alvo de humidade à entrada da B1 = 17 % (editável). Mostra-se o desvio; só avisa se houver tolerância definida.
+  const B1_TARGET_DEFAULT = { moisture: 17, tol: null };
+  function b1Target(cfgP) {
+    const c = (cfgP && cfgP.b1Target) || B1_TARGET_DEFAULT;
+    return { moisture: isNum(c.moisture) ? c.moisture : B1_TARGET_DEFAULT.moisture, tol: isNum(c.tol) && c.tol >= 0 ? c.tol : null };
+  }
   const MZQC_LIM_KEYS = ['warnLo', 'warnHi', 'rejLo', 'rejHi'];
   function maizeQcLimits(cfgP) {
     const c = (cfgP && cfgP.maizeLimits) || MZQC_LIMITS_DEFAULT, out = {};
@@ -1210,8 +1217,13 @@
       if ((isNum(m.rejHi) && v > m.rejHi) || (isNum(m.rejLo) && v < m.rejLo)) fails.push({ param: k, decision: 'reject' });
       else if ((isNum(m.warnHi) && v > m.warnHi) || (isNum(m.warnLo) && v < m.warnLo)) fails.push({ param: k, decision: 'warn' }); });
     S.flags.forEach(k => { if (rec[k] === 'yes') fails.push({ param: k, decision: 'reject' }); });
-    const has = !!(Object.keys(L).length || S.flags.length);
-    return { decision: fails.some(f => f.decision === 'reject') ? 'reject' : fails.length ? 'warn' : has ? 'accept' : 'record', fails };
+    let target = null;
+    if (st === 'cm_b1' && isNum(rec.moisture)) {   // alvo da B1: desvio; aviso fora da tolerância (se definida)
+      const T = b1Target(cfgP); target = { value: T.moisture, dev: Math.round((rec.moisture - T.moisture) * 100) / 100, tol: T.tol };
+      if (T.tol !== null && Math.abs(target.dev) > T.tol && !fails.some(f => f.param === 'moisture')) fails.push({ param: 'moisture', decision: 'warn', target: true });
+    }
+    const has = !!(Object.keys(L).length || S.flags.length || (target && target.tol !== null));
+    return { decision: fails.some(f => f.decision === 'reject') ? 'reject' : fails.length ? 'warn' : has ? 'accept' : 'record', fails, target };
   }
   const PNEU_SECTIONS_DEFAULT = ['R1-1', 'R1-2', 'R2-1', 'R2-2', 'G2'];
   const pneuSections = cfgP => (cfgP && Array.isArray(cfgP.pneuSections) && cfgP.pneuSections.length ? cfgP.pneuSections : PNEU_SECTIONS_DEFAULT).slice();
@@ -1418,7 +1430,7 @@
     return out;
   }
 
-  const api = { MZQC_LIMITS_DEFAULT, MZQC_LIM_KEYS, maizeQcLimits, maizeQcDecide, PNEU_SECTIONS_DEFAULT, pneuSections, MZQC_STAGES, validateMaizeQc, maizeQcDay, validateReprocStart, DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { B1_TARGET_DEFAULT, b1Target, MZQC_LIMITS_DEFAULT, MZQC_LIM_KEYS, maizeQcLimits, maizeQcDecide, PNEU_SECTIONS_DEFAULT, pneuSections, MZQC_STAGES, validateMaizeQc, maizeQcDay, validateReprocStart, DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

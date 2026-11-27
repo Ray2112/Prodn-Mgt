@@ -956,17 +956,20 @@ window.ProdUI = function (C) {
     const day = L.prodDay(now()), Q = P.maizeQcDay(S.shiftLog, day), fmt = v => typeof v === 'number' && isFinite(v) ? C.fmtNum(v) : '—';
     const LIM = P.maizeQcLimits(S.cfgP), dcls = d => d === 'reject' ? 'd-reject' : d === 'warn' ? 'd-warn' : d === 'accept' ? 'd-accept' : '';
     const tables = Object.keys(P.MZQC_STAGES).filter(s => Q[s].rows.length).map(s => { const X = P.MZQC_STAGES[s], cols = X.ids.concat(X.nums, X.flags);
-      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}<th>${esc(t('mqDecision'))}</th></tr>
+      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}${s === 'cm_b1' ? `<th>${esc(t('mqDev'))}</th>` : ''}<th>${esc(t('mqDecision'))}</th></tr>
         ${Q[s].rows.map(r => { const D = P.maizeQcDecide(r, S.cfgP), fc = k => { const x = D.fails.find(f => f.param === k); return x ? dcls(x.decision) : ''; };
           return `<tr><td>${esc(C.fmtTime(r.t))}</td>${cols.map(k => `<td class="${fc(k)}">${X.nums.indexOf(k) >= 0 ? esc(fmt(r[k])) : X.flags.indexOf(k) >= 0 ? esc(r[k] ? t(r[k]) : '—') : esc(r[k] || '—')}</td>`).join('')}
-            <td><span class="chip ${dcls(D.decision)}">${esc(t('mqd_' + D.decision))}</span></td></tr>`; }).join('')}
-        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}<td></td></tr></table></div>`; }).join('');
+            ${s === 'cm_b1' ? `<td>${D.target ? esc((D.target.dev > 0 ? '+' : '') + C.fmtNum(D.target.dev)) : '—'}</td>` : ''}<td><span class="chip ${dcls(D.decision)}">${esc(t('mqd_' + D.decision))}</span></td></tr>`; }).join('')}
+        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}${s === 'cm_b1' ? '<td></td>' : ''}<td></td></tr></table></div>`; }).join('');
     const limTxt = k => { const m = LIM[st][k]; if (!m) return ''; const p = []; if (isNum(m.warnLo)) p.push('⚠ < ' + C.fmtNum(m.warnLo)); if (isNum(m.warnHi)) p.push('⚠ > ' + C.fmtNum(m.warnHi)); if (isNum(m.rejLo)) p.push('✖ < ' + C.fmtNum(m.rejLo)); if (isNum(m.rejHi)) p.push('✖ > ' + C.fmtNum(m.rejHi)); return p.join(' · '); };
+    const TG = P.b1Target(S.cfgP), tgNote = st === 'cm_b1' ? `<p class="sub">${esc(t('mqB1Target', { v: C.fmtNum(TG.moisture) }))}${TG.tol !== null ? ' ± ' + esc(C.fmtNum(TG.tol)) : ''}</p>` : '';
+    const nc = Object.keys(P.MZQC_STAGES).reduce((a, s) => a + Q[s].rows.filter(r => P.maizeQcDecide(r, S.cfgP).decision === 'reject').length, 0);
+    const ncBanner = nc ? `<div class="banner b-warn">⚠ ${esc(t('mqNcToday', { n: nc }))}</div>` : '';
     const limNote = Object.keys(LIM[st]).length || D.flags.length ? `<p class="sub">${D.nums.filter(k => LIM[st][k]).map(k => esc(t('mq_' + k)) + ': ' + esc(limTxt(k))).concat(D.flags.map(k => esc(t('mq_' + k)) + ' ' + esc(t('yes')) + ' = ✖')).join('<br>')}</p>` : `<p class="sub">${esc(t('mqRecordOnly'))}</p>`;
-    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>
+    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>${ncBanner}
       <div class="seg mode">${Object.keys(P.MZQC_STAGES).map(s => `<button data-pact="mqstage" data-v="${s}" class="${s === st ? 'on ok' : ''}">${esc(t('mqs_' + s))}</button>`).join('')}</div>
       <div class="grid2">${D.ids.map(sel).join('')}${D.nums.map(numF).join('')}${D.flags.map(flag).join('')}</div>
-      ${limNote}${C.pinFld('mq_pin')}
+      ${limNote}${tgNote}${C.pinFld('mq_pin')}
       <button class="btn primary" data-pact="mqsave">${esc(t('mqSave'))}</button>
       <h3>${esc(t('mqToday'))} · ${esc(day)}</h3>${tables || '<p class="sub">—</p>'}</section>`;
   }
@@ -982,14 +985,8 @@ window.ProdUI = function (C) {
     D.flags.forEach(k => { rec[k] = f[k] || null; });
     const dec = P.maizeQcDecide(rec, S.cfgP); rec.decision = dec.decision; rec.fails = dec.fails;
     try { await DB.add('shiftLog', rec); } catch (x) { return C.toast(t('saveFailed')); }
-    // rejeitado à entrada da bin D/M → a bin fica retida (como nas bins de produto); só um PIN do topo a liberta
-    let held = false;
-    if (dec.decision === 'reject' && rec.dmBin && st === 'silo_dm') {
-      const b = P.holdableBins(S.cfgP).find(x => x.id === rec.dmBin);
-      if (b && !holds()[b.id]) { try { await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: 'binHold', binId: b.id, binKind: b.kind, auto: true, role: 'qc', by: w.title, maizeQcUid: rec.uid,
-        reason: t('mqHoldReason', { s: t('mqs_' + st), p: dec.fails.filter(f => f.decision === 'reject').map(f => t('mq_' + f.param)).join(', ') }) })); held = true; } catch (x) { /* a amostra ficou gravada */ } }
-    }
-    S.mqForm = {}; await reload(); C.toast(held ? t('mqSavedHeld', { b: rec.dmBin }) : dec.decision === 'reject' ? t('mqSavedRej') : dec.decision === 'warn' ? t('mqSavedWarn') : t('mqSaved')); keepScroll();
+    // v2.27.0 (Zhax, 27-11-2026): não retém a bin — só avisa
+    S.mqForm = {}; await reload(); C.toast(dec.decision === 'reject' ? t('mqSavedRej', { p: dec.fails.filter(f => f.decision === 'reject').map(f => t('mq_' + f.param)).join(', ') }) : dec.decision === 'warn' ? t('mqSavedWarn') : t('mqSaved')); keepScroll();
   }
   // ---------- v2.27.0: arranque de reprocessamento (sem limpeza): hora, sacos disponíveis, secção pneumática ----------
   function reprocForm() {
@@ -1891,6 +1888,9 @@ window.ProdUI = function (C) {
         <h3>${esc(t('mqTitle'))} · ${esc(t('mqLimits'))}</h3><p class="sub">${esc(t('mqLimHelp'))}</p>
         ${Object.keys(P.MZQC_STAGES).map(st => { const LM = P.maizeQcLimits(d)[st]; return `<h4>${esc(t('mqs_' + st))}</h4><div class="tablewrap"><table class="tbl"><tr><th></th>${P.MZQC_LIM_KEYS.map(x => `<th>${esc(t('mql_' + x))}</th>`).join('')}</tr>
           ${P.MZQC_STAGES[st].nums.map(k => `<tr><td>${esc(t('mq_' + k))}</td>${P.MZQC_LIM_KEYS.map(x => `<td><input inputmode="decimal" style="max-width:70px" data-ps="mzl|${st}|${k}|${x}" value="${esc(LM[k] && isNum(LM[k][x]) ? C.fmtNum(LM[k][x]) : '')}"></td>`).join('')}</tr>`).join('')}</table></div>`; }).join('')}
+        <h4>${esc(t('mqs_cm_b1'))} · ${esc(t('mqTargetT'))}</h4>
+        <div class="grid2"><label class="fld">${esc(t('mqTargetM'))}<input inputmode="decimal" data-ps="b1t|moisture" value="${esc(C.fmtNum(P.b1Target(d).moisture))}"></label>
+          <label class="fld">${esc(t('mqTargetTol'))}<input inputmode="decimal" data-ps="b1t|tol" value="${esc(P.b1Target(d).tol === null ? '' : C.fmtNum(P.b1Target(d).tol))}"></label></div>
         <h3>${esc(t('procTitle'))}</h3>
         ${P.PROC_GROUPS.map(g => { const c = P.procMaintCfg(d)[g]; return `<h4>${esc(t('pg_' + g))}</h4>
           <label class="fld">${esc(t('procSections'))}<textarea rows="2" data-ps="procSec|${g}">${esc(c.sections.join(', '))}</textarea></label>
@@ -1925,6 +1925,12 @@ window.ProdUI = function (C) {
           if (!g.tasks.length) bad.push(t('pg_' + a) + ': ' + t('procTasks'));
         }
         n.procMaint[a] = g;
+      }
+      if (k === 'b1t') {
+        const raw = el.value.trim(), v = raw ? P.num(raw) : null;
+        n.b1Target = Object.assign({}, P.b1Target(n.b1Target ? n : S.cfgP));
+        if (a === 'moisture') { if (v === null || isNaN(v) || v <= 0 || v > 100) bad.push(t('mqTargetM')); else n.b1Target.moisture = v; }
+        else { if (raw && (v === null || isNaN(v) || v < 0)) bad.push(t('mqTargetTol')); else n.b1Target.tol = v; }
       }
       if (k === 'pneuSec') { const L = el.value.split(/[,\n;]/).map(x => x.trim()).filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i); if (!L.length) bad.push(t('rpSecList')); else n.pneuSections = L; }
       if (k === 'mzl') {   // a|b|c = etapa|valor|tipo de limite; vazio = sem esse limite

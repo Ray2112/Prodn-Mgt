@@ -763,7 +763,10 @@ console.log('OK — v1.5.0 (códigos, unidades, caudal) + bins-status');
   const dec = r => P.maizeQcDecide(Object.assign({ stage: 'silo_dm' }, r), {}).decision;
   assert.deepStrictEqual([dec({ moisture: 13.5 }), dec({ moisture: 14.5 }), dec({ moisture: 15.2 }), dec({ moisture: 12 }), dec({ moisture: 13, impurities: 3.5 }), dec({ moisture: 13, infestation: 'yes' }), dec({ moisture: 13, damaged: 1.5 })],
     ['accept', 'warn', 'reject', 'warn', 'reject', 'reject', 'warn']);
-  assert.strictEqual(P.maizeQcDecide({ stage: 'cm_b1', moisture: 30 }, {}).decision, 'record', 'etapa sem limites = só registo');
+  { const d0 = P.maizeQcDecide({ stage: 'cm_b1', moisture: 16.4 }, {}); assert.deepStrictEqual([d0.decision, d0.target.value, d0.target.dev], ['record', 17, -0.6], 'alvo 17 %: só desvio sem tolerância'); }
+  assert.strictEqual(P.maizeQcDecide({ stage: 'cm_b1', moisture: 16.4 }, { b1Target: { moisture: 17, tol: 0.5 } }).decision, 'warn');
+  assert.strictEqual(P.maizeQcDecide({ stage: 'cm_b1', moisture: 16.8 }, { b1Target: { moisture: 17, tol: 0.5 } }).decision, 'accept');
+  assert.ok(P.prodConfigDiff({}, { b1Target: { moisture: 16.5 } }).some(d => d.field === 'b1Target'));
   assert.strictEqual(P.maizeQcDecide({ stage: 'cm_b1', moisture: 30 }, { maizeLimits: { cm_b1: { moisture: { rejHi: 20 } } } }).decision, 'reject', 'limites das Definições');
   assert.deepStrictEqual(P.pneuSections({}), ['R1-1', 'R1-2', 'R2-1', 'R2-2', 'G2']);
   assert.deepStrictEqual(P.validateReprocStart({ time: '08:00', bagsAvail: '5', pneuSection: 'X9' }, {}), ['section']);
