@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.26.0';
+  const VERSION = '2.27.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
@@ -1169,6 +1169,49 @@
     return dayStartMs + mins * 60000;
   }
   // Estado de cada área num turno, no instante 'atMs' (o último registo com hora ≤ atMs manda)
+  // v2.27.0 (Zhax, 27-11-2026): arranque de reprocessamento (sem limpeza): hora de início, n.º de sacos disponíveis e secção pneumática
+  function validateReprocStart(o) {
+    const e = [], b = num(o.bagsAvail);
+    if (!String(o.time || '').trim()) e.push('time');
+    if (b === null || isNaN(b) || b < 0 || Math.round(b) !== b) e.push('bags');
+    if (!String(o.pneuSection || '').trim()) e.push('section');
+    return e;
+  }
+  // v2.27.0 (Zhax, 27-11-2026): amostragem do milho nas três transferências (só registo; sem limites até serem definidos)
+  //   silo → D/M: silo, bin D/M, humidade, impurezas, danificados, infestação
+  //   D/M → C/M: bin D/M, bin C/M, humidade, água por hora, impurezas
+  //   C/M → B1: bin C/M, humidade, tempo nas bins C/M
+  const MZQC_STAGES = {
+    silo_dm: { ids: ['silo', 'dmBin'], nums: ['moisture', 'impurities', 'damaged'], flags: ['infestation'] },
+    dm_cm: { ids: ['dmBin', 'cmBin'], nums: ['moisture', 'waterLh', 'impurities'], flags: [] },
+    cm_b1: { ids: ['cmBin'], nums: ['moisture', 'hoursInCm'], flags: [] }
+  };
+  const MZQC_PCT = { moisture: 1, impurities: 1, damaged: 1 };
+  function validateMaizeQc(o, cfgP) {
+    const S = MZQC_STAGES[o && o.stage], e = [];
+    if (!S) return ['stage'];
+    const dm = ((cfgP && cfgP.dirtyBins) || DEFAULT_DIRTY_BINS).map(b => b.id), cm = ((cfgP && cfgP.temperedBins) || DEFAULT_TEMPERED_BINS).map(b => b.id);
+    const okId = { silo: v => GRAIN_SILOS.indexOf(v) >= 0, dmBin: v => dm.indexOf(v) >= 0, cmBin: v => cm.indexOf(v) >= 0 };
+    S.ids.forEach(k => { if (!okId[k](o[k])) e.push(k); });
+    S.nums.forEach(k => {   // humidade obrigatória; os outros podem ficar vazios (não medidos), mas se escritos têm de ser válidos
+      const raw = String(o[k] === undefined || o[k] === null ? '' : o[k]).trim();
+      if (!raw) { if (k === 'moisture') e.push(k); return; }
+      const v = num(raw); if (v === null || isNaN(v) || v < 0 || (MZQC_PCT[k] && v > 100)) e.push(k);
+    });
+    S.flags.forEach(k => { if (o[k] !== undefined && o[k] !== '' && ['yes', 'no'].indexOf(o[k]) < 0) e.push(k); });
+    return e;
+  }
+  // amostras do dia de produção por etapa, com a média de cada valor
+  function maizeQcDay(log, day) {
+    const rows = effectiveLog(log).filter(x => x.kind === 'maizeQc' && x.prodDay === day).sort((a, b) => a.t - b.t);
+    const out = {};
+    Object.keys(MZQC_STAGES).forEach(st => {
+      const R = rows.filter(r => r.stage === st), avg = {};
+      MZQC_STAGES[st].nums.forEach(k => { const v = R.map(r => r[k]).filter(x => typeof x === 'number' && isFinite(x)); avg[k] = v.length ? Math.round(v.reduce((a, x) => a + x, 0) / v.length * 100) / 100 : null; });
+      out[st] = { rows: R, avg };
+    });
+    return out;
+  }
   function runState(log, day, period, atMs) {
     const eff = effectiveLog(log).filter(x => x.prodDay === day && x.period === period);
     const li = eff.filter(x => x.kind === 'login').sort((a, b) => b.t - a.t)[0] || null;
@@ -1181,7 +1224,7 @@
       else if (a === 'production') out[a] = { on: li.state !== 'off', at: li.t, comment: '', set: true };   // logins antes da v2.16.0
     });
     eff.filter(x => x.kind === 'runState' && RUN_AREAS.indexOf(x.area) >= 0 && (x.at || x.t) <= atMs).sort((a, b) => (a.at || a.t) - (b.at || b.t) || (a.t || 0) - (b.t || 0) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
-      .forEach(x => { out[x.area] = { on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }; });
+      .forEach(x => { out[x.area] = Object.assign({ on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }, x.on && x.reprocStart ? { bagsAvail: x.bagsAvail, pneuSection: x.pneuSection, reprocStart: true } : {}); });
     return { login: true, areas: out };
   }
 
@@ -1346,7 +1389,7 @@
     return out;
   }
 
-  const api = { DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { MZQC_STAGES, validateMaizeQc, maizeQcDay, validateReprocStart, DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

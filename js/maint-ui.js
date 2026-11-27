@@ -422,7 +422,7 @@ window.MaintUI = function (C) {
         ${fld(t('code'), `<select data-mf="code" ${cat ? '' : 'disabled'}><option value="">—</option>${codes.map(c => opt(c.code, f.code, c.code + ' ' + c.name)).join('')}</select>`, 1)}
         ${fld(t('line'), lineSel(f.lineId))}${fld(t('equipment'), inp('equipment', f.equipment))}
         ${fld(t('startTime'), inp('startTime', f.startTime, 'type="time"'), 1)}${fld(t('endTime'), inp('endTime', f.endTime, 'type="time"'), 1)}</div>
-        <p class="mt-sub">${esc(dur !== null ? t('durCalc', { m: dur }) : t('durHint'))}</p>
+        <div class="grid2">${fld(t('durationMin'), `<input data-durout readonly tabindex="-1" value="${esc(dur !== null ? String(dur) : '—')}">`)}</div>
         ${fld(t('description'), area('description', f.description), 1)}${fld(t('intervention'), area('action', f.action))}${fld(t('consUsed'), area('consumables', f.consumables))}${byF(f)}${saveBtns('savestop')}</div>`;
     }
     return `<section class="card">${C.kpiNote ? `` : ''}${f ? form : newBtn('stop', t('newStop'))}</section>
@@ -930,7 +930,7 @@ window.MaintUI = function (C) {
     if (el.dataset.mf && st.form) {
       const k = el.dataset.mf;
       st.form[k] = el.type === 'checkbox' ? el.checked : el.value;
-      if (st.form.kind === 'stop' && (k === 'startTime' || k === 'endTime')) { const d = M.minsBetween(st.form.startTime, st.form.endTime); const o = el.closest('.mt-box') && el.closest('.mt-box').querySelector('p.mt-sub'); if (o) o.textContent = d !== null ? t('durCalc', { m: d }) : t('durHint'); }
+      if (st.form.kind === 'stop' && (k === 'startTime' || k === 'endTime')) { const d = M.minsBetween(st.form.startTime, st.form.endTime); const o = el.closest('.mt-box') && el.closest('.mt-box').querySelector('[data-durout]'); if (o) o.value = d !== null ? String(d) : '—'; }   // v2.27.0: campo Duração (min)
       if (isChange && el.tagName === 'SELECT') {
         if (k === 'category' || k === 'stopKind') st.form.code = '';
         if (k === 'itemId' && st.form.kind === 'consumable') { const ci = M.consCatalog(st.entries).find(x => x.itemId === el.value); if (ci) st.form.unit = ci.unit; }

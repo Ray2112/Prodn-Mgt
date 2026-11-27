@@ -42,6 +42,7 @@ input.bad{border-color:var(--rej);background:var(--rejbg)}
 .physrow{display:flex;justify-content:space-between;align-items:center;padding:5px 0}
 .seg{display:flex;border:1px solid #c9d2c8;border-radius:9px;overflow:hidden}
 .seg button{border:0;background:#fff;padding:8px 12px;font-size:14px;color:var(--ink)}
+.seg button.on{background:#1f5f8b;color:#fff;font-weight:700}   /* v2.27.0: o número escolhido fica realçado (ex.: cor da fuba 1–5) */
 .seg button.on.ok{background:var(--ok);color:#fff}.seg button.on.abn{background:var(--rej);color:#fff}
 .hold{border:2px solid var(--rejbg);border-radius:12px;padding:10px;margin-bottom:10px}
 .act{border-left:3px solid var(--brand);padding-left:8px;margin:4px 0}

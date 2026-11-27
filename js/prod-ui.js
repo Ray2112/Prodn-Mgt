@@ -415,18 +415,17 @@ window.ProdUI = function (C) {
   }
   // v2.22.0 (Zhax, 26-11-2026): plansifter com secções; filtros, condutas, separadores, despedregadores e turbo-peneiro com lista (dropdown) do equipamento
   function procPlanHtml() {
-    const cfg = P.procMaintCfg(S.cfgP), secs = (cfg.plansifter && cfg.plansifter.sections) || [];
+    const cfg = P.procMaintCfg(S.cfgP);
     return P.PROC_GROUPS.map(g => `<label class="chk"><input type="checkbox" class="lg_proc" data-g="${g}"> ${esc(t('pg_' + g))}</label>` +
-      (g === 'plansifter' ? `<div id="lg_psecs" hidden>${secs.length ? secs.map(x => `<label class="chk"><input type="checkbox" class="lg_psec" value="${esc(x)}"> ${esc(x)}</label>`).join('') : `<p class="sub">—</p>`}</div>`
-        : `<div id="lg_pu_${g}" hidden><select multiple class="lg_punit" data-g="${g}" size="${Math.min(7, (cfg[g].sections || []).length || 1)}">${(cfg[g].sections || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></div>`)).join('');
+      // v2.27.0 (Zhax, 27-11-2026): o plansifter também com lista (dropdown) como os outros; todos permitem escolher várias máquinas
+      `<div id="${g === 'plansifter' ? 'lg_psecs' : 'lg_pu_' + g}" hidden><select multiple class="lg_punit" data-g="${g}" size="${Math.min(7, ((cfg[g] && cfg[g].sections) || []).length || 1)}">${((cfg[g] && cfg[g].sections) || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><p class="sub">${esc(t('procMulti'))}</p></div>`).join('');
   }
   function readProcPlan() {
     const groups = [...document.querySelectorAll('.lg_proc')].filter(x => x.checked).map(x => x.dataset.g);
-    const secs = [...document.querySelectorAll('.lg_psec')].filter(x => x.checked).map(x => x.value);
     const units = g => { const el = document.querySelector('.lg_punit[data-g="' + g + '"]'); return el ? [...el.selectedOptions].map(o => o.value) : []; };
-    if (groups.indexOf('plansifter') >= 0 && !secs.length) return { err: true };
+    if (groups.indexOf('plansifter') >= 0 && !units('plansifter').length) return { err: true };
     if (groups.some(g => g !== 'plansifter' && !units(g).length)) return { err: 'units' };
-    return { plan: groups.map(g => ({ group: g, sections: g === 'plansifter' ? secs : units(g) })) };
+    return { plan: groups.map(g => ({ group: g, sections: units(g) })) };
   }
   function viewShiftTop() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
@@ -742,8 +741,8 @@ window.ProdUI = function (C) {
       <label class="fld req">${esc(t('stopStart'))}<input type="datetime-local" id="st_start" value="${esc(nowIn)}"></label>
       <label class="fld req">${esc(t('stopEnd'))}<input type="datetime-local" id="st_end" value="${esc(nowIn)}"></label>
       <label class="fld">${esc(t('line'))}<select id="st_line">${lineOpts('C')}</select></label>
+      <label class="fld">${esc(t('durMin'))}<input id="st_dur" readonly tabindex="-1" value="0"></label>
       <div class="req">${C.pinFld('st_pin')}</div></div>
-      <p class="sub" id="st_dur">${esc(t('stopDurHint'))}</p>
       <label class="fld req">${esc(t('stopFault'))}<textarea rows="2" id="st_fault"></textarea></label>
       <label class="fld">${esc(t('stopIntervention'))}<textarea rows="2" id="st_action"></textarea></label>
       <label class="fld">${esc(t('stopConsumables'))}<textarea rows="2" id="st_cons"></textarea></label>
@@ -752,7 +751,7 @@ window.ProdUI = function (C) {
   }
   function stopDur() {
     const a = new Date(($('#st_start') || {}).value).getTime(), b = new Date(($('#st_end') || {}).value).getTime(), o = $('#st_dur');
-    if (o) o.textContent = isFinite(a) && isFinite(b) && b >= a ? t('stopDur', { m: Math.round((b - a) / 60000) }) : t('stopDurHint');
+    if (o) o.value = isFinite(a) && isFinite(b) && b >= a ? String(Math.round((b - a) / 60000)) : '—';   // v2.27.0 (Zhax, 27-11-2026): campo «Duração (min)» em vez da frase
   }
   async function saveStop() {
     const f = { category: $('#st_cat').value, code: $('#st_code').value, start: new Date($('#st_start').value).getTime(), end: new Date($('#st_end').value).getTime(),
@@ -945,11 +944,73 @@ window.ProdUI = function (C) {
     S.emptyBin = null; await reload(); C.toast(t('saved')); keepScroll();
   }
 
+
+  // ---------- v2.27.0 (Zhax, 27-11-2026): amostragem do milho no CQ (silo → D/M, D/M → C/M, C/M → B1) — só registo ----------
+  function maizeQcCard() {
+    const st = S.mqStage && P.MZQC_STAGES[S.mqStage] ? S.mqStage : 'silo_dm', D = P.MZQC_STAGES[st], f = S.mqForm || {};
+    const dm = (S.cfgP.dirtyBins || []).map(b => b.id), cm = (S.cfgP.temperedBins || []).map(b => b.id);
+    const LIST = { silo: P.GRAIN_SILOS, dmBin: dm, cmBin: cm };
+    const sel = k => `<label class="fld req">${esc(t('mq_' + k))}<select data-mq="${k}"><option value="">—</option>${LIST[k].map(x => `<option ${f[k] === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>`;
+    const numF = k => `<label class="fld ${k === 'moisture' ? 'req' : ''}">${esc(t('mq_' + k))}<input inputmode="decimal" data-mq="${k}" value="${esc(f[k] || '')}"></label>`;
+    const flag = k => `<label class="fld">${esc(t('mq_' + k))}<select data-mq="${k}"><option value="">—</option><option value="no" ${f[k] === 'no' ? 'selected' : ''}>${esc(t('no'))}</option><option value="yes" ${f[k] === 'yes' ? 'selected' : ''}>${esc(t('yes'))}</option></select></label>`;
+    const day = L.prodDay(now()), Q = P.maizeQcDay(S.shiftLog, day), fmt = v => typeof v === 'number' && isFinite(v) ? C.fmtNum(v) : '—';
+    const tables = Object.keys(P.MZQC_STAGES).filter(s => Q[s].rows.length).map(s => { const X = P.MZQC_STAGES[s], cols = X.ids.concat(X.nums, X.flags);
+      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}</tr>
+        ${Q[s].rows.map(r => `<tr><td>${esc(C.fmtTime(r.t))}</td>${cols.map(k => `<td>${X.nums.indexOf(k) >= 0 ? esc(fmt(r[k])) : X.flags.indexOf(k) >= 0 ? esc(r[k] ? t(r[k]) : '—') : esc(r[k] || '—')}</td>`).join('')}</tr>`).join('')}
+        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}</tr></table></div>`; }).join('');
+    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>
+      <div class="seg mode">${Object.keys(P.MZQC_STAGES).map(s => `<button data-pact="mqstage" data-v="${s}" class="${s === st ? 'on ok' : ''}">${esc(t('mqs_' + s))}</button>`).join('')}</div>
+      <div class="grid2">${D.ids.map(sel).join('')}${D.nums.map(numF).join('')}${D.flags.map(flag).join('')}</div>
+      <p class="sub">${esc(t('mqRecordOnly'))}</p>${C.pinFld('mq_pin')}
+      <button class="btn primary" data-pact="mqsave">${esc(t('mqSave'))}</button>
+      <h3>${esc(t('mqToday'))} · ${esc(day)}</h3>${tables || '<p class="sub">—</p>'}</section>`;
+  }
+  async function saveMaizeQc() {
+    const st = S.mqStage && P.MZQC_STAGES[S.mqStage] ? S.mqStage : 'silo_dm', D = P.MZQC_STAGES[st];
+    document.querySelectorAll('[data-mq]').forEach(el => { S.mqForm = Object.assign(S.mqForm || {}, { [el.dataset.mq]: el.value }); });   // lê o ecrã (o «change» pode não ter disparado)
+    const f = Object.assign({ stage: st }, S.mqForm || {});
+    const e = P.validateMaizeQc(f, S.cfgP); if (e.length) return C.toast(t('fixInvalid') + ': ' + e.map(k => t('mq_' + k)).join(', '));
+    const w = await whoP('mq_pin'); if (!w) return;
+    const tms = now(), rec = Object.assign(base(tms), { kind: 'maizeQc', t: tms, stage: st, by: w.title, byRole: w.role });
+    D.ids.forEach(k => { rec[k] = f[k]; });
+    D.nums.forEach(k => { const raw = String(f[k] || '').trim(); rec[k] = raw ? P.num(raw) : null; });
+    D.flags.forEach(k => { rec[k] = f[k] || null; });
+    try { await DB.add('shiftLog', rec); } catch (x) { return C.toast(t('saveFailed')); }
+    S.mqForm = {}; await reload(); C.toast(t('mqSaved')); keepScroll();
+  }
+  // ---------- v2.27.0: arranque de reprocessamento (sem limpeza): hora, sacos disponíveis, secção pneumática ----------
+  function reprocForm() {
+    const f = S.rpForm, used = Array.from(new Set((S.shiftLog || []).filter(x => x.kind === 'runState' && x.pneuSection).map(x => x.pneuSection)));
+    return `<section class="card"><h3>${esc(t('rpTitle'))}</h3><div class="grid2">
+      <label class="fld req">${esc(t('runStart'))}<input type="time" id="rp_time" value="${esc(f.time || hmNow())}"></label>
+      <label class="fld req">${esc(t('rpBags'))}<input inputmode="numeric" id="rp_bags" value="${esc(f.bagsAvail || '')}"></label>
+      <label class="fld req">${esc(t('rpSection'))}<input id="rp_sec" list="rpSecs" value="${esc(f.pneuSection || '')}"></label></div>
+      <datalist id="rpSecs">${used.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      ${C.pinFld('rp_pin')}<button class="btn primary big" data-pact="rpsave">${esc(t('rpStartBtn'))}</button> <button class="btn ghost" data-pact="rpcancel">${esc(t('cancel'))}</button></section>`;
+  }
+  async function saveReproc() {
+    const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
+    if (!li) return C.toast(t('rpNeedLogin'));
+    if (P.runState(S.shiftLog, sel.day, sel.period, now() + 24 * 3600000).areas.reproc.on) return C.toast(t('rpAlready'));
+    const f = { time: ($('#rp_time') || {}).value || '', bagsAvail: ($('#rp_bags') || {}).value || '', pneuSection: (($('#rp_sec') || {}).value || '').trim() };
+    S.rpForm = f;
+    const e = P.validateReprocStart(f); if (e.length) return C.toast(t('fixInvalid') + ': ' + e.map(k => ({ time: t('runStart'), bags: t('rpBags'), section: t('rpSection') })[k]).join(', '));
+    const at = P.shiftTimeMs(shiftRange(sel.day, sel.period)[0], sel.period, f.time); if (at === null) return C.toast(t('runTimeNeed', { a: t('ra_reproc') }));
+    const w = await whoP('rp_pin'); if (!w) return;
+    const tms = now();
+    try { await DB.add('shiftLog', Object.assign(base(tms), { kind: 'runState', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew, by: w.title,
+      area: 'reproc', on: true, at, time: f.time, comment: '', reprocStart: true, bagsAvail: P.num(f.bagsAvail), pneuSection: f.pneuSection })); }
+    catch (x) { return C.toast(t('saveFailed')); }
+    S.rpForm = null; await reload(); C.toast(t('rpStarted')); keepScroll();
+  }
   function viewJobs() {
     const running = (S.jobs || []).filter(j => j.status === 'running').sort((a, b) => a.lineId < b.lineId ? -1 : 1);
-    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 3);   // v2.22.0: só as últimas 3; as restantes nos Relatórios
-    return (S.jobForm ? jobFormView() : `<section class="card"><button class="btn primary big" data-pact="newjob">＋ ${esc(t('newJob'))}</button></section>`) +
-      `<section class="card"><h3>${esc(t('jobsRunning'))}</h3>${running.length ? running.map(jobCard).join('') : `<p class="sub">${esc(t('noJobs'))}</p>`}</section>
+    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 1);   // v2.27.0 (Zhax, 27-11-2026): só a última fechada; as restantes nos Relatórios
+    const sel = shiftSel(), rp = P.runState(S.shiftLog, sel.day, sel.period, now() + 24 * 3600000).areas.reproc;
+    const rpLine = rp.on ? `<div class="hold job"><b>${esc(t('rpOn', { h: C.fmtTime(rp.at) }))}</b>${rp.reprocStart ? `<div><small>${esc(t('rpBags'))}: ${esc(String(rp.bagsAvail))} · ${esc(t('rpSection'))}: ${esc(rp.pneuSection || '—')}</small></div>` : ''}</div>` : '';
+    return (S.jobForm ? jobFormView() : S.rpForm ? reprocForm() : `<section class="card"><button class="btn primary big" data-pact="newjob">＋ ${esc(t('newJob'))}</button>
+        ${rp.on ? '' : `<button class="btn big" data-pact="rpnew">＋ ${esc(t('rpStartBtn'))}</button>`}</section>`) +
+      `<section class="card"><h3>${esc(t('jobsRunning'))}</h3>${rpLine}${running.length ? running.map(jobCard).join('') : rpLine ? '' : `<p class="sub">${esc(t('noJobs'))}</p>`}</section>
       <section class="card"><h3>${esc(t('jobsClosed'))}</h3>${closed.length ? closed.map(jobCard).join('') : '<p class="sub">—</p>'}</section>`;
   }
   function allocText(alloc) { return (alloc || []).map(a => esc(a.bin || a.silo) + ' ' + fmtKg(a.kg) + ' kg' + (isNum(a.pct) ? ' (' + esc(C.fmtNum(a.pct)) + ' %)' : '')).join(isNum((alloc || [])[0] && alloc[0].pct) ? ' + ' : ' → '); }
@@ -1963,6 +2024,11 @@ window.ProdUI = function (C) {
     if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out', 'qty', 'zero'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
     switch (el.dataset.pact) {
       case 'newjob': newJobForm(); keepScroll(); return;
+      case 'rpnew': S.rpForm = {}; keepScroll(); return;
+      case 'rpcancel': S.rpForm = null; keepScroll(); return;
+      case 'rpsave': return saveReproc();
+      case 'mqstage': S.mqStage = el.dataset.v; S.mqForm = {}; keepScroll(); return;
+      case 'mqsave': return saveMaizeQc();
       case 'addoutput': S.jobForm.outputs.push(newOutput()); keepScroll(); return;
       case 'newtransfer': newTransferForm(); keepScroll(); return;
       case 'stocknew': newStockForm(); keepScroll(); return;
@@ -2065,6 +2131,7 @@ window.ProdUI = function (C) {
     if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset && el.dataset.runsel) { const [p, ar] = el.dataset.runsel.split('|'); const b = $('#' + p + '_box_' + ar); if (b && p !== 'rc') b.hidden = el.value !== '1'; return true; }
+    if (el.dataset && el.dataset.mq) { S.mqForm = Object.assign(S.mqForm || {}, { [el.dataset.mq]: el.value }); return true; }
     if (el.id === 'mzDay') { if (el.value) S.mzDay = el.value; keepScroll(); return true; }
     if (el.classList && el.classList.contains('lg_proc')) { const d = el.dataset.g === 'plansifter' ? $('#lg_psecs') : $('#lg_pu_' + el.dataset.g); if (d) d.hidden = !el.checked; return true; }
     if (el.dataset && el.dataset.pq && S.pqForm) { const [id, k] = el.dataset.pq.split('|'); S.pqForm[id] = Object.assign(S.pqForm[id] || {}, { [k]: el.value }); return true; }
@@ -2105,5 +2172,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { holdsCard, autoHold, productBinIds, prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { maizeQcCard, holdsCard, autoHold, productBinIds, prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };

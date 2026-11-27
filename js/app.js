@@ -78,8 +78,11 @@
     return { salt, hash: await sha(salt + pin), setAt: new Date().toISOString() };
   }
   const pinOk = async (p, pin) => !!p && (await sha(p.salt + String(pin || ''))) === p.hash;
+  // v2.27.0 (Zhax, 27-11-2026): sem as notas «SA R.63» no ecrã (os valores dos limites ficam iguais)
+  const srcShow = s => String(s || '').replace(/SA R\.63\s*(\(\d+(,\d+)?\))?\s*(\/\s*)?/g, '').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
   async function checkPin(pin, roles, scope) {
     const now = Date.now();
+    if (!String(pin || '').trim()) return { ok: false, empty: true };   // v2.27.0 (Zhax, 27-11-2026): sem PIN → só «Introduza o PIN», não conta como tentativa
     if (S.pinLock.until > now) return { ok: false, locked: Math.ceil((S.pinLock.until - now) / 60000) };
     const R = inScope(roles || TOP_ROLES, scope).map(k => (S.rolePins || {})[k]).filter(Boolean);
     if (!R.length) return { ok: false, noPin: true };
@@ -96,6 +99,7 @@
   async function who(pin, roles, scope) {
     const now = Date.now();
     if (S.pinLock.until > now) return { err: t('pinLocked', { m: Math.ceil((S.pinLock.until - now) / 60000) }) };
+    if (!String(pin || '').trim()) return { err: t('pinNeed') };   // v2.27.0: sem PIN → «Introduza o PIN» (sem falar do n.º de caracteres)
     if (!PIN_RE.test(String(pin || ''))) return { err: t('pinNeed') };
     const allowed = inScope(roles || PIN_ROLES, scope);
     for (const k of allowed) {
@@ -113,6 +117,7 @@
   }
   const pinFld = (id, lab) => `<label class="fld req">${esc(lab || t('pin'))}<input type="password" maxlength="4" autocomplete="off" id="${id}"></label>`;
   function pinMsg(r) {
+    if (r.empty) return t('pinNeed');
     if (r.noPin) return t('pinNotSet');
     if (r.locked) return t('pinLocked', { m: r.locked });
     return t('pinWrong', { n: r.left });
@@ -418,7 +423,7 @@
         ${rows.map(r => `<tr><td>${esc(fmtTime(r.t))}</td><td>${esc(r.binId || '—')}</td><td>${esc(r.fubaType ? t('ty_' + r.fubaType) : '—')}</td>${ps.map(p => `<td class="${r.results && r.results[p] ? decCls(r.results[p].decision) : ''}">${r.values && isNum(r.values[p]) ? esc(fmtNum(r.values[p])) : '—'}</td>`).join('')}${hasCol ? `<td>${r.physical && isNum(r.physical.colour) ? r.physical.colour : '—'}</td>` : ''}<td><span class="chip ${decCls(r.decision)}">${esc(decLabel(r.decision))}</span></td></tr>`).join('')}
         <tr><td colspan="3"><b>${esc(t('cumAvg'))} (${rows.length})</b></td>${ps.map(p => `<td><b>${esc(f2(avg(p)))}</b></td>`).join('')}${hasCol ? `<td><b>${esc(f2(cAvg))}</b></td>` : ''}<td></td></tr></table></div>`; }).join('')}</section>`;
   }
-  function viewSample() { return PU.holdsCard() + viewSample0() + hourlyTable() + daySamples(); }   // v2.23.0
+  function viewSample() { return PU.holdsCard() + viewSample0() + hourlyTable() + PU.maizeQcCard() + daySamples(); }   // v2.23.0
   function viewSample0() {
     if (!products().length) return `<section class="card"><p>${esc(t('notConfigured'))}</p></section>`;
     if (!S.form) newForm();
@@ -459,7 +464,7 @@
     return `<div class="param">
       <label class="fld">${esc(paramLabel(p, prod))} <small>(${esc(L.UNITS[p])})</small> ${pending ? `<span class="chip d-warn">${esc(t('pending'))}</span>` : ''}
         <input inputmode="decimal" data-val="${esc(p)}" value="${esc(S.form.values[p] || '')}" class="${err ? 'bad' : ''}"></label>
-      <div class="lim"><span>${esc(limitText(Lm))}</span>${Lm.src ? `<em>${esc(Lm.src)}</em>` : ''}
+      <div class="lim"><span>${esc(limitText(Lm))}</span>${srcShow(Lm.src) ? `<em>${esc(srcShow(Lm.src))}</em>` : ''}
         <span class="chip ${err ? 'd-reject' : r ? decCls(r.decision) : 'd-none'}" data-chip="${esc(p)}">${err ? esc(t('invalid')) : r ? esc(decLabel(r.decision)) : ''}</span></div>
     </div>`;
   }
@@ -889,7 +894,7 @@
       ...r.holds.map(h => [lineName(h.lineId), holdProds(h), fmtDT(h.openedAt), h.closedAt ? fmtDT(h.closedAt) : '', h.durationMin, t('hs_' + h.status),
         [...new Set(h.reasons)].map(r => anyLabel(r, product(h.productId))).join(', '), (h.actions || []).map(a => fmtDT(a.at) + ' ' + a.by + ': ' + a.text).join(' | ')])]);
     const lim = [[t('product'), t('parameter'), t('limits'), t('frequency'), t('source')]];
-    products().forEach(p => L.PARAMS.forEach(k => { const m = p.limits[k]; if (m && (L.hasLimits(m) || m.freq !== 'optional')) lim.push([prodName(p.id), paramLabel(k, p), limitText(m), t('fr_' + m.freq), m.src || '']); }));
+    products().forEach(p => L.PARAMS.forEach(k => { const m = p.limits[k]; if (m && (L.hasLimits(m) || m.freq !== 'optional')) lim.push([prodName(p.id), paramLabel(k, p), limitText(m), t('fr_' + m.freq), srcShow(m.src)]); }));
     add(t('x_limits'), lim);
     const ch = S.limitChanges.filter(c => c.t >= r.start && c.t < r.end);
     add(t('x_limitChanges'), [[t('dateTime'), t('supervisor'), t('product'), t('parameter'), t('field'), t('oldValue'), t('newValue'), t('reason')],
@@ -1026,7 +1031,7 @@
       <label class="fld">${esc(t('product'))}<select id="limProd">${products().map(p => `<option value="${esc(p.id)}" ${p.id === pid ? 'selected' : ''}>${esc(prodName(p.id))}</option>`).join('')}</select></label>
       </section>
       ${show.map(p => { const m = D[p] || {}; return `<details class="card lim-ed" ${L.hasLimits(prod.limits[p]) ? 'open' : ''}><summary><b>${esc(paramLabel(p, prod))}</b> <small>${esc(L.UNITS[p])} · ${esc(limitText(prod.limits[p]))}</small></summary>
-        <p class="sub">${esc(t('now'))}: ${esc(limitText(prod.limits[p]))}${prod.limits[p].src ? ' · ' + esc(prod.limits[p].src) : ''}</p>
+        <p class="sub">${esc(t('now'))}: ${esc(limitText(prod.limits[p]))}${srcShow(prod.limits[p].src) ? ' · ' + esc(srcShow(prod.limits[p].src)) : ''}</p>
         <div class="grid3">
           <label class="fld">${esc(t('min'))}<span class="row"><select data-lim="${p}|loOp" aria-label="${esc(t('min'))}"><option value="ge" ${m.loOp !== 'gt' ? 'selected' : ''}>≥</option><option value="gt" ${m.loOp === 'gt' ? 'selected' : ''}>&gt;</option></select><input inputmode="decimal" data-lim="${p}|lo" value="${esc(fmtNum(m.lo))}"></span></label>
           <label class="fld">${esc(t('ifBelow'))}<select data-lim="${p}|loAct"><option value="warn" ${m.loAct !== 'reject' ? 'selected' : ''}>${esc(t('dec_warn'))}</option><option value="reject" ${m.loAct === 'reject' ? 'selected' : ''}>${esc(t('dec_reject'))}</option></select></label>
@@ -1195,7 +1200,7 @@
     for (const x of nw) for (const k of PIN_ROLES) if (k !== x.role && !nw.some(y => y.role === k) && await pinOk(S.rolePins[k], x.pin)) return toast(t('pinDup'));
     if (nw.some(x => S.rolePins[x.role])) {   // mudar um PIN já definido: PIN do Chief Miller
       const r = await checkPin(($('#pinChief') || {}).value, ['chief']);
-      if (!r.ok) return toast(r.noPin ? t('pinChiefNone') : pinMsg(r));
+      if (!r.ok) return toast(r.noPin && !r.empty ? t('pinChiefNone') : pinMsg(r));
     }
     const rp = Object.assign({}, S.rolePins);
     for (const x of nw) rp[x.role] = await makePin(x.pin);
