@@ -1,5 +1,9 @@
-# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.26.0
+# FMO - Moagem de Milho (antes Prodn-Mgt) · v2.27.0
 
+> **v2.27.0 — Ronda 3: «Introduza o PIN» sem n.º de caracteres; «Se Outro»; plansifter com lista de várias máquinas; arranque de reprocessamento (hora, sacos, secção pneumática); só a última ordem fechada; campo Duração nas paragens e avarias; amostragem do milho no CQ; sem notas SA R.63; cor da fuba realçada. Amostra de milho não conforme: o Supervisor ou acima retém e liberta a bin D/M com o PIN, na própria tabela.
+>
+> *EN:* Round 3: "Enter PIN" without character count; "If Other"; plansifter multi-machine dropdown; re-processing start (time, bags, pneumatic section); only the last closed job; Duration field on stoppages and breakdowns; maize sampling in QC; SA R.63 notes removed; fuba colour highlighted. Non-conforming maize sample: Supervisor or above holds and releases the D/M bin with their PIN, from the sample table.
+>
 > **v2.26.0 — Consumíveis: o consumo registado (registo de consumível e material usado num trabalho) sai do stock automaticamente; anular o registo devolve o stock.
 >
 > *EN:* Consumables: recorded usage (consumable record and material used on a job) comes off stock automatically; voiding the record puts it back.

@@ -12,7 +12,7 @@
 (function (root) {
   'use strict';
 
-  const VERSION = '2.26.0';
+  const VERSION = '2.27.0';
   const COLOURS = ['Amarelo', 'Branco'];
   const MZ_TYPES = ['Branco', 'Amarelo', 'Mistura'];   // v2.18.0 (Zhax, 26-11-2026): tipo nas bins D/M e C/M — branco, amarelo, mistura
   const SILO_GRADES = ['G1', 'G2', 'OFF', 'PRI'];          // designações da app de Silos (REJ nunca vai a moagem)
@@ -986,6 +986,9 @@
     keys(a.recipes, b.recipes).forEach(k => cmp('recipe.' + k, (a.recipes || {})[k], (b.recipes || {})[k]));
     cmp('bins', binsText(a.bins || []), binsText(b.bins || []));
     cmp('floors', a.floors || [], b.floors || []);
+    cmp('pneuSections', pneuSections(a), pneuSections(b));
+    cmp('maizeLimits', maizeQcLimits(a), maizeQcLimits(b));
+    cmp('b1Target', b1Target(a), b1Target(b));
     const pa = procMaintCfg(a), pb = procMaintCfg(b);
     PROC_GROUPS.forEach(g => { cmp('procMaint.' + g + '.sections', pa[g].sections, pb[g].sections); cmp('procMaint.' + g + '.tasks', pa[g].tasks, pb[g].tasks); });
     ['A', 'B', 'C', 'D'].forEach(k => cmp('leader.' + k, ((a.leaders || {})[k]) || '', ((b.leaders || {})[k]) || ''));
@@ -1169,6 +1172,87 @@
     return dayStartMs + mins * 60000;
   }
   // Estado de cada área num turno, no instante 'atMs' (o último registo com hora ≤ atMs manda)
+  // v2.27.0 (Zhax, 27-11-2026): arranque de reprocessamento (sem limpeza): hora de início, n.º de sacos disponíveis e secção pneumática
+  function validateReprocStart(o, cfgP) {
+    const e = [], b = num(o.bagsAvail);
+    if (!String(o.time || '').trim()) e.push('time');
+    if (b === null || isNaN(b) || b < 0 || Math.round(b) !== b) e.push('bags');
+    if (!String(o.pneuSection || '').trim() || (cfgP && pneuSections(cfgP).indexOf(o.pneuSection) < 0)) e.push('section');
+    return e;
+  }
+  // v2.27.0 (Zhax, 27-11-2026): amostragem do milho nas três transferências (só registo; sem limites até serem definidos)
+  //   silo → D/M: silo, bin D/M, humidade, impurezas, danificados, infestação
+  //   D/M → C/M: bin D/M, bin C/M, humidade, água por hora, impurezas
+  //   C/M → B1: bin C/M, humidade, tempo nas bins C/M
+  const MZQC_STAGES = {
+    silo_dm: { ids: ['silo', 'dmBin'], nums: ['moisture', 'impurities', 'damaged'], flags: ['infestation'] },
+    dm_cm: { ids: ['dmBin', 'cmBin'], nums: ['moisture', 'waterLh', 'impurities'], flags: [] },
+    cm_b1: { ids: ['cmBin'], nums: ['moisture', 'hoursInCm'], flags: [] }
+  };
+  const MZQC_PCT = { moisture: 1, impurities: 1, damaged: 1 };
+  // v2.27.0 (Zhax, 27-11-2026): limites da amostragem do milho (editáveis em Definições → Produção). Sem fonte no ecrã.
+  // Para cada valor: warnLo / warnHi = aviso; rejLo / rejHi = rejeitar. Infestação «Sim» = rejeitar. Etapas sem valores = só registo.
+  const MZQC_LIMITS_DEFAULT = {
+    silo_dm: { moisture: { warnLo: 12.5, warnHi: 14.0, rejHi: 15.0 }, impurities: { warnHi: 2.0, rejHi: 3.0 }, damaged: { warnHi: 1.0, rejHi: 2.0 } },
+    dm_cm: {}, cm_b1: {}
+  };
+  // v2.27.0 (Zhax, 27-11-2026): alvo de humidade à entrada da B1 = 17 % (editável). Mostra-se o desvio; só avisa se houver tolerância definida.
+  const B1_TARGET_DEFAULT = { moisture: 17, tol: null };
+  function b1Target(cfgP) {
+    const c = (cfgP && cfgP.b1Target) || B1_TARGET_DEFAULT;
+    return { moisture: isNum(c.moisture) ? c.moisture : B1_TARGET_DEFAULT.moisture, tol: isNum(c.tol) && c.tol >= 0 ? c.tol : null };
+  }
+  const MZQC_LIM_KEYS = ['warnLo', 'warnHi', 'rejLo', 'rejHi'];
+  function maizeQcLimits(cfgP) {
+    const c = (cfgP && cfgP.maizeLimits) || MZQC_LIMITS_DEFAULT, out = {};
+    Object.keys(MZQC_STAGES).forEach(st => { out[st] = {}; MZQC_STAGES[st].nums.forEach(k => { const L = (c[st] || {})[k]; if (L && MZQC_LIM_KEYS.some(x => isNum(L[x]))) out[st][k] = Object.assign({}, L); }); });
+    return out;
+  }
+  // decisão de uma amostra: 'reject' > 'warn' > 'accept'; sem limites na etapa → 'record'
+  function maizeQcDecide(rec, cfgP) {
+    const st = rec && rec.stage, L = maizeQcLimits(cfgP)[st] || {}, S = MZQC_STAGES[st];
+    if (!S) return { decision: 'record', fails: [] };
+    const fails = [];
+    Object.keys(L).forEach(k => { const v = rec[k], m = L[k]; if (!isNum(v)) return;
+      if ((isNum(m.rejHi) && v > m.rejHi) || (isNum(m.rejLo) && v < m.rejLo)) fails.push({ param: k, decision: 'reject' });
+      else if ((isNum(m.warnHi) && v > m.warnHi) || (isNum(m.warnLo) && v < m.warnLo)) fails.push({ param: k, decision: 'warn' }); });
+    S.flags.forEach(k => { if (rec[k] === 'yes') fails.push({ param: k, decision: 'reject' }); });
+    let target = null;
+    if (st === 'cm_b1' && isNum(rec.moisture)) {   // alvo da B1: desvio; aviso fora da tolerância (se definida)
+      const T = b1Target(cfgP); target = { value: T.moisture, dev: Math.round((rec.moisture - T.moisture) * 100) / 100, tol: T.tol };
+      if (T.tol !== null && Math.abs(target.dev) > T.tol && !fails.some(f => f.param === 'moisture')) fails.push({ param: 'moisture', decision: 'warn', target: true });
+    }
+    const has = !!(Object.keys(L).length || S.flags.length || (target && target.tol !== null));
+    return { decision: fails.some(f => f.decision === 'reject') ? 'reject' : fails.length ? 'warn' : has ? 'accept' : 'record', fails, target };
+  }
+  const PNEU_SECTIONS_DEFAULT = ['R1-1', 'R1-2', 'R2-1', 'R2-2', 'G2'];
+  const pneuSections = cfgP => (cfgP && Array.isArray(cfgP.pneuSections) && cfgP.pneuSections.length ? cfgP.pneuSections : PNEU_SECTIONS_DEFAULT).slice();
+  function validateMaizeQc(o, cfgP) {
+    const S = MZQC_STAGES[o && o.stage], e = [];
+    if (!S) return ['stage'];
+    const dm = ((cfgP && cfgP.dirtyBins) || DEFAULT_DIRTY_BINS).map(b => b.id), cm = ((cfgP && cfgP.temperedBins) || DEFAULT_TEMPERED_BINS).map(b => b.id);
+    const silos = (cfgP && cfgP.grainSilos && cfgP.grainSilos.length) ? cfgP.grainSilos : GRAIN_SILOS;
+    const okId = { silo: v => silos.indexOf(v) >= 0, dmBin: v => dm.indexOf(v) >= 0, cmBin: v => cm.indexOf(v) >= 0 };
+    S.ids.forEach(k => { if (!okId[k](o[k])) e.push(k); });
+    S.nums.forEach(k => {   // humidade obrigatória; os outros podem ficar vazios (não medidos), mas se escritos têm de ser válidos
+      const raw = String(o[k] === undefined || o[k] === null ? '' : o[k]).trim();
+      if (!raw) { if (k === 'moisture') e.push(k); return; }
+      const v = num(raw); if (v === null || isNaN(v) || v < 0 || (MZQC_PCT[k] && v > 100)) e.push(k);
+    });
+    S.flags.forEach(k => { if (o[k] !== undefined && o[k] !== '' && ['yes', 'no'].indexOf(o[k]) < 0) e.push(k); });
+    return e;
+  }
+  // amostras do dia de produção por etapa, com a média de cada valor
+  function maizeQcDay(log, day) {
+    const rows = effectiveLog(log).filter(x => x.kind === 'maizeQc' && x.prodDay === day).sort((a, b) => a.t - b.t);
+    const out = {};
+    Object.keys(MZQC_STAGES).forEach(st => {
+      const R = rows.filter(r => r.stage === st), avg = {};
+      MZQC_STAGES[st].nums.forEach(k => { const v = R.map(r => r[k]).filter(x => typeof x === 'number' && isFinite(x)); avg[k] = v.length ? Math.round(v.reduce((a, x) => a + x, 0) / v.length * 100) / 100 : null; });
+      out[st] = { rows: R, avg };
+    });
+    return out;
+  }
   function runState(log, day, period, atMs) {
     const eff = effectiveLog(log).filter(x => x.prodDay === day && x.period === period);
     const li = eff.filter(x => x.kind === 'login').sort((a, b) => b.t - a.t)[0] || null;
@@ -1181,7 +1265,7 @@
       else if (a === 'production') out[a] = { on: li.state !== 'off', at: li.t, comment: '', set: true };   // logins antes da v2.16.0
     });
     eff.filter(x => x.kind === 'runState' && RUN_AREAS.indexOf(x.area) >= 0 && (x.at || x.t) <= atMs).sort((a, b) => (a.at || a.t) - (b.at || b.t) || (a.t || 0) - (b.t || 0) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
-      .forEach(x => { out[x.area] = { on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }; });
+      .forEach(x => { out[x.area] = Object.assign({ on: !!x.on, at: x.at || x.t, comment: x.comment || '', set: true }, x.on && x.reprocStart ? { bagsAvail: x.bagsAvail, pneuSection: x.pneuSection, reprocStart: true } : {}); });
     return { login: true, areas: out };
   }
 
@@ -1346,7 +1430,7 @@
     return out;
   }
 
-  const api = { DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
+  const api = { B1_TARGET_DEFAULT, b1Target, MZQC_LIMITS_DEFAULT, MZQC_LIM_KEYS, maizeQcLimits, maizeQcDecide, PNEU_SECTIONS_DEFAULT, pneuSections, MZQC_STAGES, validateMaizeQc, maizeQcDay, validateReprocStart, DIP_CM, dipSpec, reconcile, maizeByGrade, groupReading, dayBefore, RUN_AREAS, shiftTimeMs, runState, PROC_GROUPS, PROC_TASK_CODES, PROC_MAINT_DEFAULT, expandSections, procMaintCfg, validateProcMaint, procLast, readPct, HOLD_KINDS, holdableBins, binHolds, validateHold, readBinKg, productTotals, scaleNum, fmtScale, SHIFT_JOBS, CONTINUOUS_FEED, AUTO_FEED_FROM, autoFeedFromMs, gmEvMs, parseSilosStatus, grainMgtMoves, SCALES, SCALE_SCADA, STOP_CATS, STOP_PREFIX, codeInCat, MZ_TYPES, codesForCat, validateStop, readScales, shiftScaleKg, dayPlan, achievedPct, DIP, dipKg, SOFT, soften, OUT_DESTS, validateDispatch, STOCK_KINDS, stockBins, validateBinStock, lastStock, binLevel, stockDone, SR_KINDS, SR_POINTS, effectiveReadings, validateShiftReading, shiftTotals, planQueue, planFeed, buildBinsStatus, BINS_STATUS_SCHEMA, VERSION, COLOURS, SILO_GRADES, GRAIN_SILOS, DEFAULT_DIRTY_BINS, DEFAULT_TEMPERED_BINS, MASTER_SOURCE, dirtyBinState, validateTransfer, crewLeader, leaderNames, transferredAfter, parseSiloList, nonCanonical, DOWNTIME_CODES, DOWNTIME_SOURCE, TIER3, OEE_TREAT, OEE_KEY, mergeCodes, migrateUnits, defaultCodes, findCode, validateCodes, ACT_TYPES, JOB_STATUS, DEFAULT_BINS, BIN_SOURCE,
     defaultProdConfig, addFinishedBins, num, waterFor, waterRate, defaultFeedKgh, feedKghOf, siloKg, snapshotFromSilosBackup,
     availableKg, allocate, jobOutputs, jobProducts, recipeSet, OLD_DOWNTIME_SOURCES, dampenerMax, recipeFit, binState, binCheck, validateJob, readingCalc, needsShiftReading, parseBins, binsText,
     validateProdConfig, prodConfigDiff, effectiveLog, validateIssue, validateActivity, reprocMins, reprocPct, REPROC_BAGS_PER_HOUR, shiftSummary, uid, validProdBackup };

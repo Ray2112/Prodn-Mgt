@@ -415,18 +415,17 @@ window.ProdUI = function (C) {
   }
   // v2.22.0 (Zhax, 26-11-2026): plansifter com secções; filtros, condutas, separadores, despedregadores e turbo-peneiro com lista (dropdown) do equipamento
   function procPlanHtml() {
-    const cfg = P.procMaintCfg(S.cfgP), secs = (cfg.plansifter && cfg.plansifter.sections) || [];
+    const cfg = P.procMaintCfg(S.cfgP);
     return P.PROC_GROUPS.map(g => `<label class="chk"><input type="checkbox" class="lg_proc" data-g="${g}"> ${esc(t('pg_' + g))}</label>` +
-      (g === 'plansifter' ? `<div id="lg_psecs" hidden>${secs.length ? secs.map(x => `<label class="chk"><input type="checkbox" class="lg_psec" value="${esc(x)}"> ${esc(x)}</label>`).join('') : `<p class="sub">—</p>`}</div>`
-        : `<div id="lg_pu_${g}" hidden><select multiple class="lg_punit" data-g="${g}" size="${Math.min(7, (cfg[g].sections || []).length || 1)}">${(cfg[g].sections || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></div>`)).join('');
+      // v2.27.0 (Zhax, 27-11-2026): o plansifter também com lista (dropdown) como os outros; todos permitem escolher várias máquinas
+      `<div id="${g === 'plansifter' ? 'lg_psecs' : 'lg_pu_' + g}" hidden><select multiple class="lg_punit" data-g="${g}" size="${Math.min(7, ((cfg[g] && cfg[g].sections) || []).length || 1)}">${((cfg[g] && cfg[g].sections) || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><p class="sub">${esc(t('procMulti'))}</p></div>`).join('');
   }
   function readProcPlan() {
     const groups = [...document.querySelectorAll('.lg_proc')].filter(x => x.checked).map(x => x.dataset.g);
-    const secs = [...document.querySelectorAll('.lg_psec')].filter(x => x.checked).map(x => x.value);
     const units = g => { const el = document.querySelector('.lg_punit[data-g="' + g + '"]'); return el ? [...el.selectedOptions].map(o => o.value) : []; };
-    if (groups.indexOf('plansifter') >= 0 && !secs.length) return { err: true };
+    if (groups.indexOf('plansifter') >= 0 && !units('plansifter').length) return { err: true };
     if (groups.some(g => g !== 'plansifter' && !units(g).length)) return { err: 'units' };
-    return { plan: groups.map(g => ({ group: g, sections: g === 'plansifter' ? secs : units(g) })) };
+    return { plan: groups.map(g => ({ group: g, sections: units(g) })) };
   }
   function viewShiftTop() {
     const sel = shiftSel(), day = sel.day, per = sel.period;
@@ -742,8 +741,8 @@ window.ProdUI = function (C) {
       <label class="fld req">${esc(t('stopStart'))}<input type="datetime-local" id="st_start" value="${esc(nowIn)}"></label>
       <label class="fld req">${esc(t('stopEnd'))}<input type="datetime-local" id="st_end" value="${esc(nowIn)}"></label>
       <label class="fld">${esc(t('line'))}<select id="st_line">${lineOpts('C')}</select></label>
+      <label class="fld">${esc(t('durMin'))}<input id="st_dur" readonly tabindex="-1" value="0"></label>
       <div class="req">${C.pinFld('st_pin')}</div></div>
-      <p class="sub" id="st_dur">${esc(t('stopDurHint'))}</p>
       <label class="fld req">${esc(t('stopFault'))}<textarea rows="2" id="st_fault"></textarea></label>
       <label class="fld">${esc(t('stopIntervention'))}<textarea rows="2" id="st_action"></textarea></label>
       <label class="fld">${esc(t('stopConsumables'))}<textarea rows="2" id="st_cons"></textarea></label>
@@ -752,7 +751,7 @@ window.ProdUI = function (C) {
   }
   function stopDur() {
     const a = new Date(($('#st_start') || {}).value).getTime(), b = new Date(($('#st_end') || {}).value).getTime(), o = $('#st_dur');
-    if (o) o.textContent = isFinite(a) && isFinite(b) && b >= a ? t('stopDur', { m: Math.round((b - a) / 60000) }) : t('stopDurHint');
+    if (o) o.value = isFinite(a) && isFinite(b) && b >= a ? String(Math.round((b - a) / 60000)) : '—';   // v2.27.0 (Zhax, 27-11-2026): campo «Duração (min)» em vez da frase
   }
   async function saveStop() {
     const f = { category: $('#st_cat').value, code: $('#st_code').value, start: new Date($('#st_start').value).getTime(), end: new Date($('#st_end').value).getTime(),
@@ -945,11 +944,93 @@ window.ProdUI = function (C) {
     S.emptyBin = null; await reload(); C.toast(t('saved')); keepScroll();
   }
 
+
+  // ---------- v2.27.0 (Zhax, 27-11-2026): amostragem do milho no CQ (silo → D/M, D/M → C/M, C/M → B1) — só registo ----------
+  function maizeQcCard() {
+    const st = S.mqStage && P.MZQC_STAGES[S.mqStage] ? S.mqStage : 'silo_dm', D = P.MZQC_STAGES[st], f = S.mqForm || {};
+    const dm = (S.cfgP.dirtyBins || []).map(b => b.id), cm = (S.cfgP.temperedBins || []).map(b => b.id);
+    const LIST = { silo: (S.cfgP.grainSilos && S.cfgP.grainSilos.length) ? S.cfgP.grainSilos : P.GRAIN_SILOS, dmBin: dm, cmBin: cm };
+    const sel = k => `<label class="fld req">${esc(t('mq_' + k))}<select data-mq="${k}"><option value="">—</option>${LIST[k].map(x => `<option ${f[k] === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>`;
+    const numF = k => `<label class="fld ${k === 'moisture' ? 'req' : ''}">${esc(t('mq_' + k))}<input inputmode="decimal" data-mq="${k}" value="${esc(f[k] || '')}"></label>`;
+    const flag = k => `<label class="fld">${esc(t('mq_' + k))}<select data-mq="${k}"><option value="">—</option><option value="no" ${f[k] === 'no' ? 'selected' : ''}>${esc(t('no'))}</option><option value="yes" ${f[k] === 'yes' ? 'selected' : ''}>${esc(t('yes'))}</option></select></label>`;
+    const day = L.prodDay(now()), Q = P.maizeQcDay(S.shiftLog, day), fmt = v => typeof v === 'number' && isFinite(v) ? C.fmtNum(v) : '—';
+    const LIM = P.maizeQcLimits(S.cfgP), dcls = d => d === 'reject' ? 'd-reject' : d === 'warn' ? 'd-warn' : d === 'accept' ? 'd-accept' : '';
+    const tables = Object.keys(P.MZQC_STAGES).filter(s => Q[s].rows.length).map(s => { const X = P.MZQC_STAGES[s], cols = X.ids.concat(X.nums, X.flags);
+      return `<h4>${esc(t('mqs_' + s))} (${Q[s].rows.length})</h4><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('time'))}</th>${cols.map(k => `<th>${esc(t('mq_' + k))}</th>`).join('')}${s === 'cm_b1' ? `<th>${esc(t('mqDev'))}</th>` : ''}<th>${esc(t('mqDecision'))}</th><th>${esc(t('holdCol'))}</th></tr>
+        ${Q[s].rows.map(r => { const D = P.maizeQcDecide(r, S.cfgP), fc = k => { const x = D.fails.find(f => f.param === k); return x ? dcls(x.decision) : ''; };
+          return `<tr><td>${esc(C.fmtTime(r.t))}</td>${cols.map(k => `<td class="${fc(k)}">${X.nums.indexOf(k) >= 0 ? esc(fmt(r[k])) : X.flags.indexOf(k) >= 0 ? esc(r[k] ? t(r[k]) : '—') : esc(r[k] || '—')}</td>`).join('')}
+            ${s === 'cm_b1' ? `<td>${D.target ? esc((D.target.dev > 0 ? '+' : '') + C.fmtNum(D.target.dev)) : '—'}</td>` : ''}<td><span class="chip ${dcls(D.decision)}">${esc(t('mqd_' + D.decision))}</span></td><td>${mqHoldCell(r, D, s)}</td></tr>`; }).join('')}
+        <tr><td><b>${esc(t('mqAvg'))}</b></td>${cols.map(k => `<td><b>${X.nums.indexOf(k) >= 0 ? esc(fmt(Q[s].avg[k])) : ''}</b></td>`).join('')}${s === 'cm_b1' ? '<td></td>' : ''}<td></td><td></td></tr></table></div>`; }).join('');
+    const limTxt = k => { const m = LIM[st][k]; if (!m) return ''; const p = []; if (isNum(m.warnLo)) p.push('⚠ < ' + C.fmtNum(m.warnLo)); if (isNum(m.warnHi)) p.push('⚠ > ' + C.fmtNum(m.warnHi)); if (isNum(m.rejLo)) p.push('✖ < ' + C.fmtNum(m.rejLo)); if (isNum(m.rejHi)) p.push('✖ > ' + C.fmtNum(m.rejHi)); return p.join(' · '); };
+    const TG = P.b1Target(S.cfgP), tgNote = st === 'cm_b1' ? `<p class="sub">${esc(t('mqB1Target', { v: C.fmtNum(TG.moisture) }))}${TG.tol !== null ? ' ± ' + esc(C.fmtNum(TG.tol)) : ''}</p>` : '';
+    const nc = Object.keys(P.MZQC_STAGES).reduce((a, s) => a + Q[s].rows.filter(r => P.maizeQcDecide(r, S.cfgP).decision === 'reject').length, 0);
+    const ncBanner = nc ? `<div class="banner b-warn">⚠ ${esc(t('mqNcToday', { n: nc }))}</div>` : '';
+    const limNote = Object.keys(LIM[st]).length || D.flags.length ? `<p class="sub">${D.nums.filter(k => LIM[st][k]).map(k => esc(t('mq_' + k)) + ': ' + esc(limTxt(k))).concat(D.flags.map(k => esc(t('mq_' + k)) + ' ' + esc(t('yes')) + ' = ✖')).join('<br>')}</p>` : `<p class="sub">${esc(t('mqRecordOnly'))}</p>`;
+    const hf = S.holdForm && S.holdForm.mq ? `<div class="banner b-reject"><b>${esc(t(S.holdForm.release ? 'holdReleaseBtn' : 'holdBtn'))}: ${esc(S.holdForm.binId)}</b></div>` + holdFormHtml(S.holdForm) : '';
+    return `<section class="card"><h3>${esc(t('mqTitle'))}</h3>${ncBanner}${hf}
+      <div class="seg mode">${Object.keys(P.MZQC_STAGES).map(s => `<button data-pact="mqstage" data-v="${s}" class="${s === st ? 'on ok' : ''}">${esc(t('mqs_' + s))}</button>`).join('')}</div>
+      <div class="grid2">${D.ids.map(sel).join('')}${D.nums.map(numF).join('')}${D.flags.map(flag).join('')}</div>
+      ${limNote}${tgNote}${C.pinFld('mq_pin')}
+      <button class="btn primary" data-pact="mqsave">${esc(t('mqSave'))}</button>
+      <h3>${esc(t('mqToday'))} · ${esc(day)}</h3>${tables || '<p class="sub">—</p>'}</section>`;
+  }
+  // v2.27.0 (Zhax, 27-11-2026): depois do aviso de não conforme, o Supervisor ou acima retém / liberta a bin D/M com o PIN.
+  // Só as bins D/M (milho sujo) e de produto podem ser retidas (v2.13.0) — as bins C/M não.
+  function mqHoldCell(r, D, s) {
+    const id = r.dmBin, H = holds(), h = id && H[id];
+    if (!id || !P.holdableBins(S.cfgP).some(b => b.id === id)) return '—';
+    if (h) return `<span class="chip d-reject">${esc(id)} ${esc(t('holdOn'))}</span>${S.holdForm ? '' : ` <button class="btn small" data-hold="${esc(id)}" data-release="1" data-mqhold="1">${esc(t('holdReleaseBtn'))}</button>`}`;
+    if (D.decision !== 'reject' || S.holdForm) return '—';
+    const p = D.fails.filter(f => f.decision === 'reject').map(f => t('mq_' + f.param)).join(', ');
+    return `<button class="btn small" data-hold="${esc(id)}" data-mqhold="1" data-suid="${esc(r.uid || '')}" data-reason="${esc(t('mqHoldReason', { s: t('mqs_' + s), p }))}">${esc(t('holdBtn'))} ${esc(id)}</button>`;
+  }
+  async function saveMaizeQc() {
+    const st = S.mqStage && P.MZQC_STAGES[S.mqStage] ? S.mqStage : 'silo_dm', D = P.MZQC_STAGES[st];
+    document.querySelectorAll('[data-mq]').forEach(el => { S.mqForm = Object.assign(S.mqForm || {}, { [el.dataset.mq]: el.value }); });   // lê o ecrã (o «change» pode não ter disparado)
+    const f = Object.assign({ stage: st }, S.mqForm || {});
+    const e = P.validateMaizeQc(f, S.cfgP); if (e.length) return C.toast(t('fixInvalid') + ': ' + e.map(k => t('mq_' + k)).join(', '));
+    const w = await whoP('mq_pin'); if (!w) return;
+    const tms = now(), rec = Object.assign(base(tms), { kind: 'maizeQc', t: tms, stage: st, by: w.title, byRole: w.role });
+    D.ids.forEach(k => { rec[k] = f[k]; });
+    D.nums.forEach(k => { const raw = String(f[k] || '').trim(); rec[k] = raw ? P.num(raw) : null; });
+    D.flags.forEach(k => { rec[k] = f[k] || null; });
+    const dec = P.maizeQcDecide(rec, S.cfgP); rec.decision = dec.decision; rec.fails = dec.fails;
+    try { await DB.add('shiftLog', rec); } catch (x) { return C.toast(t('saveFailed')); }
+    // v2.27.0 (Zhax, 27-11-2026): não retém a bin — só avisa
+    S.mqForm = {}; await reload(); C.toast(dec.decision === 'reject' ? t('mqSavedRej', { p: dec.fails.filter(f => f.decision === 'reject').map(f => t('mq_' + f.param)).join(', ') }) : dec.decision === 'warn' ? t('mqSavedWarn') : t('mqSaved')); keepScroll();
+  }
+  // ---------- v2.27.0: arranque de reprocessamento (sem limpeza): hora, sacos disponíveis, secção pneumática ----------
+  function reprocForm() {
+    const f = S.rpForm;
+    return `<section class="card"><h3>${esc(t('rpTitle'))}</h3><div class="grid2">
+      <label class="fld req">${esc(t('runStart'))}<input type="time" id="rp_time" value="${esc(f.time || hmNow())}"></label>
+      <label class="fld req">${esc(t('rpBags'))}<input inputmode="numeric" id="rp_bags" value="${esc(f.bagsAvail || '')}"></label>
+      <label class="fld req">${esc(t('rpSection'))}<select id="rp_sec"><option value="">—</option>${P.pneuSections(S.cfgP).map(x => `<option ${f.pneuSection === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label></div>
+      ${C.pinFld('rp_pin')}<button class="btn primary big" data-pact="rpsave">${esc(t('rpStartBtn'))}</button> <button class="btn ghost" data-pact="rpcancel">${esc(t('cancel'))}</button></section>`;
+  }
+  async function saveReproc() {
+    const sel = shiftSel(), li = shiftRec('login', sel.day, sel.period);
+    if (!li) return C.toast(t('rpNeedLogin'));
+    if (P.runState(S.shiftLog, sel.day, sel.period, now() + 24 * 3600000).areas.reproc.on) return C.toast(t('rpAlready'));
+    const f = { time: ($('#rp_time') || {}).value || '', bagsAvail: ($('#rp_bags') || {}).value || '', pneuSection: (($('#rp_sec') || {}).value || '').trim() };
+    S.rpForm = f;
+    const e = P.validateReprocStart(f, S.cfgP); if (e.length) return C.toast(t('fixInvalid') + ': ' + e.map(k => ({ time: t('runStart'), bags: t('rpBags'), section: t('rpSection') })[k]).join(', '));
+    const at = P.shiftTimeMs(shiftRange(sel.day, sel.period)[0], sel.period, f.time); if (at === null) return C.toast(t('runTimeNeed', { a: t('ra_reproc') }));
+    const w = await whoP('rp_pin'); if (!w) return;
+    const tms = now();
+    try { await DB.add('shiftLog', Object.assign(base(tms), { kind: 'runState', t: tms, prodDay: sel.day, period: sel.period, shift: sel.day + '/' + sel.period, crew: li.crew, by: w.title,
+      area: 'reproc', on: true, at, time: f.time, comment: '', reprocStart: true, bagsAvail: P.num(f.bagsAvail), pneuSection: f.pneuSection })); }
+    catch (x) { return C.toast(t('saveFailed')); }
+    S.rpForm = null; await reload(); C.toast(t('rpStarted')); keepScroll();
+  }
   function viewJobs() {
     const running = (S.jobs || []).filter(j => j.status === 'running').sort((a, b) => a.lineId < b.lineId ? -1 : 1);
-    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 3);   // v2.22.0: só as últimas 3; as restantes nos Relatórios
-    return (S.jobForm ? jobFormView() : `<section class="card"><button class="btn primary big" data-pact="newjob">＋ ${esc(t('newJob'))}</button></section>`) +
-      `<section class="card"><h3>${esc(t('jobsRunning'))}</h3>${running.length ? running.map(jobCard).join('') : `<p class="sub">${esc(t('noJobs'))}</p>`}</section>
+    const closed = (S.jobs || []).filter(j => j.status !== 'running').sort((a, b) => b.closedAt - a.closedAt).slice(0, 1);   // v2.27.0 (Zhax, 27-11-2026): só a última fechada; as restantes nos Relatórios
+    const sel = shiftSel(), rp = P.runState(S.shiftLog, sel.day, sel.period, now() + 24 * 3600000).areas.reproc;
+    const rpLine = rp.on ? `<div class="hold job"><b>${esc(t('rpOn', { h: C.fmtTime(rp.at) }))}</b>${rp.reprocStart ? `<div><small>${esc(t('rpBags'))}: ${esc(String(rp.bagsAvail))} · ${esc(t('rpSection'))}: ${esc(rp.pneuSection || '—')}</small></div>` : ''}</div>` : '';
+    return (S.jobForm ? jobFormView() : S.rpForm ? reprocForm() : `<section class="card"><button class="btn primary big" data-pact="newjob">＋ ${esc(t('newJob'))}</button>
+        ${rp.on ? '' : `<button class="btn big" data-pact="rpnew">＋ ${esc(t('rpStartBtn'))}</button>`}</section>`) +
+      `<section class="card"><h3>${esc(t('jobsRunning'))}</h3>${rpLine}${running.length ? running.map(jobCard).join('') : rpLine ? '' : `<p class="sub">${esc(t('noJobs'))}</p>`}</section>
       <section class="card"><h3>${esc(t('jobsClosed'))}</h3>${closed.length ? closed.map(jobCard).join('') : '<p class="sub">—</p>'}</section>`;
   }
   function allocText(alloc) { return (alloc || []).map(a => esc(a.bin || a.silo) + ' ' + fmtKg(a.kg) + ' kg' + (isNum(a.pct) ? ' (' + esc(C.fmtNum(a.pct)) + ' %)' : '')).join(isNum((alloc || [])[0] && alloc[0].pct) ? ' + ' : ' → '); }
@@ -1582,23 +1663,24 @@ window.ProdUI = function (C) {
     return `<section class="card"><h3>${esc(t('prodTotals'))}</h3><div class="tablewrap"><table class="tbl"><tr><th>${esc(t('product'))}</th><th>${esc(t('bins'))}</th><th>kg</th><th>${esc(t('loadPct'))}</th></tr>
       ${T.map(p => `<tr><td>${esc(C.prodName(p.productId))}</td><td>${esc(p.bins.join(', '))}</td><td>${fmtKg(p.kg)}${p.unknown ? ' <small>(' + esc(t('binsNoReading', { n: p.unknown })) + ')</small>' : ''}</td><td>${p.pct == null ? '—' : esc(String(p.pct).replace('.', ',')) + ' %'}</td></tr>`).join('')}</table></div></section>`;
   }
+  const holdFormHtml = f => `<div class="holdform"><label class="fld req">${esc(t(f.release ? 'holdReleaseReason' : 'holdReason'))}<textarea rows="2" id="hd_reason">${esc(f.reason || '')}</textarea></label>
+          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="hd_pin"></label>
+          <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`;
   function holdsCard() {
     const H = holds(), f = S.holdForm, B = P.holdableBins(S.cfgP);
     const row = b => {
-      const h = H[b.id], open = f && f.binId === b.id;
+      const h = H[b.id], open = f && f.binId === b.id && !f.mq;   // v2.27.0: a retenção pedida na amostragem do milho abre o formulário lá
       return `<div class="rowitem"><div class="row between"><span><b>${esc(b.id)}</b> <small>${esc(t(b.kind === 'dirty' ? 'dirtyBins' : 'ptab_bins'))}</small></span>
         <span class="chip ${h ? 'd-reject' : 'd-accept'}">${esc(h ? t('holdOn') : t('holdOff'))}</span></div>
         ${h ? `<small>${esc(C.fmtDT(h.t))} · ${esc(h.by)}: ${esc(h.reason)}</small>` : ''}
-        ${open ? `<div class="holdform"><label class="fld req">${esc(t(f.release ? 'holdReleaseReason' : 'holdReason'))}<textarea rows="2" id="hd_reason"></textarea></label>
-          <label class="fld req">${esc(t('pin'))}<input type="password" maxlength="4" id="hd_pin"></label>
-          <button class="btn primary small" data-pact="holdsave">${esc(t(f.release ? 'holdReleaseBtn' : 'holdBtn'))}</button> <button class="btn ghost small" data-pact="holdcancel">${esc(t('cancel'))}</button></div>`
+        ${open ? holdFormHtml(f)
           : (f ? '' : `<button class="btn small ${h ? '' : 'ghost'}" data-hold="${esc(b.id)}" data-release="${h ? 1 : ''}">${esc(t(h ? 'holdReleaseBtn' : 'holdBtn'))}</button>`)}</div>`;
     };
     const n = Object.keys(H).length, held = B.filter(b => H[b.id]), free = B.filter(b => !H[b.id]);
     // v2.23.0 (Zhax, 26-11-2026): no CQ — bins não conformes primeiro, a pedir autorização do Supervisor (ou acima) para libertar
     return `<section class="card"><h3>${esc(t('ncTitle'))}${n ? ` <span class="chip d-reject">${n}</span>` : ''}</h3>
       ${held.length ? `<div class="banner b-reject">${esc(t('ncNeedSup'))}</div>${held.map(row).join('')}` : `<p class="sub">${esc(t('ncNone'))}</p>`}
-      <details ${f && !H[f.binId] ? 'open' : ''}><summary>${esc(t('ncHoldOther'))}</summary>${free.map(row).join('')}</details></section>`;
+      <details ${f && !f.mq && !H[f.binId] ? 'open' : ''}><summary>${esc(t('ncHoldOther'))}</summary>${free.map(row).join('')}</details></section>`;
   }
   // v2.23.0: amostra do CQ «reject» com bin de destino → a bin fica retida automaticamente (libertar só com PIN de Supervisor ou acima)
   async function autoHold(binId, sample) {
@@ -1617,7 +1699,7 @@ window.ProdUI = function (C) {
     const r = await C.checkPin(($('#hd_pin') || {}).value);
     if (!r.ok) return C.toast(C.pinMsg(r));
     const b = P.holdableBins(S.cfgP).find(x => x.id === f.binId), tms = now();
-    try { await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: f.release ? 'binRelease' : 'binHold', binId: b.id, binKind: b.kind, reason: reason.trim(), by: by.trim(), role: 'qc',
+    try { await DB.add('prodChanges', Object.assign(base(tms), { t: tms, kind: f.release ? 'binRelease' : 'binHold', binId: b.id, binKind: b.kind, reason: reason.trim(), by: by.trim(), role: 'qc', sampleUid: f.sampleUid || null,
       productId: b.kind === 'product' ? P.binState(b.id, S.binEvents).productId || null : null })); } catch (e) { return C.toast(t('saveFailed')); }
     S.operator = by.trim(); await DB.setConfig('operator', S.operator);
     S.holdForm = null; await reload(); C.toast(t(f.release ? 'holdReleased' : 'holdSaved', { b: b.id })); keepScroll();
@@ -1813,6 +1895,14 @@ window.ProdUI = function (C) {
         
         <h3>${esc(t('floors'))}</h3>
         <label class="fld"><input data-ps="floors" value="${esc((d.floors || []).join(', '))}"></label>
+        <h3>${esc(t('rpSection'))}</h3>
+        <label class="fld">${esc(t('rpSecList'))}<textarea rows="2" data-ps="pneuSec">${esc(P.pneuSections(d).join(', '))}</textarea></label>
+        <h3>${esc(t('mqTitle'))} · ${esc(t('mqLimits'))}</h3><p class="sub">${esc(t('mqLimHelp'))}</p>
+        ${Object.keys(P.MZQC_STAGES).map(st => { const LM = P.maizeQcLimits(d)[st]; return `<h4>${esc(t('mqs_' + st))}</h4><div class="tablewrap"><table class="tbl"><tr><th></th>${P.MZQC_LIM_KEYS.map(x => `<th>${esc(t('mql_' + x))}</th>`).join('')}</tr>
+          ${P.MZQC_STAGES[st].nums.map(k => `<tr><td>${esc(t('mq_' + k))}</td>${P.MZQC_LIM_KEYS.map(x => `<td><input inputmode="decimal" style="max-width:70px" data-ps="mzl|${st}|${k}|${x}" value="${esc(LM[k] && isNum(LM[k][x]) ? C.fmtNum(LM[k][x]) : '')}"></td>`).join('')}</tr>`).join('')}</table></div>`; }).join('')}
+        <h4>${esc(t('mqs_cm_b1'))} · ${esc(t('mqTargetT'))}</h4>
+        <div class="grid2"><label class="fld">${esc(t('mqTargetM'))}<input inputmode="decimal" data-ps="b1t|moisture" value="${esc(C.fmtNum(P.b1Target(d).moisture))}"></label>
+          <label class="fld">${esc(t('mqTargetTol'))}<input inputmode="decimal" data-ps="b1t|tol" value="${esc(P.b1Target(d).tol === null ? '' : C.fmtNum(P.b1Target(d).tol))}"></label></div>
         <h3>${esc(t('procTitle'))}</h3>
         ${P.PROC_GROUPS.map(g => { const c = P.procMaintCfg(d)[g]; return `<h4>${esc(t('pg_' + g))}</h4>
           <label class="fld">${esc(t('procSections'))}<textarea rows="2" data-ps="procSec|${g}">${esc(c.sections.join(', '))}</textarea></label>
@@ -1847,6 +1937,22 @@ window.ProdUI = function (C) {
           if (!g.tasks.length) bad.push(t('pg_' + a) + ': ' + t('procTasks'));
         }
         n.procMaint[a] = g;
+      }
+      if (k === 'b1t') {
+        const raw = el.value.trim(), v = raw ? P.num(raw) : null;
+        n.b1Target = Object.assign({}, P.b1Target(n.b1Target ? n : S.cfgP));
+        if (a === 'moisture') { if (v === null || isNaN(v) || v <= 0 || v > 100) bad.push(t('mqTargetM')); else n.b1Target.moisture = v; }
+        else { if (raw && (v === null || isNaN(v) || v < 0)) bad.push(t('mqTargetTol')); else n.b1Target.tol = v; }
+      }
+      if (k === 'pneuSec') { const L = el.value.split(/[,\n;]/).map(x => x.trim()).filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i); if (!L.length) bad.push(t('rpSecList')); else n.pneuSections = L; }
+      if (k === 'mzl') {   // a|b|c = etapa|valor|tipo de limite; vazio = sem esse limite
+        const [st, par, lk] = [a, b, el.dataset.ps.split('|')[3]];
+        n.maizeLimits = n.maizeLimits || JSON.parse(JSON.stringify(P.maizeQcLimits(S.cfgP)));
+        const raw = el.value.trim(), v = raw ? P.num(raw) : null;
+        if (raw && (v === null || isNaN(v) || v < 0)) { bad.push(t('mqs_' + st) + ' · ' + t('mq_' + par)); return; }
+        n.maizeLimits[st] = n.maizeLimits[st] || {}; const m = Object.assign({}, n.maizeLimits[st][par]);
+        if (v === null) delete m[lk]; else m[lk] = v;
+        if (Object.keys(m).length) n.maizeLimits[st][par] = m; else delete n.maizeLimits[st][par];
       }
       if (k === 'floors') n.floors = el.value.split(',').map(x => x.trim()).filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i);
     });
@@ -1959,10 +2065,15 @@ window.ProdUI = function (C) {
     if (el.dataset.jmode) { S.jobForm.mode = el.dataset.jmode === 'blend' ? 'blend' : 'seq'; keepScroll(); return; }
     if (el.dataset.logact) { S.logAct = { uid: el.dataset.uid, mode: el.dataset.logact === 'close' ? 'close' : 'void' }; keepScroll(); return; }
     if (el.dataset.shsel) { const [d, p] = el.dataset.shsel.split('|'); S.shiftSel = { day: d, period: p === 'N' ? 'N' : 'D' }; keepScroll(); return; }
-    if (el.dataset.hold) { S.holdForm = { binId: el.dataset.hold, release: !!el.dataset.release }; keepScroll(); return; }
+    if (el.dataset.hold) { S.holdForm = { binId: el.dataset.hold, release: !!el.dataset.release, mq: !!el.dataset.mqhold, sampleUid: el.dataset.suid || null, reason: el.dataset.reason || '' }; keepScroll(); return; }
     if (el.dataset.binact) { S.binAct = { id: el.dataset.bin, mode: ['set', 'out', 'qty', 'zero'].indexOf(el.dataset.binact) >= 0 ? el.dataset.binact : 'empty' }; keepScroll(); return; }
     switch (el.dataset.pact) {
       case 'newjob': newJobForm(); keepScroll(); return;
+      case 'rpnew': S.rpForm = {}; keepScroll(); return;
+      case 'rpcancel': S.rpForm = null; keepScroll(); return;
+      case 'rpsave': return saveReproc();
+      case 'mqstage': S.mqStage = el.dataset.v; S.mqForm = {}; keepScroll(); return;
+      case 'mqsave': return saveMaizeQc();
       case 'addoutput': S.jobForm.outputs.push(newOutput()); keepScroll(); return;
       case 'newtransfer': newTransferForm(); keepScroll(); return;
       case 'stocknew': newStockForm(); keepScroll(); return;
@@ -2065,6 +2176,7 @@ window.ProdUI = function (C) {
     if (el.id === 'st_cat') { const c = $('#st_code'); if (c) c.innerHTML = codeOpts(el.value); return true; }
     if (el.id === 'st_start' || el.id === 'st_end') { stopDur(); return true; }
     if (el.dataset && el.dataset.runsel) { const [p, ar] = el.dataset.runsel.split('|'); const b = $('#' + p + '_box_' + ar); if (b && p !== 'rc') b.hidden = el.value !== '1'; return true; }
+    if (el.dataset && el.dataset.mq) { S.mqForm = Object.assign(S.mqForm || {}, { [el.dataset.mq]: el.value }); return true; }
     if (el.id === 'mzDay') { if (el.value) S.mzDay = el.value; keepScroll(); return true; }
     if (el.classList && el.classList.contains('lg_proc')) { const d = el.dataset.g === 'plansifter' ? $('#lg_psecs') : $('#lg_pu_' + el.dataset.g); if (d) d.hidden = !el.checked; return true; }
     if (el.dataset && el.dataset.pq && S.pqForm) { const [id, k] = el.dataset.pq.split('|'); S.pqForm[id] = Object.assign(S.pqForm[id] || {}, { [k]: el.value }); return true; }
@@ -2105,5 +2217,5 @@ window.ProdUI = function (C) {
     return null;
   }
   const newRec = tms => base(tms);
-  return { holdsCard, autoHold, productBinIds, prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
+  return { maizeQcCard, holdsCard, autoHold, productBinIds, prodOn, logoutIssue, holdIssues, siloFeedIssue, shiftIssue, load, reload, view, viewProdSet, viewCodes, settingsCard, homeLine, onClick, onInput, onChange, CLICK_SEL, dropboxToken, stockDue, uploadIssue, newRec };
 };
